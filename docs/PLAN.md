@@ -200,6 +200,7 @@ In every mode, **Merge to main is your click**.
 - A plain list in place of the tree, where clicking switches terminals.
 - Status from hooks and `claude agents --json`.
 - Answer the M1 checks: worktree trust, hook layering, Claude Code teams, and the MCP timeout.
+- *Progress 2026-11-18:* the launch flags, the HTTP MCP endpoint with per-agent tokens, and hook delivery are verified with a real session (see `docs/HANDOFF.md`). Worktree trust and hook layering are still open and need the hand test.
 - *Done when:* you ask the coordinator for a two-part task, two workers appear, you click into one and type to it, and both report done.
 
 **M2: the real UI.**

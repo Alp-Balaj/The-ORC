@@ -1,19 +1,26 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import type { StartMissionRequest } from '../shared/types'
+import { ControlServer } from './control-server'
+import { Missions } from './missions'
 import { TerminalHost } from './terminals'
 
 let win: BrowserWindow | null = null
 
-const host = new TerminalHost(
+const terminals = new TerminalHost(
   (id, data) => win?.webContents.send('terminal:data', id, data),
-  (id, code) => win?.webContents.send('terminal:exit', id, code)
+  (id, code) => {
+    missions.terminalExited(id)
+    win?.webContents.send('terminal:exit', id, code)
+  }
 )
+const missions = new Missions(terminals, (views) => win?.webContents.send('missions:changed', views))
+const control = new ControlServer(missions)
 
 function createWindow(): void {
   win = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: 1500,
+    height: 920,
     title: 'The ORC',
     backgroundColor: '#0b0d10',
     webPreferences: {
@@ -26,19 +33,27 @@ function createWindow(): void {
   else win.loadFile(join(import.meta.dirname, '../renderer/index.html'))
 }
 
-ipcMain.handle('terminal:start-shell', (_e, id: string) => {
-  if (!host.isRunning(id)) {
-    host.start({ id, command: process.env.SHELL ?? 'bash', args: [], cwd: homedir() })
-  }
+ipcMain.handle('missions:list', () => missions.views())
+ipcMain.handle('missions:start', (_e, req: StartMissionRequest) => missions.startMission(req))
+ipcMain.handle('dialog:pick-repo', async () => {
+  const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'] })
+  return r.canceled ? null : r.filePaths[0]
 })
-ipcMain.handle('terminal:replay', (_e, id: string) => host.replay(id))
-ipcMain.on('terminal:write', (_e, id: string, data: string) => host.write(id, data))
+ipcMain.handle('terminal:replay', (_e, id: string) => terminals.replay(id))
+ipcMain.on('terminal:write', (_e, id: string, data: string) => {
+  missions.noteHumanInput(id, data)
+  terminals.write(id, data)
+})
 ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
-  host.resize(id, cols, rows)
+  terminals.resize(id, cols, rows)
 )
 
-app.whenReady().then(createWindow)
+app.whenReady().then(async () => {
+  missions.setControlPort(await control.listen())
+  createWindow()
+})
 app.on('window-all-closed', () => {
-  host.killAll()
+  missions.shutdown()
+  control.close()
   app.quit()
 })

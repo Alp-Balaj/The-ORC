@@ -20,10 +20,13 @@ export class TerminalHost {
   private readonly scrollback = new Map<TerminalId, string>()
   private static readonly MaxScrollback = 512 * 1024
 
-  constructor(
-    private readonly onData: DataListener,
-    private readonly onExit: ExitListener
-  ) {}
+  private readonly onData: DataListener
+  private readonly onExit: ExitListener
+
+  constructor(onData: DataListener, onExit: ExitListener) {
+    this.onData = onData
+    this.onExit = onExit
+  }
 
   start(spec: TerminalSpec, cols = 120, rows = 32): void {
     if (this.terminals.has(spec.id)) throw new Error(`terminal ${spec.id} already running`)
