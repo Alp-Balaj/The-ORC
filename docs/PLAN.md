@@ -83,7 +83,7 @@ Each item is tagged with where it comes from:
 - You type into any of them normally. **Permission prompts work as usual**: a worker waiting on one turns its node ◐ "needs you", and you click in to answer.
 
 ### 2. Spawning: the app's `spawn_agent` tool [new]
-The app runs a small **MCP server** (stdio) and gives every session its tools: `spawn_agent(name, task)`, `report_done(summary)` and `ask_human(question)`.
+The app's main process hosts an **HTTP MCP endpoint on `127.0.0.1`** and gives every session its tools: `spawn_agent(name, task)`, `report_done(summary)` and `ask_human(question)`. Each session is started with its own `--mcp-config` carrying a **per-agent bearer token** (`claude mcp` supports HTTP transport with headers, checked on 2.1.327). The token tells the app *which agent* is calling, and that is how the tree knows a new node's parent. *(Corrected 2026-11-18: an earlier draft said stdio. A stdio server is started by `claude`, not by the app, so it has no route back to the app.)*
 
 `spawn_agent` does four things:
 1. creates a worktree on `mission/<mission>/<name>`;
@@ -179,7 +179,7 @@ In every mode, **Merge to main is your click**.
 ## Safety
 
 - **The local endpoints are a control surface.**
-  - Use a **stdio** MCP server, so there's no port.
+  - The MCP endpoint and the hook receiver listen on `127.0.0.1` only, and each agent has **its own token**: a request without a valid token is rejected, and a token only acts as its own agent.
   - The hook receiver listens on `127.0.0.1` only and requires a **token generated at each launch**, because a forged hook event could fake a status or an approval.
 - **Recovery after a crash.** On restart the app reconciles before it does anything else:
   - it finds orphaned `claude` processes and terminals;
