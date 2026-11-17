@@ -10,20 +10,29 @@ _Updated 2026-11-18 at the end of the groundwork session._
 | Control server: HTTP MCP endpoint + hook receiver on 127.0.0.1, a token per agent, Origin refused | `src/main/control-server.ts` | `tests/control-server.smoke.ts` passes: real MCP client, 3 tools, bad name rejected, 401/403 paths |
 | Launch flags for every session: name, session id, permission mode, hooks, denied git writes, MCP config, role prompt | `src/main/claude-launch.ts` | `tests/claude-session.probe.ts` passes on Claude Code 2.1.327: flags accepted, `report_done` reached the app, hooks fired `SessionStart → UserPromptSubmit → PreToolUse → PostToolUse → Stop → SessionEnd` |
 | Missions: coordinator in the repo, `spawn_agent` creates a worktree under `<repo>/.orc/worktrees/<mission>/<agent>` (excluded via `.git/info/exclude`) and starts a worker | `src/main/missions.ts`, `src/main/git-worktrees.ts` | Type-checks and builds. **Not yet run end to end** |
-| Three-panel UI: missions + status cards (left), terminal (centre), tree (right); clicking switches terminals, typing Enter in a terminal marks "last instruction: you" | `src/renderer/src/App.tsx` | Type-checks and builds. **Not yet opened** |
+| Three-panel UI: missions + status cards (left), terminal (centre), tree (right); clicking switches terminals, typing Enter in a terminal marks "last instruction: you" | `src/renderer/src/App.tsx` | Rendered in a hidden window under both `pnpm dev` and the build: no console errors, layout screenshot checked |
+| A real interactive coordinator launched by the app with every ORC flag | `src/main/missions.ts` | Smoke mode (below): it starts and shows Claude Code's trust prompt for the never-trusted sandbox. Quitting with it live kills it cleanly (fixed a crash where exiting sessions sent to the destroyed window) |
 
 ## Next: the M1 hand test (needs the owner at the keyboard)
 
 1. `pnpm dev`, choose `~/Documents/Projects/orc-sandbox`, name a mission, mode *Accept edits*, **Start mission**.
+   **The coordinator's terminal will first ask "Is this a project you trust?"** (the sandbox was never opened interactively). Choose *Yes, I trust this folder*. Its card stays at "starting" until you do.
 2. In the coordinator terminal: *"Create two files in parallel with two workers: `a.txt` saying hello and `b.txt` saying world."*
 3. Expect two nodes in the tree and two cards. Click one, type to it, and check its card says "last instruction: you".
 4. Both workers should end ✓ done, and the coordinator should receive their SendMessage reports.
 
 Watch for, and record here:
 - **Workspace trust in worktrees.** Does a worker in `<sandbox>/.orc/worktrees/...` start without a trust prompt? If one appears, it shows in the worker's terminal. Answer it there, and note that it happened.
-- **Permission prompts → ◐.** Does a pending permission prompt fire the `Notification` hook and turn the card amber?
+- **Permission prompts → ◐.** Does a pending permission prompt fire the `Notification` hook and turn the card amber? And does an agent that is merely idle *stay* grey? Claude Code also sends a Notification after a while idle. `missions.ts` skips `notification_type: idle_prompt` and "waiting for your input", but the real payload hasn't been seen yet.
+- **Every raw hook payload is logged** to `~/.config/the-orc/hooks.jsonl` (Electron `userData`). Check it for all of the above instead of relying on memory.
 - **Your own hooks.** Do your personal Claude Code hooks still run in ORC sessions (are `--settings` hooks layered or replacing)?
 - **Deferred tools.** In the probe, Claude needed `ToolSearch` before it could call `mcp__orc__report_done`. Check the coordinator finds `spawn_agent` unprompted. If not, strengthen `coordinatorPrompt`.
+
+## Smoke mode (no window shown)
+
+    ORC_SMOKE_OUT=<dir> [ORC_SMOKE_REPO=<sandbox>] node_modules/.bin/electron .   # after pnpm build
+
+It loads the UI hidden and, with `ORC_SMOKE_REPO`, starts an unprompted coordinator (not billed). It writes `report.json` (console errors, agent states), `screenshot.png` and `coordinator.txt` (terminal output), then quits. Use it after every UI or launch change.
 
 ## Known gaps (deliberately left for later milestones)
 

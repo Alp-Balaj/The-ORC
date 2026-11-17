@@ -154,7 +154,9 @@ export class Missions implements ControlHandlers {
         })
         break
       case 'Notification':
-        // Permission prompts and "waiting for input" both mean the human is needed.
+        // Claude Code also notifies when a session has merely sat idle waiting for input;
+        // that is not "needs you". Only permission prompts and the like are.
+        if (e.notification_type === 'idle_prompt' || /waiting for your input/i.test(e.message ?? '')) break
         if (agent.status !== 'done') {
           this.update(callerTerminal, {
             status: 'needs-you',
