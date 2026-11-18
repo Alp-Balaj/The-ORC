@@ -46,5 +46,6 @@ repository. With no gate command set, the gate shows "not configured" and doesn'
   the conflict in red, but the agent doesn't turn ◐.
 - **Workers merge into the integration branch in the order they report done**, not in dependency
   order. The ORC has no dependency information between workers yet.
-- **The vault (D4) is not built.** It is still "suggested, awaiting owner", and your real vault is
-  off-limits overnight.
+- **The vault (D4)** will be built last in M4: off by default, a folder you choose per space, and
+  tested only against a folder inside orc-sandbox. D4 is still "suggested, awaiting owner", so it
+  stays off until you turn it on.
