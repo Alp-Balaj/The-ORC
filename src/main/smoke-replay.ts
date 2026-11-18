@@ -121,7 +121,17 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
     js<string>(`document.querySelector('[data-testid=tree-node][data-agent=${JSON.stringify(agent)}]')?.dataset.status ?? ''`)
   const want: Record<string, string> = { coordinator: 'needs-you', navbar: 'working', 'post-api': 'needs-you', tests: 'done' }
   for (const [a, s] of Object.entries(want)) check(`tree node ${a} is ${s}`, (await statusOf(a)) === s, await statusOf(a))
-  const edges = await count('.react-flow__edge')
+  // React Flow draws edges only after it has measured the nodes: poll, don't read once.
+  const settle = async (sel: string, want: (n: number) => boolean): Promise<number> => {
+    let n = 0
+    for (let i = 0; i < 30; i++) {
+      n = await count(sel)
+      if (want(n)) break
+      await sleep(100)
+    }
+    return n
+  }
+  const edges = await settle('.react-flow__edge', (n) => n >= 4)
   check('tree edges: 3 spawn edges + message edges', edges >= 4, String(edges))
   const sub = await js<{ p: number; c: number }>(`(() => {
     const y = (a) => document.querySelector('.react-flow__node[data-id=' + JSON.stringify(a) + ']')?.getBoundingClientRect().top ?? -1;
@@ -150,7 +160,8 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   // Messages toggle hides the message edges.
   await js(`document.querySelector('[data-testid=toggle-messages]')?.click()`)
   await sleep(500)
-  check('message toggle off leaves only spawn edges', (await count('.react-flow__edge')) === 3, String(await count('.react-flow__edge')))
+  const spawnEdges = await settle('.react-flow__edge', (n) => n === 3)
+  check('message toggle off leaves only spawn edges', spawnEdges === 3, String(spawnEdges))
   await js(`document.querySelector('[data-testid=toggle-messages]')?.click()`)
 
   // Space b's mission, then stop mission 2 through its button.
