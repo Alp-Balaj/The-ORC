@@ -1,21 +1,29 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~02:15 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~02:40 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
 ## Next
 
-**M3 (git and gates), branch `m3/git`: built; final billed check in progress.**
-- Free checks: `tests/free.sh` passes. That includes `mission-git.test.ts` (real git on throwaway
-  repos), `mission-flow.test.ts` (plan check → approve → commit → merge → conflict → checkpointed
-  review → gate → Verifier → merge to main) and the replay (split panel, merge screen, a real merge
-  into the throwaway repo `orc-sandbox/.orc/space-b`).
-- Billed, still to confirm:
-  - `tests/e2e.sh` now approves the split in the UI, runs a real Verifier, clicks Merge to main, and
-    checks that `a.txt`/`b.txt` land on sandbox `main`. The script resets sandbox `main` to the tag
-    `orc-baseline` (4599c7a) first.
-  - `ORC_SMOKE_SCENARIO=deny tests/e2e.sh <dir> "Run exactly this with Bash: git commit --allow-empty -m test"`
-    checks that agents can't commit.
-- If both pass: update the reports, consult the advisor, fast-forward `main`, then start M4 on `m4/robust`.
+**M4 (robustness) on branch `m4/robust`.** Crash recovery (persist missions, reattach with
+`claude --resume`, list dirty worktrees), a live-agent cap per space, Pause mission.
+- The plan's "localhost token" is already done: per-agent tokens, regenerated every launch.
+- Vault records are **not** built: D4 is still "suggested, awaiting owner".
+
+## M3: done and verified (branch `m3/git`, 2026-11-19 ~02:35)
+
+- **Billed `tests/e2e.sh` passed:**
+  - the coordinator proposed a split, the test approved it in the UI, and two workers spawned;
+  - the app committed and merged both into `integration/<mission>`;
+  - a real Haiku Verifier gave `VERDICT: PASS`;
+  - Merge to main put `a.txt`/`b.txt` on sandbox `main` (reset to the tag `orc-baseline` at the next run).
+- **`ORC_SMOKE_SCENARIO=deny` passed:** an agent's `git commit` is "Not run · permission denied ·
+  rule from command line arguments", with no prompt and no commit.
+- **Bugs found by the billed runs:**
+  - Approval lost when clicked while the coordinator was finishing its turn. Notes queued on a busy
+    agent are now typed in once it stops.
+  - `SessionEnd` turned done workers into exited. They now stay done.
+  - The Verifier called a human-steered change "outside the brief". It is now told what the human
+    typed to workers.
 
 ## M3: how it works
 

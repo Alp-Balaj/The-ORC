@@ -28,6 +28,21 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
   - Verified by `tests/free.sh` (a free hidden-UI replay with 28 checks) and the billed e2e
     (25 checks). I checked the screenshots by eye.
 
+- **M3 is done** (branch `m3/git`, fast-forwarded to `main`):
+  - The app commits each worker on `report_done` and merges into `integration/<mission>` in its own
+    worktree; your checkout is never touched until you click.
+  - A conflict goes back to the worker to resolve (the markers are left in its worktree), and the
+    coordinator is told.
+  - Gating modes: plan check (enforced, using `propose_split` and an approval panel), checkpointed
+    (a review screen per worker) and no check.
+  - A per-space gate command.
+  - The Merge to main screen: combined diff, gate, Verifier, and a fast-forward-only merge that
+    refuses a dirty checkout or a moved `main`.
+  - Verified by:
+    - free tests on real git (`mission-git`, `mission-flow`) and the hidden-UI replay;
+    - the billed e2e: split approved in the UI → merged → Verifier PASS → Merge to main;
+    - a billed check that an agent's `git commit` is denied.
+
 ## Broken or unverified
 
 - Claude Code *teams* are experimental (behind an env flag), so I deferred them. The MCP tool-call
@@ -35,7 +50,9 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
   pending".
 - Held and expired message states (permission-mode mismatch) are never shown in the feed, because
   they never occur when every session uses the same mode.
-- Pause mission (M4) and Merge to main (M3) are disabled buttons for now.
+- Pause mission (M4) is a disabled button for now.
+- Merge to main fails when `main` has moved since the mission began. It says so, but it doesn't
+  offer to update the integration branch.
 
 ## Decisions made, and why
 
@@ -60,6 +77,11 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
 
 ## Open questions for the owner
 
+- **`docs/DECISIONS-PENDING.md`** has three items:
+  - the ADR the plan asks for: plan check auto-merges into integration;
+  - typing `[The ORC] …` notices into an idle coordinator's terminal;
+  - where the gate command lives.
+
 - **Your `notify.sh` hook fires for every ORC session** (Stop and Notification), because
   `--settings` hooks are layered on top of yours. With five workers, that is a lot of desktop
   notifications.
@@ -72,8 +94,8 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
 
 ## Billed sessions used
 
-- About 16 Haiku sessions so far, all small: the e2e test ran 4 times (3 sessions each) and the
-  permission scenario 4 times (1 each).
+- About 35 Haiku sessions so far, all small: the e2e test ran 7 times (3–4 sessions each), the
+  permission scenario 4 times, the deny check once, and the Verifier 3 times.
 
 ## How to see it working
 
