@@ -86,8 +86,7 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   }
 
   d.win.webContents.on('console-message', (e) => {
-    // Chromium's ResizeObserver loop notice is benign (xterm + React Flow resizing together).
-    if (e.level === 'error' && !/ResizeObserver loop/.test(e.message)) errors.push(e.message)
+    if (e.level === 'error') errors.push(e.message)
   })
   await new Promise<void>((r) => d.win.webContents.once('did-finish-load', () => r()))
   await sleep(1500)

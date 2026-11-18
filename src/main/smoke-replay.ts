@@ -113,6 +113,20 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await shot('replay-mission-1')
 
   const count = (sel: string): Promise<number> => js<number>(`document.querySelectorAll(${JSON.stringify(sel)}).length`)
+  // A busy mission: a burst of hook events while its tree is on screen. The nodes must stay
+  // measured and visible (React Flow hides unmeasured nodes; a blank tree was seen).
+  for (let i = 0; i < 30; i++) {
+    hook(m1, 'navbar', { hook_event_name: i % 2 ? 'PostToolUse' : 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: `/x/src/nav/f${i}.tsx` } })
+    await sleep(12)
+  }
+  await sleep(1500)
+  const visible = await js<{ vis: number; inside: number }>(`(() => {
+    const panel = document.querySelector('[data-testid=tree]').getBoundingClientRect();
+    const nodes = [...document.querySelectorAll('.react-flow__node')];
+    const vis = nodes.filter((n) => getComputedStyle(n).visibility === 'visible').length;
+    const inside = nodes.filter((n) => { const r = n.getBoundingClientRect(); return r.width > 0 && r.left >= panel.left - 1 && r.right <= panel.right + 1 && r.top >= panel.top - 1 && r.bottom <= panel.bottom + 1 }).length;
+    return { vis, inside } })()`)
+  check('after a burst of updates every tree node is visible and inside the panel', visible.vis === 4 && visible.inside === 4, JSON.stringify(visible))
   check('two spaces listed', (await count('[data-testid=space]')) === 2, String(await count('[data-testid=space]')))
   check('three missions listed', (await count('[data-testid=mission]')) === 3)
   check('mission 1 shows four cards', (await count('[data-testid=agent-card]')) === 4)
@@ -189,6 +203,13 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await sleep(1000)
   check('Stop ends the mission', view(m2).state === 'stopped' && view(m2).agents.every((a) => a.status === 'exited'))
   await shot('replay-stopped')
+
+  // A failed action that nothing awaits still surfaces (the banner), and the UI survives it.
+  await js(`void window.orc.addSpace('/tmp')`)
+  await sleep(600)
+  const banner = await js<string>(`document.querySelector('[data-testid=action-error]')?.textContent ?? ''`)
+  check('a failed action shows a banner, not silence', /not inside a git repository/.test(banner), banner)
+  check('the UI is still up after it', (await count('[data-testid=space]')) === 2 && (await count('[data-testid=ui-error]')) === 0)
 
   // A duplicate mission name is refused with a visible error.
   await js(`document.querySelector('[data-testid=space][data-space=orc-sandbox] [data-testid=new-mission]')?.click()`)

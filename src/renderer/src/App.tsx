@@ -26,6 +26,16 @@ export function App(): React.JSX.Element {
   const [showMessages, setShowMessages] = useState(true)
   const [view, setView] = useState<'terminal' | 'merge' | { review: string }>('terminal')
   const [, tick] = useState(0)
+  // A failed action (IPC rejected) shows here instead of disappearing into the console.
+  const [actionError, setActionError] = useState<string | null>(null)
+  useEffect(() => {
+    const onReject = (e: PromiseRejectionEvent): void => {
+      e.preventDefault() // shown in the banner: handled, not an uncaught error
+      setActionError(String(e.reason?.message ?? e.reason).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+    }
+    window.addEventListener('unhandledrejection', onReject)
+    return () => window.removeEventListener('unhandledrejection', onReject)
+  }, [])
 
   useEffect(() => {
     void window.orc.listMissions().then(setMissions)
@@ -59,7 +69,14 @@ export function App(): React.JSX.Element {
   const needsYou = mission?.agents.filter((a) => a.status === 'needs-you').length ?? 0
 
   return (
-    <div className="grid h-full grid-cols-[300px_minmax(0,1fr)_320px] grid-rows-[44px_minmax(0,1fr)]">
+    <div className="relative grid h-full grid-cols-[300px_minmax(0,1fr)_320px] grid-rows-[44px_minmax(0,1fr)]">
+      {actionError && (
+        <div className="absolute bottom-3 left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-start gap-2 rounded-lg border border-destructive/40 bg-card px-3 py-2 text-[12px] shadow-lg" data-testid="action-error" role="alert">
+          <span className="text-destructive">Action failed:</span>
+          <span className="min-w-0 break-words">{actionError}</span>
+          <button className="ml-2 cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setActionError(null)} aria-label="Dismiss">✕</button>
+        </div>
+      )}
       {/* Header */}
       <header className="col-span-3 flex items-center gap-3 border-b bg-panel px-3" data-testid="header">
         <div className="flex w-[276px] items-center gap-2">

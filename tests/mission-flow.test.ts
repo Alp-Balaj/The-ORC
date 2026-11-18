@@ -86,6 +86,17 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   ok('the record holds brief, split, reports, Verifier and the merge with session ids', ['## Brief', 'make a.txt and b.txt', '## Approved split', '## Report from a', '## Report from b', '## Verifier report', 'Template sha256', '## Merged into main', '--resume', 'AI-generated'].every((x) => note.includes(x)), note.length + ' chars')
 }
 
+// A worktree that can't be created -----------------------------------------------
+{
+  const r = repo('wtfail')
+  const { m } = world()
+  const id = await m.startMission({ repoPath: r, name: 'wtf', permissionMode: 'acceptEdits', gating: 'none' })
+  m.git = { ...m.git, addWorktree: async () => { throw new Error('fatal: disk full') } }
+  const res = await m.spawnAgent(`${id}:coordinator`, 'a', 'x')
+  ok('a failed worktree gives the coordinator a clear answer, not a crash', /could not create a worktree for "a".*disk full/.test(res), res)
+  ok('…and no half-made agent is left behind', m.views()[0].agents.length === 1)
+}
+
 // Conflict -------------------------------------------------------------------
 {
   const r = repo('conflict')

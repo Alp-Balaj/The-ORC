@@ -21,6 +21,14 @@ const expect = (what: string, status: string): void => {
 const hook = (e: Record<string, unknown>) => m.hookEvent(t, e as never)
 
 expect('launched', 'starting')
+{
+  const id2 = await m.startMission({ repoPath: join(homedir(), 'Documents/Projects/orc-sandbox'), name: 'start fail', permissionMode: 'acceptEdits' })
+  m.terminalExited(`${id2}:coordinator`, 127)
+  const c2 = m.views().find((x) => x.id === id2)!.agents[0]
+  const okFail = c2.status === 'exited' && /before starting \(code 127\)/.test(c2.activity)
+  if (!okFail) failed++
+  console.log(`${okFail ? 'ok  ' : 'FAIL'} claude dying before it starts says so: ${c2.activity}`)
+}
 hook({ hook_event_name: 'SessionStart' }); expect('SessionStart', 'idle')
 hook({ hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'Claude is waiting for your input' }); expect('idle notification keeps idle', 'idle')
 hook({ hook_event_name: 'UserPromptSubmit', prompt: 'do it' }); expect('prompt', 'working')

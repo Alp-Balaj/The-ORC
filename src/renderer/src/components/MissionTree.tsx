@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { ReactFlow, ReactFlowProvider, Handle, Position, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Handle, Position, useNodesState, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { AgentView, FeedEntry } from '../../../shared/types'
 import { layoutTree } from '../../../shared/tree-layout'
@@ -16,7 +16,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       data-agent={a.name}
       data-status={a.status}
       className={cn(
-        'w-[148px] cursor-pointer rounded-lg border bg-card px-2.5 py-1.5 shadow-sm transition-colors hover:border-input',
+        'h-[46px] w-[148px] cursor-pointer rounded-lg border bg-card px-2.5 py-1.5 shadow-sm transition-colors hover:border-input',
         data.selected && 'border-primary/70 bg-accent',
         a.status === 'needs-you' && !data.selected && 'border-needs/50'
       )}
@@ -36,6 +36,8 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
 }
 
 const nodeTypes = { agent: AgentNode }
+const NodeW = 148
+const NodeH = 46
 
 /** Refits the view whenever the set of nodes (or the panel) changes, so a new worker is
  *  never off-screen. */
@@ -64,6 +66,9 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
       type: 'agent',
       position: { x: placed.get(a.name)?.x ?? 0, y: placed.get(a.name)?.y ?? 0 },
       data: { agent: a, selected: a.terminalId === selected },
+      // Fixed size (the card is fixed-size): no node waits on a measurement to be shown.
+      width: NodeW,
+      height: NodeH,
       draggable: false,
       connectable: false
     }))
@@ -84,12 +89,24 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
     return { nodes, edges }
   }, [agents, feed, selected, showMessages])
 
+  // Nodes live in React Flow state. Each update keeps what React Flow already knows about a
+  // node (its measurement) and changes only position and data. Replacing node objects on every
+  // status change could leave nodes unmeasured, and hidden, after bursts of updates.
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>(nodes)
+  useEffect(() => {
+    setRfNodes((prev) => nodes.map((n) => {
+      const p = prev.find((x) => x.id === n.id)
+      return p ? { ...p, position: n.position, data: n.data } : n
+    }))
+  }, [nodes, setRfNodes])
+
   const shape = agents.map((a) => `${a.name}<${a.parent}`).join(',')
   return (
     <ReactFlowProvider>
     <AutoFit shape={shape} />
     <ReactFlow
-      nodes={nodes}
+      nodes={rfNodes}
+      onNodesChange={onNodesChange}
       edges={edges}
       nodeTypes={nodeTypes}
       onNodeClick={(_e, n) => onSelect((n.data as AgentNodeData).agent.terminalId)}

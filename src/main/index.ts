@@ -20,7 +20,7 @@ function send(channel: string, ...args: unknown[]): void {
 const terminals = new TerminalHost(
   (id, data) => send('terminal:data', id, data),
   (id, code) => {
-    missions.terminalExited(id)
+    missions.terminalExited(id, code)
     send('terminal:exit', id, code)
   }
 )

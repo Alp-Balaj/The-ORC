@@ -70,6 +70,18 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
     - held work survives a restart;
     - Remove for stopped missions.
 
+- **Error-handling hardening** (branch `harden/errors`):
+  - **Blank tree, fixed.** The mission tree could intermittently go blank (about 2 in 10 test runs):
+    React Flow nodes lost their measurements when node objects were replaced on every status update,
+    and stayed hidden. This was on `main` since M2. Nodes now live in React Flow state with fixed
+    sizes. Five replays in a row passed, and Chromium's "ResizeObserver loop" error is gone too, so
+    the test no longer filters it.
+  - **`claude` dying before it starts** (not on PATH, bad flag) now says so on the card and in the feed.
+  - **A worktree that can't be created** gives the coordinator a clear answer instead of an error.
+  - **One agent that can't restart** no longer stops recovery for the others.
+  - **Error boundary:** a window render error shows "Reload" (sessions keep running), not a blank window.
+  - **Failed actions** (IPC errors) show in a banner.
+
 ## Broken or unverified
 
 - Claude Code *teams* are experimental (behind an env flag), so I deferred them. The MCP tool-call

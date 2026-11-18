@@ -262,7 +262,13 @@ export class Missions implements ControlHandlers {
     if (mission.agents.size >= this.maxAgentsPerMission) {
       return `This mission already has ${mission.agents.size} agents, the most allowed. Reuse an existing worker by messaging it.`
     }
-    const wt = await this.git.addWorktree(mission.repoPath, mission.name, name, mission.baseBranch)
+    let wt: { path: string; branch: string }
+    try {
+      wt = await this.git.addWorktree(mission.repoPath, mission.name, name, mission.baseBranch)
+    } catch (err) {
+      this.orcNote(mission, `could not create a worktree for ${name}: ${String((err as Error).message ?? err)}`)
+      return `The ORC could not create a worktree for "${name}": ${oneLine(String((err as Error).message ?? err), 300)}. Pick another name or tell the human.`
+    }
     const sessionName = `${mission.name}/${name}`
     this.launch(mission, {
       name,
@@ -570,9 +576,18 @@ export class Missions implements ControlHandlers {
     }
   }
 
-  terminalExited(terminalId: string): void {
+  terminalExited(terminalId: string, exitCode = 0): void {
     const a = this.byTerminal.get(terminalId)
-    if (a && a.status !== 'done') this.update(terminalId, { status: 'exited' })
+    if (!a || a.status === 'done') return
+    // Exiting before Claude Code ever said hello: it failed to start (not on PATH, bad flag,
+    // untrusted folder, …). Its terminal shows why; say so on the card.
+    const failedToStart = a.status === 'starting'
+    this.update(terminalId, {
+      status: 'exited',
+      activity: failedToStart ? `claude exited before starting (code ${exitCode}): see its terminal` : a.activity,
+      inTurn: false
+    })
+    if (failedToStart) this.orcNote(this.missions.get(a.missionId)!, `${a.name}: claude exited before starting (code ${exitCode}). Its terminal shows the reason.`)
   }
 
   shutdown(): void {
@@ -930,11 +945,19 @@ export class Missions implements ControlHandlers {
           agent.status = hadTurn ? 'idle' : 'starting'
           agent.activity = hadTurn ? 'resumed after restart' : 'restarted'
         }
-        this.startSession(mission, agent, {
-          systemPrompt: this.systemPromptFor(mission, agent),
-          resume: hadTurn,
-          firstPrompt: hadTurn || agent.role !== 'worker' ? undefined : agent.task
-        })
+        try {
+          this.startSession(mission, agent, {
+            systemPrompt: this.systemPromptFor(mission, agent),
+            resume: hadTurn,
+            firstPrompt: hadTurn || agent.role !== 'worker' ? undefined : agent.task
+          })
+        } catch (err) {
+          // One agent that can't start must not stop the rest from coming back.
+          agent.status = 'exited'
+          agent.activity = `could not restart: ${String((err as Error).message ?? err)}`
+          log.push(`${mission.name}/${agent.name}: could not restart (${String((err as Error).message ?? err)})`)
+          continue
+        }
         if (agent.role === 'worker' && agent.branch) {
           const dirty = (await missionGit.git(agent.cwd, ['status', '--porcelain'], { allowFail: true })).stdout
           if (dirty) log.push(`${mission.name}/${agent.name}: worktree has uncommitted changes (kept)`)
