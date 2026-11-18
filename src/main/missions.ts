@@ -941,7 +941,11 @@ export class Missions implements ControlHandlers {
         }
         const hadTurn = !!agent.tally && existsSync(agent.tally.path)
         // A turn cut off by the restart is over; questions and done stay as they were.
-        if (agent.status === 'working' || agent.status === 'starting' || (agent.status === 'needs-you' && !agent.question)) {
+        // A session started fresh is "starting" until its new SessionStart, whatever it was.
+        if (!hadTurn && !agent.question && agent.status !== 'done') {
+          agent.status = 'starting'
+          agent.activity = 'restarted'
+        } else if (agent.status === 'working' || agent.status === 'starting' || (agent.status === 'needs-you' && !agent.question)) {
           agent.status = hadTurn ? 'idle' : 'starting'
           agent.activity = hadTurn ? 'resumed after restart' : 'restarted'
         }

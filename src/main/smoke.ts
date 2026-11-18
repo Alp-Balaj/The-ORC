@@ -181,7 +181,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       missionId = m()?.id ?? null
       check('the never-prompted mission is back', m()?.state === 'running')
       const c = (): MissionView['agents'][number] | undefined => m()?.agents[0]
-      check('its session starts again with the same --session-id', await waitFor('SessionStart again', () => c()?.status === 'idle' && c()?.activity === 'ready', 0, 60_000) && d.terminals.isRunning(c()!.terminalId), `${c()?.status} | ${c()?.activity}`)
+      check('it comes back as starting (not the saved idle)', c()?.status === 'starting', `${c()?.status} | ${c()?.activity}`)
+      check('its session starts again with the same --session-id (a new SessionStart)', await waitFor('SessionStart again', () => c()?.status === 'idle' && c()?.activity === 'ready', 0, 60_000) && d.terminals.isRunning(c()!.terminalId), `${c()?.status} | ${c()?.activity}`)
       const out = stripAnsi(d.terminals.replay(c()!.terminalId))
       check('no session-id error from claude', !/already in use|invalid session|error/i.test(out.slice(0, 3000)), out.slice(0, 160))
     } else if (scenario === 'resume-a') {
@@ -386,6 +387,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
             await sleep(1200)
             const viaTree = await js<string>(`document.querySelector('[data-testid=terminal-head]')?.textContent ?? ''`)
             check('clicking a tree node shows that agent\'s terminal', viaTree.includes(w.sessionName), viaTree)
+            const vis = await js<number>(`[...document.querySelectorAll('.react-flow__node')].filter((n) => getComputedStyle(n).visibility === 'visible' && n.getBoundingClientRect().width > 0).length`)
+            check('every tree node is actually visible', vis === (view()?.agents.length ?? -1), `${vis} visible of ${view()?.agents.length}`)
             await js(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.click()`)
             await sleep(600)
             await js(`document.querySelector('[data-testid=agent-card][data-agent=${JSON.stringify(w.name)}]')?.click()`)
@@ -509,6 +512,9 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
     check('no timeout', !timedOut)
   }
   check('no console errors', errors.length === 0, errors.join(' | '))
+  // Rejected actions are shown in a banner (and kept out of the console), so check the banner.
+  const banner = await js<string>(`document.querySelector('[data-testid=action-error]')?.textContent ?? ''`).catch(() => '')
+  check('no failed-action banner', banner === '', banner)
 
   const pids = d.terminals.pids()
   const ok = checks.every((c) => c.ok)

@@ -210,6 +210,8 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   const banner = await js<string>(`document.querySelector('[data-testid=action-error]')?.textContent ?? ''`)
   check('a failed action shows a banner, not silence', /not inside a git repository/.test(banner), banner)
   check('the UI is still up after it', (await count('[data-testid=space]')) === 2 && (await count('[data-testid=ui-error]')) === 0)
+  await js(`document.querySelector('[data-testid=action-error] button')?.click()`)
+  await sleep(200)
 
   // A duplicate mission name is refused with a visible error.
   await js(`document.querySelector('[data-testid=space][data-space=orc-sandbox] [data-testid=new-mission]')?.click()`)
