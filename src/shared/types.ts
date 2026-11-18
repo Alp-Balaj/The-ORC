@@ -28,6 +28,7 @@ export interface MissionView {
   repoPath: string
   baseBranch: string
   permissionMode: PermissionMode
+  model: string | null
   agents: AgentView[]
 }
 
@@ -37,4 +38,6 @@ export interface StartMissionRequest {
   repoPath: string
   name: string
   permissionMode: PermissionMode
+  /** Passed as --model to every session in the mission (e.g. "haiku"). Default: Claude Code's own. */
+  model?: string
 }

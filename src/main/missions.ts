@@ -16,6 +16,7 @@ interface Mission {
   repoPath: string
   baseBranch: string
   permissionMode: StartMissionRequest['permissionMode']
+  model: string | null
   agents: Map<string, Agent>
 }
 
@@ -41,6 +42,8 @@ export class Missions implements ControlHandlers {
   private readonly byToken = new Map<string, Agent>()
   private readonly byTerminal = new Map<string, Agent>()
   private controlPort = 0
+  /** Most agents one mission may have, coordinator included (M4 makes this per space). */
+  maxAgentsPerMission = 8
 
   private readonly terminals: TerminalHost
   private readonly changed: (missions: MissionView[]) => void
@@ -61,6 +64,7 @@ export class Missions implements ControlHandlers {
       repoPath: m.repoPath,
       baseBranch: m.baseBranch,
       permissionMode: m.permissionMode,
+      model: m.model,
       agents: [...m.agents.values()].map(({ token: _t, missionId: _m, ...view }) => view)
     }))
   }
@@ -77,6 +81,7 @@ export class Missions implements ControlHandlers {
       repoPath: repo,
       baseBranch: await currentBranch(repo),
       permissionMode: req.permissionMode,
+      model: req.model?.trim() || null,
       agents: new Map()
     }
     this.missions.set(mission.id, mission)
@@ -107,6 +112,9 @@ export class Missions implements ControlHandlers {
     const name = slug(rawName)
     if (mission.agents.has(name)) {
       return `A worker named "${name}" already exists in this mission. Pick another name.`
+    }
+    if (mission.agents.size >= this.maxAgentsPerMission) {
+      return `This mission already has ${mission.agents.size} agents, the most allowed. Reuse an existing worker by messaging it.`
     }
     const wt = await addWorktree(mission.repoPath, mission.name, name, mission.baseBranch)
     const sessionName = `${mission.name}/${name}`
@@ -230,6 +238,7 @@ export class Missions implements ControlHandlers {
         token,
         controlPort: this.controlPort,
         permissionMode: mission.permissionMode,
+        model: mission.model,
         systemPrompt: a.systemPrompt,
         firstPrompt: a.firstPrompt
       }),

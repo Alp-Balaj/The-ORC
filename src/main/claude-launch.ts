@@ -15,7 +15,14 @@ export const DeniedGitWrites = [
   'Bash(git branch -D*)'
 ]
 
-const OrcTools = ['mcp__orc__spawn_agent', 'mcp__orc__report_done', 'mcp__orc__ask_human']
+/** Pre-approved so the mission's own plumbing never stops on a permission prompt. */
+const OrcTools = [
+  'mcp__orc__spawn_agent',
+  'mcp__orc__report_done',
+  'mcp__orc__ask_human',
+  'SendMessage',
+  'ListAgents'
+]
 
 const HookEvents = [
   'SessionStart',
@@ -33,6 +40,7 @@ export interface LaunchSpec {
   token: string
   controlPort: number
   permissionMode: PermissionMode
+  model?: string | null
   systemPrompt: string
   firstPrompt?: string
 }
@@ -67,6 +75,7 @@ export function claudeArgs(spec: LaunchSpec): string[] {
     '--name', spec.sessionName,
     '--session-id', spec.sessionId,
     '--permission-mode', spec.permissionMode,
+    ...(spec.model ? ['--model', spec.model] : []),
     '--settings', JSON.stringify(settings),
     '--append-system-prompt', spec.systemPrompt,
     '--mcp-config', JSON.stringify(mcp)
@@ -77,7 +86,8 @@ export function coordinatorPrompt(mission: string, sessionName: string, repo: st
   return [
     `You are the coordinator of The ORC mission "${mission}" in the repository ${repo}.`,
     'The human talks to you here. When they ask for work that can be split, split it into',
-    'parallel pieces and start a worker for each with the `spawn_agent` tool (orc MCP server).',
+    'parallel pieces and start a worker for each with the `mcp__orc__spawn_agent` tool',
+    '(orc MCP server; if it is not loaded yet, load it with ToolSearch first).',
     'Each worker is a separate Claude Code session in its own git worktree and branch.',
     'Give every worker a clear, self-contained task that names the files or areas it owns,',
     'so parallel workers never edit the same files.',
@@ -94,9 +104,10 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
     `Your coordinator is the Claude Code session named "${coordinator}".`,
     'Work only inside your current directory (your own git worktree).',
     'Never commit, merge, push or manage branches: The ORC commits for you.',
-    'When your task is finished, call the `report_done` tool with a short summary of what you',
-    'changed, then send the same summary to your coordinator with SendMessage.',
-    'If you are blocked on a decision only a human can make, call `ask_human` and end your turn.',
+    'When your task is finished, call the `mcp__orc__report_done` tool (orc MCP server; load it',
+    'with ToolSearch first if needed) with a short summary of what you changed, then send the',
+    'same summary to your coordinator with SendMessage.',
+    'If you are blocked on a decision only a human can make, call `mcp__orc__ask_human` and end your turn.',
     'The human may type to you directly; their instructions win over the coordinator.'
   ].join(' ')
 }

@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { appendFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync } from 'node:fs'
 import type { StartMissionRequest } from '../shared/types'
 import { ControlServer } from './control-server'
 import { Missions } from './missions'
+import { runSmoke } from './smoke'
 import { TerminalHost } from './terminals'
 
 let win: BrowserWindow | null = null
@@ -47,7 +48,9 @@ function createWindow(): void {
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
       sandbox: false,
-      contextIsolation: true
+      contextIsolation: true,
+      // A hidden smoke window must still paint terminals for screenshots.
+      backgroundThrottling: !smoke
     }
   })
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -69,42 +72,32 @@ ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
   terminals.resize(id, cols, rows)
 )
 
-/** ORC_SMOKE_OUT=<dir>: never shows the window. Loads the UI hidden, optionally starts a
- *  mission in ORC_SMOKE_REPO without prompting it, writes errors, a screenshot and the
- *  coordinator's terminal output to <dir>, then quits and kills every session. */
-async function runSmoke(dir: string): Promise<void> {
-  const errors: string[] = []
-  win!.webContents.on('console-message', (e) => {
-    if (e.level === 'error') errors.push(e.message)
-  })
-  await new Promise<void>((r) => win!.webContents.once('did-finish-load', () => r()))
-  await new Promise((r) => setTimeout(r, 2000))
-  const rootChildren = await win!.webContents.executeJavaScript(
-    "document.getElementById('root')?.childElementCount ?? -1"
-  )
-  let coordinator = ''
-  if (process.env.ORC_SMOKE_REPO) {
-    const id = await missions.startMission({
-      repoPath: process.env.ORC_SMOKE_REPO,
-      name: 'smoke',
-      permissionMode: 'acceptEdits'
-    })
-    await new Promise((r) => setTimeout(r, 12000))
-    coordinator = terminals.replay(`${id}:coordinator`)
-    await win!.webContents.executeJavaScript('void 0')
-  }
-  writeFileSync(join(dir, 'screenshot.png'), (await win!.webContents.capturePage()).toPNG())
-  writeFileSync(join(dir, 'coordinator.txt'), coordinator)
-  writeFileSync(join(dir, 'report.json'), JSON.stringify({ rootChildren, errors, missions: missions.views() }, null, 2))
-  missions.shutdown()
-  control.close()
-  app.exit(0)
-}
-
 app.whenReady().then(async () => {
   missions.setControlPort(await control.listen())
   createWindow()
-  if (smoke) void runSmoke(smoke)
+  if (smoke) {
+    const shutdown = (): void => {
+      missions.shutdown()
+      control.close()
+    }
+    // Hard watchdog: whatever happens, no session outlives the test.
+    const hardMs = (Number(process.env.ORC_SMOKE_TIMEOUT_S ?? 480) + 90) * 1000
+    setTimeout(() => {
+      console.error('SMOKE watchdog fired: killing every session')
+      shutdown()
+      app.exit(3)
+    }, hardMs).unref()
+    void runSmoke(smoke, { win: win!, missions, terminals, userData: app.getPath('userData'), shutdown })
+      .then((ok) => {
+        shutdown()
+        app.exit(ok ? 0 : 1)
+      })
+      .catch((err) => {
+        console.error('SMOKE crashed', err)
+        shutdown()
+        app.exit(2)
+      })
+  }
 })
 app.on('window-all-closed', () => {
   win = null

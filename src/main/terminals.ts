@@ -22,6 +22,7 @@ export class TerminalHost {
 
   private readonly onData: DataListener
   private readonly onExit: ExitListener
+  private readonly taps = new Set<DataListener>()
 
   constructor(onData: DataListener, onExit: ExitListener) {
     this.onData = onData
@@ -47,11 +48,18 @@ export class TerminalHost {
         next.length > TerminalHost.MaxScrollback ? next.slice(-TerminalHost.MaxScrollback) : next
       )
       this.onData(spec.id, data)
+      for (const tap of this.taps) tap(spec.id, data)
     })
     term.onExit(({ exitCode }) => {
       this.terminals.delete(spec.id)
       this.onExit(spec.id, exitCode)
     })
+  }
+
+  /** Extra output listener (the smoke test uses it). Returns an unsubscribe. */
+  tap(listener: DataListener): () => void {
+    this.taps.add(listener)
+    return () => this.taps.delete(listener)
   }
 
   write(id: TerminalId, data: string): void {
@@ -64,6 +72,11 @@ export class TerminalHost {
 
   replay(id: TerminalId): string {
     return this.scrollback.get(id) ?? ''
+  }
+
+  /** PIDs of every live terminal's process, so a test can prove none survive. */
+  pids(): Record<TerminalId, number> {
+    return Object.fromEntries([...this.terminals].map(([id, t]) => [id, t.pid]))
   }
 
   isRunning(id: TerminalId): boolean {
