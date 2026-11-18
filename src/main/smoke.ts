@@ -148,7 +148,80 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   }
 
   try {
-    if (scenario === 'replay') {
+    if (scenario === 'crash-a') {
+      // Crash test, part 1: a mission with fake sessions, then wait to be SIGKILLed.
+      const id = await js<string>(`window.orc.startMission(${JSON.stringify({ repoPath: Sandbox, name: `smoke-crash-${Date.now() % 100000}`, permissionMode: 'acceptEdits', gating: 'none' })})`)
+      const fixture = join(d.appPath, 'tests', 'fixtures', 'transcript-worker.jsonl')
+      d.missions.hookEvent(`${id}:coordinator`, { hook_event_name: 'SessionStart', transcript_path: fixture } as never)
+      d.missions.hookEvent(`${id}:coordinator`, { hook_event_name: 'UserPromptSubmit', prompt: 'crash test brief' } as never)
+      await d.missions.spawnAgent(`${id}:coordinator`, 'survivor', 'Write survivor.txt')
+      d.missions.hookEvent(`${id}:survivor`, { hook_event_name: 'UserPromptSubmit', prompt: 'Write survivor.txt', transcript_path: fixture } as never)
+      d.missions.hookEvent(`${id}:survivor`, { hook_event_name: 'PreToolUse', tool_name: 'Write' } as never)
+      await sleep(1200) // > the 300 ms save debounce
+      log('ready-for-crash')
+      await sleep(120_000)
+    } else if (scenario === 'resume-a') {
+      // Billed (1 Haiku session): a real turn, Pause mid-turn, Resume, then wait to be killed.
+      const id = await js<string>(`window.orc.startMission(${JSON.stringify({ repoPath: Sandbox, name: `smoke-resume-${Date.now() % 100000}`, permissionMode: 'acceptEdits', gating: 'none', model: process.env.ORC_SMOKE_MODEL ?? 'haiku' })})`)
+      missionId = id
+      const coordId = `${id}:coordinator`
+      const coord = (): MissionView['agents'][number] | undefined => view()?.agents.find((a) => a.role === 'coordinator')
+      const type = async (text: string): Promise<void> => {
+        d.terminals.write(coordId, text)
+        await sleep(700)
+        d.terminals.write(coordId, '\r')
+      }
+      check('real session started', await waitFor('SessionStart', () => coord()?.status === 'idle', 2500, 90_000))
+      await type('Remember this codeword: PELICAN. Reply with just OK.')
+      check('first turn finished', await waitFor('turn 1', () => coord()?.status === 'idle' && Date.now() - startedAt > 8000, 1500, 90_000))
+      await type('Write the numbers from 1 to 400 as words, one per line, in your reply. Do not use any tools.')
+      const busy = await waitFor('mid-turn', () => coord()?.status === 'working', 2500, 30_000)
+      check('the agent is mid-turn', busy)
+      await js(`document.querySelector('[data-testid=pause-mission]')?.click()`)
+      log('pause clicked')
+      const stopped = await waitFor('interrupted', () => coord()?.status === 'idle', 0, 30_000)
+      check('Pause interrupts a turn in progress (Esc)', stopped, coord()?.activity)
+      check('the mission shows paused', !!view()?.paused && (await js<number>(`document.querySelectorAll('[data-testid=paused-badge]').length`)) === 1)
+      await shot('paused')
+      await js(`document.querySelector('[data-testid=resume-mission]')?.click()`)
+      await sleep(800)
+      check('Resume clears it', !view()?.paused)
+      await sleep(1200)
+      log('ready-for-crash')
+      await sleep(120_000)
+    } else if (scenario === 'resume-b') {
+      // Relaunched on the same state after a SIGKILL: the real session is resumed and still
+      // remembers the codeword from before the crash.
+      const m = (): MissionView | undefined => d.missions.views()[0]
+      missionId = m()?.id ?? null
+      const coord = (): MissionView['agents'][number] | undefined => m()?.agents.find((a) => a.role === 'coordinator')
+      check('the mission is back', !!m())
+      check('the resumed session starts', await waitFor('SessionStart after resume', () => coord()?.activity !== 'resumed after restart' || coord()?.status === 'idle', 3000, 90_000))
+      const coordId = `${m()!.id}:coordinator`
+      d.terminals.write(coordId, 'What was the codeword I asked you to remember? Reply with just the word.')
+      await sleep(700)
+      d.terminals.write(coordId, '\r')
+      await waitFor('answer', () => coord()?.status === 'working', 0, 30_000)
+      await waitFor('answer done', () => coord()?.status === 'idle', 2000, 90_000)
+      const text = stripAnsi(d.terminals.replay(coordId))
+      check('the resumed session remembers the conversation from before the crash', /PELICAN/i.test(text.slice(text.lastIndexOf('codeword I asked'))), (/.{0,60}PELICAN.{0,20}/i.exec(text)?.[0] ?? 'no PELICAN').trim())
+      await shot('resumed')
+    } else if (scenario === 'crash-b') {
+      // Part 2, relaunched on the same state file: everything must be back.
+      await sleep(2500)
+      const m = d.missions.views()[0]
+      check('the mission is back after a crash', !!m && m.state === 'running', m?.name)
+      check('both agents are back', m?.agents.length === 2)
+      check('their sessions run again', !!m && m.agents.every((a) => d.terminals.isRunning(a.terminalId)))
+      const out = m ? stripAnsi(d.terminals.replay(`${m.id}:survivor`)) : ''
+      check('the worker was resumed (claude --resume)', out.includes('(resumed)'), out.slice(0, 120))
+      check('its cut-off turn is over: idle, not working', m?.agents.find((a) => a.name === 'survivor')?.status === 'idle')
+      check('the feed says what recovery did', !!m?.feed.some((f) => f.kind === 'orc' && /resumed/.test(f.text)))
+      await js(`document.querySelector('[data-testid=agent-card][data-agent=survivor]')?.click()`)
+      await sleep(1000)
+      check('the UI shows the recovered worker', (await js<string>(`document.querySelector('[data-testid=terminal] .xterm-rows')?.textContent ?? ''`)).includes('resumed'))
+      await shot('recovered')
+    } else if (scenario === 'replay') {
       await runReplay({ js, shot, check, log, sleep, missions: d.missions, sandbox: Sandbox, transcriptFixture: join(d.appPath, 'tests', 'fixtures', 'transcript-worker.jsonl') })
     } else if (repo) {
       const name = prompt ? `smoke-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}` : 'smoke'

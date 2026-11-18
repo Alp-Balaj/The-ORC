@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, Plus, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, Plus, Settings2, X } from 'lucide-react'
 import type { Gating, MissionView, PermissionMode, SpaceView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { AgentCard, StatusDot } from './AgentCard'
@@ -61,6 +61,36 @@ function NewMissionForm({ space, onStarted, onCancel }: {
   )
 }
 
+function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => void }): React.JSX.Element {
+  const [gate, setGate] = useState(space.gateCommand ?? '')
+  const [max, setMax] = useState(String(space.maxLive))
+  const [vault, setVault] = useState(space.vaultDir ?? '')
+  return (
+    <motion.form
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      data-testid="space-settings"
+      className="mx-1 mb-2 space-y-1.5 overflow-hidden rounded-lg border bg-card p-2 text-[12px]"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, vaultDir: vault || null }).then(onClose)
+      }}
+    >
+      <label className="block text-muted-foreground">Gate command (runs on each merged result)</label>
+      <Input value={gate} onChange={(e) => setGate(e.target.value)} placeholder="e.g. pnpm test" />
+      <label className="block text-muted-foreground">Most live agents in this space</label>
+      <Input type="number" min={1} max={50} value={max} onChange={(e) => setMax(e.target.value)} data-testid="max-live" />
+      <label className="block text-muted-foreground">Mission records folder (optional, off when empty)</label>
+      <Input value={vault} onChange={(e) => setVault(e.target.value)} placeholder="/path/to/vault/Projects/Name/Missions" />
+      <div className="flex gap-1.5">
+        <Button type="submit" size="sm" className="flex-1">Save</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
+      </div>
+    </motion.form>
+  )
+}
+
 export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, onSelectMission, onSelectAgent, onReview }: {
   spaces: SpaceView[]
   missions: MissionView[]
@@ -72,6 +102,7 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [formFor, setFormFor] = useState<string | null>(null)
+  const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Every repository with a mission is a space, even if it was never added explicitly.
@@ -116,6 +147,8 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
           const name = root.split('/').pop()
           const ms = missions.filter((m) => m.repoPath === root)
           const open = !collapsed.has(root)
+          const space = spaces.find((s) => s.root === root)
+          const live = ms.filter((m) => m.state === 'running').flatMap((m) => m.agents).filter((a) => a.status !== 'done' && a.status !== 'exited').length
           return (
             <div key={root} className="mb-2" data-testid="space" data-space={name}>
               <div className="group flex items-center gap-1 rounded-md px-1 py-1 hover:bg-accent/50">
@@ -125,10 +158,23 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
                   <span className="truncate font-semibold">{name}</span>
                   <span className="text-[11px] text-muted-foreground">{ms.length || ''}</span>
                 </button>
+                {space && (
+                  <span className={cn('text-[10.5px] tabular-nums text-muted-foreground', live >= space.maxLive && 'text-needs')} title="Live agents in this space / most allowed" data-testid="live-count">
+                    {live}/{space.maxLive}
+                  </span>
+                )}
+                {space && (
+                  <Button size="icon" variant="ghost" className="opacity-60 group-hover:opacity-100" title="Space settings" data-testid="space-settings-button" onClick={() => setSettingsFor(settingsFor === root ? null : root)}>
+                    <Settings2 />
+                  </Button>
+                )}
                 <Button size="icon" variant="ghost" className="opacity-60 group-hover:opacity-100" title="New mission in this space" data-testid="new-mission" onClick={() => setFormFor(formFor === root ? null : root)}>
                   {formFor === root ? <X /> : <Plus />}
                 </Button>
               </div>
+              <AnimatePresence>
+                {settingsFor === root && space && <SpaceSettings space={space} onClose={() => setSettingsFor(null)} />}
+              </AnimatePresence>
               <AnimatePresence>
                 {formFor === root && (
                   <NewMissionForm

@@ -34,6 +34,8 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   const r = repo('plan')
   const { m, typed } = world()
   m.gateCommandFor = () => 'test -f a.txt'
+  const recordsDir = join(root, 'vault', 'Missions')
+  m.recordsDirFor = () => recordsDir
   const id = await m.startMission({ repoPath: r, name: 'plan', permissionMode: 'acceptEdits' })
   const c = `${id}:coordinator`
   const v = () => m.views()[0]
@@ -77,6 +79,11 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   const merged = await m.mergeToMain(id)
   ok('merge to main fast-forwards and cleans up', merged.ok && existsSync(join(r, 'a.txt')) && existsSync(join(r, 'b.txt')) && !existsSync(wa.cwd) && g(r, 'branch', '--list', 'orc/*', 'integration/*') === '', merged.message)
   ok('mission stopped after merge', v().state === 'stopped' && !!v().mergedToMain)
+  const { readdirSync } = await import('node:fs')
+  const notes = readdirSync(recordsDir)
+  const note = notes.length === 1 ? readFileSync(join(recordsDir, notes[0]), 'utf8') : ''
+  ok('one mission record note, dated and named', /^\d{4}-\d{2}-\d{2} - plan\.md$/.test(notes[0] ?? ''), notes.join())
+  ok('the record holds brief, split, reports, Verifier and the merge with session ids', ['## Brief', 'make a.txt and b.txt', '## Approved split', '## Report from a', '## Report from b', '## Verifier report', 'Template sha256', '## Merged into main', '--resume', 'AI-generated'].every((x) => note.includes(x)), note.length + ' chars')
 }
 
 // Conflict -------------------------------------------------------------------

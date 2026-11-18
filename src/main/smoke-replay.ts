@@ -19,12 +19,16 @@ export interface ReplayCtx {
 /** ORC_SMOKE_SCENARIO=replay — free. Every session is a fake (`bash` printing a line), and
  *  status comes from hook events fed straight into Missions. Builds two spaces, three
  *  missions, a nested worker and every status, then clicks through the UI and asserts. */
+/** A fake `claude`: prints its session name (and whether it was resumed), then sleeps. */
+export function fakeLauncher(args: string[]): { command: string; args: string[] } {
+  const name = args[args.indexOf('--name') + 1]
+  const how = args.includes('--resume') ? 'resumed' : 'started'
+  return { command: 'bash', args: ['-c', `printf '\\033[1mfake session\\033[0m %s (${how})\\r\\n(ORC replay: no Claude here)\\r\\n' "${name}"; exec sleep 3600`] }
+}
+
 export async function runReplay(c: ReplayCtx): Promise<void> {
   const { js, shot, check, log, sleep, missions } = c
-  missions.launcher = (args) => {
-    const name = args[args.indexOf('--name') + 1]
-    return { command: 'bash', args: ['-c', `printf '\\033[1mfake session\\033[0m %s\\r\\n(ORC replay: no Claude here)\\r\\n' "${name}"; exec sleep 3600`] }
-  }
+  missions.launcher = fakeLauncher
 
   // A second space: a throwaway repo inside the sandbox's own excluded .orc folder.
   const spaceB = join(c.sandbox, '.orc', 'space-b')

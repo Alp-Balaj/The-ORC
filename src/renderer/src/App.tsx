@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GitMerge, MessagesSquare, Pause, Square, TerminalSquare } from 'lucide-react'
+import { GitMerge, MessagesSquare, Pause, Play, Square, TerminalSquare } from 'lucide-react'
 import type { MissionView, SpaceView } from '../../shared/types'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
@@ -77,14 +77,28 @@ export function App(): React.JSX.Element {
             {mission.model && <Badge variant="outline">{mission.model}</Badge>}
             <Badge variant="outline" title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</Badge>
             {mission.state === 'stopped' && <Badge variant="exited">stopped</Badge>}
+            {mission.paused && <Badge variant="needs-you" data-testid="paused-badge">paused</Badge>}
             {needsYou > 0 && <Badge variant="needs-you">{needsYou} need{needsYou === 1 ? 's' : ''} you</Badge>}
             <div className="ml-auto flex items-center gap-1.5">
               <span className="mr-2 text-[12px] tabular-nums text-muted-foreground" title="Tokens used by every session in this mission (input + cache writes + output)">
                 {formatTokens(mission.tokens)} tokens
               </span>
-              <Button size="sm" variant="outline" disabled title="Pause mission arrives in M4">
-                <Pause /> Pause
-              </Button>
+              {mission.paused ? (
+                <Button size="sm" variant="outline" onClick={() => void window.orc.resumeMission(mission.id)} data-testid="resume-mission" title="Release held merges and messages">
+                  <Play /> Resume
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={mission.state !== 'running'}
+                  onClick={() => void window.orc.pauseMission(mission.id)}
+                  data-testid="pause-mission"
+                  title="Interrupt every agent mid-turn (Esc) and hold new workers, merges and messages from The ORC. You can still type to any agent."
+                >
+                  <Pause /> Pause
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="destructive"

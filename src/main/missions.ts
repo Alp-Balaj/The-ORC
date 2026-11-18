@@ -9,6 +9,7 @@ import type { TerminalHost } from './terminals.ts'
 import { TranscriptTally } from './tokens.ts'
 import * as missionGit from './mission-git.ts'
 import { runVerifier, templateHash } from './verifier.ts'
+import { appendRecord } from './vault.ts'
 
 interface Agent extends AgentView {
   token: string
@@ -58,6 +59,8 @@ interface Mission {
   paused: boolean
   /** Merges held while paused (agent names). */
   held: string[]
+  /** Its record note has been started (brief written). */
+  recorded?: boolean
 }
 
 /** Feed entries kept per mission (every change resends the views). */
@@ -271,6 +274,7 @@ export class Missions implements ControlHandlers {
     if (!a) return
     const mission = this.missions.get(a.missionId)!
     this.feed(mission, { kind: 'done', from: a.name, to: a.parent, text: oneLine(summary) })
+    if (a.role === 'worker') this.record(mission, `Report from ${a.name}`, summary)
     // The app commits for the agent (agents never commit). Runs after the tool replies.
     if (a.role === 'worker') this.gitWork = this.gitWork.then(() => this.afterDone(mission, a, summary)).catch((err) => this.orcNote(mission, `git error after ${a.name}'s report: ${String(err)}`))
   }
@@ -296,6 +300,7 @@ export class Missions implements ControlHandlers {
     if (!mission?.split || mission.split.status !== 'pending') return
     mission.split.status = approve ? 'approved' : 'rejected'
     mission.split.note = note?.trim() || null
+    if (approve) this.record(mission, 'Approved split', `${mission.split.summary}\n\n${mission.split.workers.map((w) => `- **${w.name}**: ${w.task}`).join('\n')}${mission.split.note ? `\n\nNote: ${mission.split.note}` : ''}`)
     const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')!
     this.feed(mission, { kind: 'split', from: 'you', to: 'coordinator', text: approve ? `approved${mission.split.note ? `: ${mission.split.note}` : ''}` : `rejected: ${mission.split.note ?? 'no reason given'}`, status: approve ? 'ok' : 'failed' })
     this.deliver(
@@ -365,6 +370,7 @@ export class Missions implements ControlHandlers {
     })
     mission.verifier = { status: r.ok ? 'done' : 'failed', report: r.report, templateHash, promptHash: r.promptHash, at: Date.now(), integrationCommit: mission.integrationCommit }
     const verdict = /VERDICT:\s*(\w+)/.exec(r.report)?.[1] ?? (r.ok ? 'done' : 'failed')
+    this.record(mission, 'Verifier report', `${r.report}\n\nTemplate sha256 \`${templateHash}\`, prompt sha256 \`${r.promptHash}\`.`)
     this.feed(mission, { kind: 'verifier', from: 'verifier', to: null, text: `verdict: ${verdict}`, status: verdict === 'PASS' ? 'ok' : 'failed' })
   }
 
@@ -382,6 +388,7 @@ export class Missions implements ControlHandlers {
       return { ok: false, message: r.reason }
     }
     mission.mergedToMain = { commit: r.commit, at: Date.now() }
+    this.record(mission, `Merged into ${mission.baseBranch}`, `Commit \`${r.commit}\`.\n\nSessions (reopen with \`claude --resume <id>\`):\n${[...mission.agents.values()].map((x) => `- ${x.sessionName}: \`${x.sessionId}\``).join('\n')}`)
     this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}`, status: 'ok' })
     // The work is in main: end the sessions, then remove worktrees and branches.
     this.stopMission(mission.id)
@@ -625,6 +632,24 @@ export class Missions implements ControlHandlers {
     this.emit()
   }
 
+  /** A space's mission-records folder, or null (off). index.ts wires this to Spaces. */
+  recordsDirFor: (repo: string) => string | null = () => null
+
+  /** Appends to the mission's record note when the space has a records folder. Never throws. */
+  private record(m: Mission, heading: string, body: string): void {
+    const dir = this.recordsDirFor(m.repoPath)
+    if (!dir) return
+    try {
+      if (!m.recorded) {
+        m.recorded = true
+        appendRecord(dir, m, 'Brief', m.brief ?? '(not recorded)')
+      }
+      appendRecord(dir, m, heading, body)
+    } catch (err) {
+      this.orcNote(m, `could not write the mission record: ${String(err)}`)
+    }
+  }
+
   /** Most live agents per space. index.ts wires this to Spaces. */
   liveLimitFor: (repo: string) => number = () => 6
 
@@ -810,7 +835,7 @@ export class Missions implements ControlHandlers {
         id: m.id, name: m.name, repoPath: m.repoPath, baseBranch: m.baseBranch, permissionMode: m.permissionMode,
         model: m.model, state: m.state, createdAt: m.createdAt, feed: m.feed.slice(-MaxFeed), gating: m.gating,
         split: m.split, merged: m.merged, integrationCommit: m.integrationCommit, gate: m.gate,
-        verifier: m.verifier?.status === 'running' ? null : m.verifier, mergedToMain: m.mergedToMain, brief: m.brief, paused: m.paused,
+        verifier: m.verifier?.status === 'running' ? null : m.verifier, mergedToMain: m.mergedToMain, brief: m.brief, paused: m.paused, recorded: m.recorded,
         agents: [...m.agents.values()].map((a) => ({
           ...agentView(a),
           transcriptPath: a.tally?.path ?? null,

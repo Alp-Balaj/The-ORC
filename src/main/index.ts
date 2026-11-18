@@ -6,6 +6,7 @@ import { ControlServer } from './control-server.ts'
 import { Missions } from './missions.ts'
 import { startStatusPoller } from './agent-status.ts'
 import { runSmoke } from './smoke.ts'
+import { fakeLauncher } from './smoke-replay.ts'
 import { Spaces } from './spaces.ts'
 import { TerminalHost } from './terminals.ts'
 
@@ -29,6 +30,9 @@ const missions = new Missions(terminals, (views) => {
 })
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
 missions.liveLimitFor = (repo) => spaces.maxLive(repo)
+missions.recordsDirFor = (repo) => spaces.vaultDir(repo)
+// Smoke runs that must survive a restart (the crash test) use fake sessions from the start.
+if (process.env.ORC_SMOKE_OUT && process.env.ORC_SMOKE_FAKE) missions.launcher = fakeLauncher
 
 /** Missions survive restarts (M4). Smoke runs keep their state under ORC_SMOKE_OUT, never in
  *  the owner's userData; ORC_STATE_FILE overrides (the crash test relaunches on one file). */

@@ -14,4 +14,7 @@ pnpm -s build >/dev/null
 rm -rf "$out/replay"
 ORC_SMOKE_OUT="$out/replay" ORC_SMOKE_SCENARIO=replay timeout 180 node_modules/.bin/electron . 2>&1 | grep -E "SMOKE|FAIL" || true
 "$here/tests/kill-strays.sh" >/dev/null
-grep -q '"ok": true' "$out/replay/report.json" && echo "ALL FREE CHECKS PASS (screenshots in $out/replay)"
+grep -q '"ok": true' "$out/replay/report.json" || { echo "replay FAILED"; exit 1; }
+"$here/tests/crash.sh" "$out/crash" | grep -E "FAIL|SMOKE"
+grep -q '"ok": true' "$out/crash/b/report.json" || { echo "crash test FAILED"; exit 1; }
+echo "ALL FREE CHECKS PASS (screenshots in $out/replay, $out/crash/b)"
