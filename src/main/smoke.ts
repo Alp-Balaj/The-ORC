@@ -187,6 +187,18 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           const hadConflict = await waitFor('a conflict', () => !!view()?.feed.some((f) => f.kind === 'conflict'), 0, 300_000)
           check('a real conflict was detected', hadConflict)
           await shot('conflict')
+          // A true semantic conflict makes the worker ask the human (◐). Answer it as the human would.
+          const asker = async (): Promise<MissionView['agents'][number] | undefined> => view()?.agents.find((a) => a.status === 'needs-you' && a.role === 'worker')
+          if (await waitFor('a worker asks about the conflict', () => !!view()?.agents.some((a) => a.status === 'needs-you' && a.role === 'worker') || (view()?.merged.length ?? 0) >= 2, 2000, 120_000)) {
+            const w = await asker()
+            if (w) {
+              check('the conflicted worker asked the human (◐)', true, w.question ?? '')
+              d.terminals.write(w.terminalId, 'Keep both: line 1 red, line 2 blue. Remove the conflict markers, then call report_done again.')
+              await sleep(700)
+              d.terminals.write(w.terminalId, '\r')
+              log(`answered ${w.name}'s question`)
+            }
+          }
           const both = await waitFor('both merged after resolution', () => (view()?.merged.length ?? 0) >= 2, 3000, 300_000)
           check('the conflicted worker resolved it and both merged', both, (view()?.agents ?? []).map((a) => `${a.name}=${a.merge}`).join(', '))
           const integ = join(view()!.repoPath, '.orc', 'worktrees', view()!.name, '_integration')
