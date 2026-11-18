@@ -4,10 +4,34 @@ _Updated 2026-11-19 ~02:40 (overnight autonomous run). Morning summary: `docs/OV
 
 ## Next
 
-**M4 (robustness) on branch `m4/robust`.** Crash recovery (persist missions, reattach with
-`claude --resume`, list dirty worktrees), a live-agent cap per space, Pause mission.
-- The plan's "localhost token" is already done: per-agent tokens, regenerated every launch.
-- Vault records are **not** built: D4 is still "suggested, awaiting owner".
+**M4 (robustness) on branch `m4/robust`**, after the billed conflict scenario
+(`ORC_SMOKE_SCENARIO=conflict`) passes and `main` is fast-forwarded to M3.
+
+### M4 design, decided before coding
+
+1. **Persist** missions to `<userData>/missions.json`: a schema version, written atomically (tmp +
+   rename) on every change. Smoke mode keeps it under `ORC_SMOKE_OUT`, never the owner's userData.
+   On load, recompute merged state from git, and abort a half-finished merge in `_integration` only.
+2. **Recover on start** (before anything else):
+   - **Orphans:** kill only a recorded PID whose `/proc/<pid>/cmdline` still carries that agent's
+     `--session-id`.
+   - **Reattach:** every live agent restarts with `claude --resume <session-id>` and a fresh token,
+     port, `--settings` and `--mcp-config`. Check with one billed run whether the session id and
+     transcript path survive.
+   - **Dirty worktrees:** list them on the mission instead of touching them.
+3. **Pause mission**, enforced in the main process:
+   - `spawn_agent` is refused, and merges and deliveries are held.
+   - Live agents get a `PreToolUse` `permissionDecision: "deny"` reply with a "mission paused"
+     reason (verify with one session).
+   - Resume releases everything.
+4. **Live-agent cap per space**, enforced in `spawnAgent` and `startMission`. "Live" means the
+   process is running and the status isn't done/exited.
+5. **Localhost token:** already done (per-agent tokens, regenerated each launch).
+6. **Vault:** last, off by default, per-space folder, tested only under orc-sandbox (D4 is open).
+7. **Tests:**
+   - free: a persistence round-trip with the fake launcher, and a smoke crash scenario (SIGKILL
+     Electron, relaunch hidden on the same state; the wrapper runs `kill-strays`);
+   - billed: one resume run.
 
 ## M3: done and verified (branch `m3/git`, 2026-11-19 ~02:35)
 
