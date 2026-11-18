@@ -181,7 +181,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       missionId = m()?.id ?? null
       check('the never-prompted mission is back', m()?.state === 'running')
       const c = (): MissionView['agents'][number] | undefined => m()?.agents[0]
-      check('it comes back as starting (not the saved idle)', c()?.status === 'starting', `${c()?.status} | ${c()?.activity}`)
+      // Restore sets "starting | restarted"; only a new SessionStart from this launch turns it
+      // into "idle | ready" (it may already have, before this check runs).
       check('its session starts again with the same --session-id (a new SessionStart)', await waitFor('SessionStart again', () => c()?.status === 'idle' && c()?.activity === 'ready', 0, 60_000) && d.terminals.isRunning(c()!.terminalId), `${c()?.status} | ${c()?.activity}`)
       const out = stripAnsi(d.terminals.replay(c()!.terminalId))
       check('no session-id error from claude', !/already in use|invalid session|error/i.test(out.slice(0, 3000)), out.slice(0, 160))

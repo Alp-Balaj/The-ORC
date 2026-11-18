@@ -1,14 +1,24 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~04:20 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~05:00 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
 ## Next
 
-**M1–M4 are done and on `main`.** The final M4 billed batch on `3a2127a` passed: mission e2e with
-Verifier PASS, and `resume.sh` (last answer "PELICAN" after SIGKILL and resume).
-- **Now: error-handling hardening on branch `harden/errors`.**
-- **UI polish waits for the owner.** The Mobbin tools are not available, and their CLAUDE.md says
-  to ask in that case (see OVERNIGHT-REPORT).
+**Everything that can proceed without the owner is done.** `main` = M1–M4 plus error-handling
+hardening (`harden/errors`).
+- **Waiting on the owner:**
+  - UI polish: Mobbin research is required by their CLAUDE.md, and the tools aren't available;
+  - the items in `docs/DECISIONS-PENDING.md`;
+  - D4 (vault).
+- **Hardening verified free:**
+  - `tests/free.sh` passes;
+  - the replay passed 20 runs in a row after the tree fix (React Flow nodes now kept in state with
+    fixed sizes; the blank-tree root cause is unconfirmed);
+  - the crash tests pass (SIGKILL, normal quit, real never-prompted relaunch).
+- **Not run on the hardening commits:**
+  - The billed e2e. It is renderer and error-path work only, but the e2e's new "tree nodes
+    visible" check will first run on the next billed run.
+  - The error boundary has never been triggered by a test.
 
 ## M4: how it works
 
