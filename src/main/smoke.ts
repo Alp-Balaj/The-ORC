@@ -177,7 +177,19 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
         const ready = await waitFor('coordinator SessionStart', () => coord()?.status === 'idle', 2500, 90_000)
         check('coordinator started (SessionStart hook)', ready)
         await shot('coordinator-ready')
-        if (ready && scenario === 'permission') {
+        if (ready && scenario === 'deny') {
+          // Agents never commit: a git commit must be refused by the deny rules, without a prompt.
+          const before = (await run('git', ['-C', Sandbox, 'rev-parse', 'HEAD'])).stdout.trim()
+          d.terminals.write(coordId, prompt)
+          await sleep(700)
+          d.terminals.write(coordId, '\r')
+          await waitFor('turn finished', () => coord()?.status === 'idle' && (view()?.feed.length ?? 0) >= 0 && Date.now() - startedAt > 15_000, 3000, 120_000)
+          const after = (await run('git', ['-C', Sandbox, 'rev-parse', 'HEAD'])).stdout.trim()
+          check('git commit by an agent did not create a commit', before === after, `${before.slice(0, 8)} → ${after.slice(0, 8)}`)
+          const text = stripAnsi(d.terminals.replay(coordId))
+          check('Claude Code reports the command as denied', /denied|not allowed|permission/i.test(text), (/.{0,80}(denied|not allowed).{0,80}/i.exec(text)?.[0] ?? '').trim())
+          check('no permission prompt was needed (deny, not ask)', coord()?.status !== 'needs-you')
+        } else if (ready && scenario === 'permission') {
           // One session: ask for a shell command acceptEdits won't auto-approve, and expect
           // the Notification hook to turn the card ◐ "needs you". Then cancel with Esc.
           d.terminals.write(coordId, prompt)
@@ -203,6 +215,12 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           d.terminals.write(coordId, '\r')
           log('prompt typed into coordinator')
           const workers = (): MissionView['agents'] => view()?.agents.filter((a) => a.role === 'worker') ?? []
+          // Plan check (the default): wait for the split, approve it in the UI.
+          const proposed = await waitFor('split proposed', () => view()?.split?.status === 'pending', 1000, 180_000)
+          check('the coordinator proposed a split (plan check)', proposed, view()?.split ? `${view()!.split!.workers.length} workers` : 'none')
+          await shot('split-proposed')
+          await js(`document.querySelector('[data-testid=approve-split]')?.click()`)
+          log('split approved in the UI')
           await waitFor('two workers', () => workers().length >= 2, 0, 240_000)
           await shot('workers-spawned')
           await waitFor(
@@ -260,6 +278,23 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           await js(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.click()`)
           await sleep(1500)
           await shot('coordinator-final')
+
+          // M3: the app committed and merged each worker; the human merges to main.
+          await waitFor('both workers merged into integration', () => (view()?.merged.length ?? 0) >= 2, 0, 60_000)
+          const mv = view()!
+          check('the app committed and merged both workers into integration', mv.merged.length >= 2, mv.merged.join(', '))
+          check('before the merge, a.txt and b.txt are not in the repo root', !['a.txt', 'b.txt'].some((f) => existsSync(join(mv.repoPath, f))))
+          await js(`document.querySelector('[data-testid=open-merge]')?.click()`)
+          await sleep(1200)
+          await js(`document.querySelector('[data-testid=run-verifier]')?.click()`)
+          log('verifier started')
+          const verified = await waitFor('verifier', () => view()?.verifier?.status === 'done' || view()?.verifier?.status === 'failed', 2000, 300_000)
+          check('the Verifier produced a report', verified && view()?.verifier?.status === 'done', (view()?.verifier?.report ?? '').split('\n')[0])
+          await shot('merge-screen')
+          await js(`document.querySelector('[data-testid=confirm-merge]')?.click()`)
+          await waitFor('merged to main', () => !!view()?.mergedToMain, 1000, 30_000)
+          check('Merge to main put a.txt and b.txt on main', !!view()?.mergedToMain && ['a.txt', 'b.txt'].every((f) => existsSync(join(mv.repoPath, f))))
+          await shot('merged-to-main')
         }
       }
     }
@@ -302,8 +337,7 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
     check('every worker ran in its own worktree', workers.every((w) => w.cwd.includes('/.orc/worktrees/')) && new Set(workers.map((w) => w.cwd)).size === workers.length)
     check('every worker reported done', workers.length > 0 && workers.every((w) => w.status === 'done'), workers.map((w) => `${w.name}=${w.status}`).join(', '))
     const files = workers.flatMap((w) => ['a.txt', 'b.txt'].filter((f) => existsSync(join(w.cwd, f))).map((f) => `${w.name}/${f}`))
-    check('a.txt and b.txt exist in worker worktrees', ['a.txt', 'b.txt'].every((f) => files.some((x) => x.endsWith(f))), files.join(', '))
-    check('a.txt and b.txt are not in the repo root', !['a.txt', 'b.txt'].some((f) => existsSync(join(m.repoPath, f))))
+    check('a.txt and b.txt were written in worker worktrees (merged and removed since)', m.mergedToMain ? m.feed.filter((f) => f.kind === 'commit').length >= 2 : ['a.txt', 'b.txt'].every((f) => files.some((x) => x.endsWith(f))), files.join(', ') || 'worktrees removed after merge')
     const by = (sid: string, ev: string): unknown[] => hooks.filter((h) => h.session_id === sid && h.hook_event_name === ev)
     for (const w of workers) {
       check(`${w.name}: hooks fired (SessionStart, PreToolUse, Stop)`, ['SessionStart', 'PreToolUse', 'Stop'].every((e) => by(w.sessionId, e).length > 0))

@@ -1,12 +1,46 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~01:55 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~02:15 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
 ## Next
 
-**M3 (git and gates) on branch `m3/git`**: the app commits on `report_done`; an integration
-branch per mission; merge gate; conflicts become questions; gating modes and `propose_split`; the
-Merge to main screen; the Verifier. Then M4. `main` is at the end of M2.
+**M3 (git and gates), branch `m3/git`: built; final billed check in progress.**
+- Free checks: `tests/free.sh` passes. That includes `mission-git.test.ts` (real git on throwaway
+  repos), `mission-flow.test.ts` (plan check → approve → commit → merge → conflict → checkpointed
+  review → gate → Verifier → merge to main) and the replay (split panel, merge screen, a real merge
+  into the throwaway repo `orc-sandbox/.orc/space-b`).
+- Billed, still to confirm:
+  - `tests/e2e.sh` now approves the split in the UI, runs a real Verifier, clicks Merge to main, and
+    checks that `a.txt`/`b.txt` land on sandbox `main`. The script resets sandbox `main` to the tag
+    `orc-baseline` (4599c7a) first.
+  - `ORC_SMOKE_SCENARIO=deny tests/e2e.sh <dir> "Run exactly this with Bash: git commit --allow-empty -m test"`
+    checks that agents can't commit.
+- If both pass: update the reports, consult the advisor, fast-forward `main`, then start M4 on `m4/robust`.
+
+## M3: how it works
+
+- **`src/main/mission-git.ts`:** every git call for one repo goes through a single queue, with a
+  timeout and `GIT_TERMINAL_PROMPT=0`.
+  - The integration worktree is `<repo>/.orc/worktrees/<mission>/_integration` on branch
+    `integration/<mission>`.
+  - A merge conflict is aborted, and the conflict is re-created in the *worker's* worktree for the
+    worker to resolve. Its next `report_done` commits the resolution and the merge is retried.
+  - Merge to main is fast-forward only. It is refused if the checkout is on another branch, dirty,
+    or `main` has moved. Afterwards the app stops the sessions and removes worktrees and branches.
+- **`missions.ts`:** on `report_done`, `afterDone()` commits (with an `ORC-Agent:` trailer) and then:
+  - **plan / none:** merges at once, then runs the space's gate if one is set;
+  - **checkpointed:** marks the worker `review`, and the human approves or sends it back.
+  - Repeated or empty reports are harmless.
+- **Plan check is enforced in `spawnAgent`**: it refuses until the split is approved.
+  `propose_split` returns "pending" at once.
+- **`deliver()`** types `[The ORC] …` into an idle agent's terminal, or else queues it as a hook
+  `additionalContext` note. Prompts starting `[The ORC]` are not counted as human steering.
+- **`verifier.ts`:** `claude -p` with `--tools Read,Grep,Glob --permission-mode dontAsk
+  --no-session-persistence` and the mission's model, given the prompt on stdin. The template is
+  pinned and its sha256 is recorded. The diff is fenced off as untrusted data.
+- **Gate command:** a per-space setting in `spaces.json` (see `docs/DECISIONS-PENDING.md`).
+- **UI:** `components/MissionScreens.tsx` holds `SplitPanel`, `ReviewScreen` and `MergeScreen`;
+  `components/DiffView.tsx` shows diffs. The gating choice is in the New mission form.
 
 ## M2: done and verified (branch `m2/ui`, 2026-11-19 ~01:55)
 
