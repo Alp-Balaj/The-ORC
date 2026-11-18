@@ -330,6 +330,7 @@ export class Missions implements ControlHandlers {
       brief: mission.brief,
       split: mission.split?.status === 'approved' ? mission.split : null,
       reports: [...mission.agents.values()].filter((x) => x.doneSummary).map((x) => ({ worker: x.name, summary: x.doneSummary! })),
+      steering: mission.feed.filter((f) => f.kind === 'steer').map((f) => ({ worker: f.to ?? '?', text: f.text })),
       diffStat: diff.files.map((f) => `${f.path} +${f.added} -${f.removed}`).join('\n'),
       patch: diff.patch
     })
@@ -424,7 +425,8 @@ export class Missions implements ControlHandlers {
         if (agent.notes.length) setTimeout(() => this.flushNotes(agent), 800)
         break
       case 'SessionEnd':
-        this.update(callerTerminal, { status: 'exited', waitingOn: null })
+        // A finished worker stays "done" when its session ends (e.g. after Merge to main).
+        if (!done) this.update(callerTerminal, { status: 'exited', waitingOn: null })
         break
     }
     if ((e.hook_event_name === 'PreToolUse' || e.hook_event_name === 'UserPromptSubmit') && agent.notes.length) {

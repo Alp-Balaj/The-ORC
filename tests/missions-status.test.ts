@@ -42,6 +42,6 @@ hook({ hook_event_name: 'UserPromptSubmit', prompt: 'blue' }); expect('answer', 
 m.reportDone(t, 'did it'); expect('report_done', 'done')
 hook({ hook_event_name: 'PreToolUse', tool_name: 'SendMessage' }); expect('done stays done during SendMessage', 'done')
 hook({ hook_event_name: 'Stop' }); expect('done stays done after Stop', 'done')
-hook({ hook_event_name: 'SessionEnd' }); expect('SessionEnd', 'exited')
+hook({ hook_event_name: 'SessionEnd' }); expect('a done agent stays done when its session ends', 'done')
 console.log(failed ? `FAIL ${failed}` : 'PASS')
 process.exit(failed ? 1 : 0)
