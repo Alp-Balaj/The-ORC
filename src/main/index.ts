@@ -24,11 +24,13 @@ const terminals = new TerminalHost(
   }
 )
 const missions = new Missions(terminals, (views) => send('missions:changed', views))
+missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
 const control = new ControlServer({
   agentForToken: (t) => missions.agentForToken(t),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
   reportDone: (c, s) => missions.reportDone(c, s),
   askHuman: (c, q) => missions.askHuman(c, q),
+  proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
   hookEvent: (c, e) => {
     // Raw payloads, so status bugs can be diagnosed from a file.
     try {
@@ -77,6 +79,21 @@ ipcMain.handle('missions:start', async (_e, req: StartMissionRequest) => {
   return missions.startMission(req)
 })
 ipcMain.handle('missions:stop', (_e, id: string) => missions.stopMission(id))
+ipcMain.handle('missions:decide-split', (_e, id: string, approve: boolean, note: string | null) => missions.decideSplit(id, approve, note))
+ipcMain.handle('missions:approve-worker', (_e, id: string, agent: string) => missions.approveWorker(id, agent))
+ipcMain.handle('missions:send-back', (_e, id: string, agent: string, note: string) => missions.sendBack(id, agent, note))
+ipcMain.handle('missions:worker-diff', (_e, id: string, agent: string) => missions.workerDiff(id, agent))
+ipcMain.handle('missions:diff', (_e, id: string) => missions.missionDiff(id))
+ipcMain.handle('missions:run-gate', (_e, id: string) => {
+  const m = missions.views().find((x) => x.id === id)
+  return m ? missions.runGate(id, spaces.gateCommand(m.repoPath)) : undefined
+})
+ipcMain.handle('missions:run-verifier', (_e, id: string) => missions.runVerifier(id))
+ipcMain.handle('missions:merge-to-main', (_e, id: string) => missions.mergeToMain(id))
+ipcMain.handle('spaces:set-gate', (_e, root: string, command: string | null) => {
+  spaces.setGateCommand(root, command)
+  send('spaces:changed', spaces.list())
+})
 ipcMain.handle('spaces:list', () => spaces.list())
 ipcMain.handle('spaces:add', async (_e, path: string) => {
   const root = await spaces.add(path)

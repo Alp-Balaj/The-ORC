@@ -7,6 +7,7 @@ import { repoRoot } from './git-worktrees.ts'
  *  after a restart (missions themselves don't, until M4). `file: null` keeps them in memory. */
 export class Spaces {
   private roots: string[] = []
+  private readonly gates = new Map<string, string>()
   private readonly file: string | null
 
   constructor(file: string | null) {
@@ -14,13 +15,33 @@ export class Spaces {
     if (file) {
       try {
         const saved = JSON.parse(readFileSync(file, 'utf8')) as unknown
-        if (Array.isArray(saved)) this.roots = saved.filter((r): r is string => typeof r === 'string')
+        // v1 saved plain paths; v2 saves { root, gateCommand }.
+        if (Array.isArray(saved)) {
+          for (const e of saved as unknown[]) {
+            if (typeof e === 'string') this.roots.push(e)
+            else if (e && typeof (e as { root?: unknown }).root === 'string') {
+              const { root, gateCommand } = e as { root: string; gateCommand?: unknown }
+              this.roots.push(root)
+              if (typeof gateCommand === 'string' && gateCommand) this.gates.set(root, gateCommand)
+            }
+          }
+        }
       } catch {}
     }
   }
 
   list(): SpaceView[] {
-    return this.roots.map((root) => ({ root, name: basename(root) }))
+    return this.roots.map((root) => ({ root, name: basename(root), gateCommand: this.gates.get(root) ?? null }))
+  }
+
+  gateCommand(root: string): string | null {
+    return this.gates.get(root) ?? null
+  }
+
+  setGateCommand(root: string, command: string | null): void {
+    if (command?.trim()) this.gates.set(root, command.trim())
+    else this.gates.delete(root)
+    this.save()
   }
 
   /** Adds the repository containing `path` (must be a git repo). Returns its root. */
@@ -46,7 +67,7 @@ export class Spaces {
   private save(): void {
     if (!this.file) return
     try {
-      writeFileSync(this.file, JSON.stringify(this.roots, null, 2))
+      writeFileSync(this.file, JSON.stringify(this.list().map(({ root, gateCommand }) => ({ root, gateCommand })), null, 2))
     } catch {}
   }
 }

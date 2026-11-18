@@ -1,10 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import type { AgentView, FeedEntry, MissionView, StartMissionRequest } from '../shared/types.ts'
+import type { AgentView, DiffView, FeedEntry, GateView, Gating, MissionView, SplitView, StartMissionRequest, VerifierView } from '../shared/types.ts'
 import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
 import * as gitOps from './git-worktrees.ts'
 import type { TerminalHost } from './terminals.ts'
 import { TranscriptTally } from './tokens.ts'
+import * as missionGit from './mission-git.ts'
+import { runVerifier, templateHash } from './verifier.ts'
 
 interface Agent extends AgentView {
   token: string
@@ -30,6 +32,15 @@ interface Mission {
   createdAt: number
   agents: Map<string, Agent>
   feed: FeedEntry[]
+  gating: Gating
+  split: SplitView | null
+  merged: string[]
+  integrationCommit: string | null
+  gate: GateView | null
+  verifier: VerifierView | null
+  mergedToMain: { commit: string; at: number } | null
+  /** The human's first prompt to the coordinator: what the Verifier checks against. */
+  brief: string | null
 }
 
 /** Feed entries kept per mission (every change resends the views). */
@@ -79,7 +90,8 @@ export class Missions implements ControlHandlers {
   /** How a session is started. Tests swap in a fake command. */
   launcher: Launcher = (args) => ({ command: 'claude', args })
   /** Git operations. Tests swap in fakes. */
-  git: Pick<typeof gitOps, 'addWorktree' | 'branchesUnder' | 'currentBranch' | 'repoRoot'> = gitOps
+  git: Pick<typeof gitOps, 'addWorktree' | 'branchesUnder' | 'currentBranch' | 'repoRoot'> &
+    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'mergeToMain' | 'cleanupMission' | 'branchDiff' | 'prepareConflict'> = { ...gitOps, ...missionGit }
 
   private readonly terminals: TerminalHost
   private readonly changed: (missions: MissionView[]) => void
@@ -107,7 +119,14 @@ export class Missions implements ControlHandlers {
         createdAt: m.createdAt,
         agents,
         feed: m.feed,
-        tokens: agents.reduce((n, a) => n + a.tokens, 0)
+        tokens: agents.reduce((n, a) => n + a.tokens, 0),
+        gating: m.gating,
+        split: m.split,
+        merged: m.merged,
+        integrationCommit: m.integrationCommit,
+        gate: m.gate,
+        verifier: m.verifier,
+        mergedToMain: m.mergedToMain
       }
     })
   }
@@ -133,7 +152,15 @@ export class Missions implements ControlHandlers {
       state: 'running',
       createdAt: Date.now(),
       agents: new Map(),
-      feed: []
+      feed: [],
+      gating: req.gating ?? 'plan',
+      split: null,
+      merged: [],
+      integrationCommit: null,
+      gate: null,
+      verifier: null,
+      mergedToMain: null,
+      brief: null
     }
     this.missions.set(mission.id, mission)
     const sessionName = `${name}/coordinator`
@@ -145,7 +172,7 @@ export class Missions implements ControlHandlers {
       task: '',
       cwd: repo,
       branch: mission.baseBranch,
-      systemPrompt: coordinatorPrompt(name, sessionName, repo)
+      systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating)
     })
     return mission.id
   }
@@ -176,6 +203,12 @@ export class Missions implements ControlHandlers {
     if (!caller) throw new Error('unknown caller')
     const mission = this.missions.get(caller.missionId)!
     if (mission.state === 'stopped') return 'This mission is stopped. No new workers can start.'
+    // Plan check is enforced here, not only asked for in the prompt.
+    if (mission.gating === 'plan' && mission.split?.status !== 'approved') {
+      return mission.split?.status === 'pending'
+        ? 'Your split is waiting for the human\'s approval in The ORC. Do not spawn yet; end your turn. You will get a message when they decide.'
+        : 'This mission uses plan check: call propose_split with your proposed workers first, then end your turn and wait for the human\'s approval.'
+    }
     const name = slug(rawName)
     if (mission.agents.has(name)) {
       return `A worker named "${name}" already exists in this mission. Pick another name.`
@@ -206,7 +239,125 @@ export class Missions implements ControlHandlers {
   reportDone(callerTerminal: string, summary: string): void {
     const a = this.byTerminal.get(callerTerminal)
     this.update(callerTerminal, { status: 'done', activity: 'reported done', doneSummary: summary, question: null, waitingOn: null })
-    if (a) this.feed(this.missions.get(a.missionId)!, { kind: 'done', from: a.name, to: a.parent, text: oneLine(summary) })
+    if (!a) return
+    const mission = this.missions.get(a.missionId)!
+    this.feed(mission, { kind: 'done', from: a.name, to: a.parent, text: oneLine(summary) })
+    // The app commits for the agent (agents never commit). Runs after the tool replies.
+    if (a.role === 'worker') this.gitWork = this.gitWork.then(() => this.afterDone(mission, a, summary)).catch((err) => this.orcNote(mission, `git error after ${a.name}'s report: ${String(err)}`))
+  }
+
+  /** Chain of git work after reports, so tests can await it. */
+  gitWork: Promise<void> = Promise.resolve()
+
+  proposeSplit(callerTerminal: string, summary: string, workers: { name: string; task: string }[]): string {
+    const a = this.byTerminal.get(callerTerminal)
+    if (!a) throw new Error('unknown caller')
+    const mission = this.missions.get(a.missionId)!
+    if (a.role !== 'coordinator') return 'Only the coordinator proposes the split.'
+    if (mission.gating !== 'plan') return 'This mission does not use plan check. Spawn the workers directly with spawn_agent.'
+    if (mission.split?.status === 'approved') return 'A split is already approved. Spawn its workers with spawn_agent.'
+    mission.split = { status: 'pending', summary, workers: workers.map((w) => ({ name: slug(w.name), task: w.task })), at: Date.now(), note: null }
+    this.feed(mission, { kind: 'split', from: a.name, to: 'you', text: oneLine(`${summary} (${workers.length} workers: ${workers.map((w) => w.name).join(', ')})`) })
+    return 'Pending: the human reviews your split in The ORC. End your turn now and do not spawn anything. You will receive a message starting with [The ORC] when they approve or reject it.'
+  }
+
+  /** The human's answer to a pending split. */
+  decideSplit(missionId: string, approve: boolean, note: string | null): void {
+    const mission = this.missions.get(missionId)
+    if (!mission?.split || mission.split.status !== 'pending') return
+    mission.split.status = approve ? 'approved' : 'rejected'
+    mission.split.note = note?.trim() || null
+    const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')!
+    this.feed(mission, { kind: 'split', from: 'you', to: 'coordinator', text: approve ? `approved${mission.split.note ? `: ${mission.split.note}` : ''}` : `rejected: ${mission.split.note ?? 'no reason given'}`, status: approve ? 'ok' : 'failed' })
+    this.deliver(
+      coord,
+      approve
+        ? `[The ORC] The human approved your split.${mission.split.note ? ` Their note: ${mission.split.note}.` : ''} Spawn the workers now with spawn_agent.`
+        : `[The ORC] The human rejected your split. Their note: ${mission.split.note ?? '(none)'}. Revise it and call propose_split again.`
+    )
+  }
+
+  /** Checkpointed mode: the human approved one worker's diff. */
+  approveWorker(missionId: string, agentName: string): void {
+    const mission = this.missions.get(missionId)
+    const a = mission?.agents.get(agentName)
+    if (!mission || !a || a.merge !== 'review') return
+    this.gitWork = this.gitWork.then(() => this.mergeWorker(mission, a)).catch((err) => this.orcNote(mission, `merge error: ${String(err)}`))
+  }
+
+  /** Checkpointed mode: send a worker's diff back with a note instead of merging it. */
+  sendBack(missionId: string, agentName: string, note: string): void {
+    const mission = this.missions.get(missionId)
+    const a = mission?.agents.get(agentName)
+    if (!mission || !a || a.merge !== 'review') return
+    a.merge = 'committed'
+    this.feed(mission, { kind: 'orc', from: 'you', to: a.name, text: `sent back: ${oneLine(note)}` })
+    this.deliver(a, `[The ORC] The human reviewed your diff and sent it back: ${note}. Make the changes, then call report_done again.`)
+  }
+
+  async workerDiff(missionId: string, agentName: string): Promise<DiffView | null> {
+    const mission = this.missions.get(missionId)
+    const a = mission?.agents.get(agentName)
+    if (!mission || !a?.branch) return null
+    return this.git.branchDiff(mission.repoPath, mission.baseBranch, a.branch)
+  }
+
+  async missionDiff(missionId: string): Promise<DiffView | null> {
+    const mission = this.missions.get(missionId)
+    if (!mission || mission.merged.length === 0) return null
+    return this.git.combinedDiff(mission.repoPath, mission.name, mission.baseBranch)
+  }
+
+  /** Runs the space's gate command on the merged result. */
+  async runGate(missionId: string, command: string | null): Promise<void> {
+    const mission = this.missions.get(missionId)
+    if (!mission || mission.merged.length === 0 || !command) return
+    mission.gate = { command, ok: false, exitCode: null, output: 'running…', at: Date.now() }
+    this.emit()
+    mission.gate = await this.git.runGate(missionGit.integrationPath(mission.repoPath, mission.name), command)
+    this.feed(mission, { kind: 'gate', from: 'orc', to: null, text: `${command}: ${mission.gate.ok ? 'passed' : `failed (exit ${mission.gate.exitCode})`}`, status: mission.gate.ok ? 'ok' : 'failed' })
+  }
+
+  async runVerifier(missionId: string): Promise<void> {
+    const mission = this.missions.get(missionId)
+    if (!mission || mission.merged.length === 0 || mission.verifier?.status === 'running') return
+    const diff = await this.git.combinedDiff(mission.repoPath, mission.name, mission.baseBranch)
+    mission.verifier = { status: 'running', report: '', templateHash, promptHash: '', at: Date.now(), integrationCommit: mission.integrationCommit }
+    this.emit()
+    const r = await this.verify({
+      cwd: missionGit.integrationPath(mission.repoPath, mission.name),
+      model: mission.model,
+      brief: mission.brief,
+      split: mission.split?.status === 'approved' ? mission.split : null,
+      reports: [...mission.agents.values()].filter((x) => x.doneSummary).map((x) => ({ worker: x.name, summary: x.doneSummary! })),
+      diffStat: diff.files.map((f) => `${f.path} +${f.added} -${f.removed}`).join('\n'),
+      patch: diff.patch
+    })
+    mission.verifier = { status: r.ok ? 'done' : 'failed', report: r.report, templateHash, promptHash: r.promptHash, at: Date.now(), integrationCommit: mission.integrationCommit }
+    const verdict = /VERDICT:\s*(\w+)/.exec(r.report)?.[1] ?? (r.ok ? 'done' : 'failed')
+    this.feed(mission, { kind: 'verifier', from: 'verifier', to: null, text: `verdict: ${verdict}`, status: verdict === 'PASS' ? 'ok' : 'failed' })
+  }
+
+  /** How the Verifier runs. Tests swap in a fake. */
+  verify = runVerifier
+
+  /** The human pressed Merge to main. */
+  async mergeToMain(missionId: string): Promise<{ ok: boolean; message: string }> {
+    const mission = this.missions.get(missionId)
+    if (!mission) return { ok: false, message: 'no such mission' }
+    if (mission.merged.length === 0) return { ok: false, message: 'Nothing is merged into the integration branch yet.' }
+    const r = await this.git.mergeToMain(mission.repoPath, mission.name, mission.baseBranch)
+    if (!r.ok) {
+      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merge to ${mission.baseBranch} refused: ${oneLine(r.reason)}`, status: 'failed' })
+      return { ok: false, message: r.reason }
+    }
+    mission.mergedToMain = { commit: r.commit, at: Date.now() }
+    this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}`, status: 'ok' })
+    // The work is in main: end the sessions, then remove worktrees and branches.
+    this.stopMission(mission.id)
+    const branches = [...mission.agents.values()].filter((x) => x.role === 'worker' && x.branch).map((x) => x.branch!)
+    await this.git.cleanupMission(mission.repoPath, mission.name, branches)
+    return { ok: true, message: `Merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}. Worktrees and branches removed.` }
   }
 
   askHuman(callerTerminal: string, question: string): void {
@@ -234,7 +385,9 @@ export class Missions implements ControlHandlers {
         const cross = parseCrossSession(e.prompt)
         const fromName = cross ? this.agentNameFor(mission, cross.from) : null
         const isLaunch = agent.role === 'worker' && (e.prompt ?? '').trim() === agent.task.trim()
-        const human = !cross && !isLaunch
+        const fromOrc = (e.prompt ?? '').startsWith('[The ORC]')
+        const human = !cross && !isLaunch && !fromOrc
+        if (human && agent.role === 'coordinator' && !mission.brief) mission.brief = e.prompt ?? null
         this.update(callerTerminal, {
           status: 'working',
           activity: cross ? `message from ${fromName}` : 'thinking',
@@ -349,6 +502,78 @@ export class Missions implements ControlHandlers {
 
   // Internals ---------------------------------------------------------------
 
+  private async afterDone(mission: Mission, a: Agent, summary: string): Promise<void> {
+    if (!a.branch || mission.mergedToMain) return
+    const title = oneLine(summary.split('\n')[0], 72)
+    const sha = await this.git.commitAll(mission.repoPath, a.cwd, `${a.name}: ${title}\n\n${summary}\n\nMission: ${mission.name}\nORC-Agent: ${a.sessionName}`)
+    if (sha) this.feed(mission, { kind: 'commit', from: 'orc', to: a.name, text: `committed ${sha.slice(0, 8)} on ${a.branch}` })
+    if (!sha && a.merge !== 'conflict' && !(await this.hasUnmergedCommits(mission, a))) {
+      a.merge = mission.merged.includes(a.name) ? 'merged' : 'nothing'
+      this.emit()
+      return
+    }
+    a.merge = 'committed'
+    if (mission.gating === 'checkpointed') {
+      a.merge = 'review'
+      this.feed(mission, { kind: 'orc', from: a.name, to: 'you', text: 'diff waiting for your review before it merges' })
+      return
+    }
+    await this.mergeWorker(mission, a)
+  }
+
+  private async hasUnmergedCommits(mission: Mission, a: Agent): Promise<boolean> {
+    const r = await missionGit.git(mission.repoPath, ['rev-list', '--count', `${missionGit.integrationBranch(mission.name)}..${a.branch}`], { allowFail: true })
+    if (r.code !== 0) return (await missionGit.git(mission.repoPath, ['rev-list', '--count', `${mission.baseBranch}..${a.branch}`], { allowFail: true })).stdout !== '0'
+    return r.stdout !== '0'
+  }
+
+  private async mergeWorker(mission: Mission, a: Agent): Promise<void> {
+    await this.git.ensureIntegration(mission.repoPath, mission.name, mission.baseBranch)
+    const r = await this.git.mergeIntoIntegration(mission.repoPath, mission.name, a.branch!, `Merge ${a.name} into ${missionGit.integrationBranch(mission.name)}`)
+    if (r.kind === 'conflict') {
+      a.merge = 'conflict'
+      a.conflictFiles = r.files
+      this.feed(mission, { kind: 'conflict', from: a.name, to: 'coordinator', text: `conflicts with ${missionGit.integrationBranch(mission.name)} in ${r.files.join(', ')}`, status: 'failed' })
+      // Leave the conflict in the worker's own worktree for it to resolve; its next
+      // report_done commits the resolution and the merge is retried.
+      await this.git.prepareConflict(mission.repoPath, a.cwd, missionGit.integrationBranch(mission.name))
+      const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
+      this.deliver(a, `[The ORC] Your branch conflicts with work already merged (${r.files.join(', ')}). The conflict markers are now in your worktree. Resolve them so both changes survive, then call report_done again.`)
+      if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${r.files.join(', ')}. ${a.name} has been asked to resolve it; step in if it needs direction.`)
+      return
+    }
+    a.merge = 'merged'
+    a.conflictFiles = []
+    if (!mission.merged.includes(a.name)) mission.merged.push(a.name)
+    if (r.kind === 'merged') {
+      mission.integrationCommit = r.commit
+      this.feed(mission, { kind: 'merge', from: a.name, to: null, text: `merged into ${missionGit.integrationBranch(mission.name)}`, status: 'ok' })
+      const gate = this.gateCommandFor(mission.repoPath)
+      if (gate) await this.runGate(mission.id, gate)
+    }
+    this.emit()
+  }
+
+  /** Where a space's gate command comes from. index.ts wires this to Spaces. */
+  gateCommandFor: (repo: string) => string | null = () => null
+
+  /** Gets text to an agent: typed into its terminal when it is idle (Claude Code has no way to
+   *  message a session from outside), otherwise attached to its next hook. */
+  deliver(a: Agent, text: string): void {
+    const line = text.replace(/\s+/g, ' ')
+    if (a.status === 'exited') return
+    if (a.status === 'idle' || a.status === 'done') {
+      this.terminals.write(a.terminalId, line)
+      setTimeout(() => this.terminals.write(a.terminalId, '\r'), 500)
+    } else {
+      a.notes.push(line)
+    }
+  }
+
+  private orcNote(mission: Mission, text: string): void {
+    this.feed(mission, { kind: 'orc', from: 'orc', to: null, text: oneLine(text), status: 'failed' })
+  }
+
   private humanSteered(mission: Mission, worker: Agent, prompt: string): void {
     this.feed(mission, { kind: 'steer', from: 'you', to: worker.name, text: oneLine(prompt) })
     const parent = worker.parent ? mission.agents.get(worker.parent) : null
@@ -411,6 +636,8 @@ export class Missions implements ControlHandlers {
       tokens: 0,
       contextTokens: 0,
       startedAt: Date.now(),
+      merge: null,
+      conflictFiles: [],
       waitingOn: null,
       idlePolls: 0,
       tally: null,
@@ -475,6 +702,8 @@ function agentView(a: Agent): AgentView {
     doneSummary: a.doneSummary,
     tokens: a.tokens,
     contextTokens: a.contextTokens,
-    startedAt: a.startedAt
+    startedAt: a.startedAt,
+    merge: a.merge,
+    conflictFiles: a.conflictFiles
   }
 }

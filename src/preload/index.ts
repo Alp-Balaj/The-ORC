@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { MissionView, SpaceView, StartMissionRequest } from '../shared/types.ts'
+import type { DiffView, MissionView, SpaceView, StartMissionRequest } from '../shared/types.ts'
 
 function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const fn = (_e: unknown, ...args: unknown[]): void => cb(...(args as A))
@@ -12,6 +12,15 @@ const api = {
   startMission: (req: StartMissionRequest): Promise<string> =>
     ipcRenderer.invoke('missions:start', req),
   stopMission: (id: string): Promise<void> => ipcRenderer.invoke('missions:stop', id),
+  decideSplit: (id: string, approve: boolean, note: string | null): Promise<void> => ipcRenderer.invoke('missions:decide-split', id, approve, note),
+  approveWorker: (id: string, agent: string): Promise<void> => ipcRenderer.invoke('missions:approve-worker', id, agent),
+  sendBack: (id: string, agent: string, note: string): Promise<void> => ipcRenderer.invoke('missions:send-back', id, agent, note),
+  workerDiff: (id: string, agent: string): Promise<DiffView | null> => ipcRenderer.invoke('missions:worker-diff', id, agent),
+  missionDiff: (id: string): Promise<DiffView | null> => ipcRenderer.invoke('missions:diff', id),
+  runGate: (id: string): Promise<void> => ipcRenderer.invoke('missions:run-gate', id),
+  runVerifier: (id: string): Promise<void> => ipcRenderer.invoke('missions:run-verifier', id),
+  mergeToMain: (id: string): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('missions:merge-to-main', id),
+  setGateCommand: (root: string, command: string | null): Promise<void> => ipcRenderer.invoke('spaces:set-gate', root, command),
   pickRepo: (): Promise<string | null> => ipcRenderer.invoke('dialog:pick-repo'),
   listSpaces: (): Promise<SpaceView[]> => ipcRenderer.invoke('spaces:list'),
   addSpace: (path: string): Promise<string> => ipcRenderer.invoke('spaces:add', path),

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowRight, CheckCheck, CircleHelp, GitFork, Inbox, Keyboard, OctagonX, Send, TriangleAlert } from 'lucide-react'
+import { ArrowRight, Bot, CheckCheck, CircleHelp, GitCommitHorizontal, GitFork, GitMerge, GitPullRequestArrow, Inbox, Keyboard, ListChecks, OctagonX, Send, ShieldCheck, Swords, TriangleAlert } from 'lucide-react'
 import type { FeedEntry } from '../../../shared/types'
 import { cn } from '../lib/utils'
 
@@ -13,6 +13,14 @@ const icon = (f: FeedEntry): React.JSX.Element => {
     case 'question': return <CircleHelp className={cn(c, 'text-needs')} />
     case 'steer': return <Keyboard className={cn(c, 'text-foreground')} />
     case 'stopped': return <OctagonX className={cn(c, 'text-destructive')} />
+    case 'split': return <ListChecks className={cn(c, f.status === 'failed' ? 'text-destructive' : 'text-needs')} />
+    case 'commit': return <GitCommitHorizontal className={cn(c, 'text-muted-foreground')} />
+    case 'merge': return <GitMerge className={cn(c, 'text-working')} />
+    case 'conflict': return <Swords className={cn(c, 'text-destructive')} />
+    case 'gate': return <ShieldCheck className={cn(c, f.status === 'ok' ? 'text-working' : 'text-destructive')} />
+    case 'verifier': return <Bot className={cn(c, f.status === 'ok' ? 'text-working' : 'text-needs')} />
+    case 'main': return <GitPullRequestArrow className={cn(c, f.status === 'ok' ? 'text-done' : 'text-destructive')} />
+    case 'orc': return <Bot className={cn(c, f.status === 'failed' ? 'text-destructive' : 'text-muted-foreground')} />
   }
 }
 
@@ -23,7 +31,15 @@ const verb: Record<FeedEntry['kind'], string> = {
   done: 'reported done to',
   question: 'asks',
   steer: 'typed to',
-  stopped: 'stopped the mission'
+  stopped: 'stopped the mission',
+  split: 'split',
+  commit: 'committed',
+  merge: 'merged',
+  conflict: 'conflict',
+  gate: 'gate',
+  verifier: 'verifier',
+  main: 'merge to main',
+  orc: 'the ORC'
 }
 
 const time = (t: number): string => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })

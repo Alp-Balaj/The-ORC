@@ -178,3 +178,23 @@ export async function cleanupMission(repo: string, mission: string, workerBranch
     for (const b of [...workerBranches, integrationBranch(mission)]) await git(repo, ['branch', '-D', b], { allowFail: true })
   })
 }
+
+/** One worker's change: base...branch. */
+export async function branchDiff(repo: string, base: string, branch: string): Promise<CombinedDiff> {
+  const numstat = (await git(repo, ['diff', '--numstat', `${base}...${branch}`])).stdout
+  const files = numstat.split('\n').filter(Boolean).map((l) => {
+    const [a, r, ...p] = l.split('\t')
+    return { path: p.join('\t'), added: Number(a) || 0, removed: Number(r) || 0 }
+  })
+  const patch = (await git(repo, ['diff', `${base}...${branch}`])).stdout
+  const commits = Number((await git(repo, ['rev-list', '--count', `${base}..${branch}`])).stdout) || 0
+  return { base, head: branch, files, patch: patch.length > 400_000 ? `${patch.slice(0, 400_000)}\n… (truncated)` : patch, commits }
+}
+
+/** Starts merging `integration` into a worker's worktree and leaves the conflict markers
+ *  there for the worker to resolve. Its next commit concludes the merge. */
+export async function prepareConflict(repo: string, worktree: string, integration: string): Promise<void> {
+  return serialized(repo, async () => {
+    await git(worktree, [...(await identityArgs(worktree)), 'merge', '--no-ff', '--no-commit', integration], { allowFail: true })
+  })
+}

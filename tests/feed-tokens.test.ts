@@ -27,6 +27,7 @@ function world() {
   const m = new Missions(host, () => {})
   const branches = new Set<string>()
   m.git = {
+    ...m.git,
     repoRoot: async (p: string) => p,
     currentBranch: async () => 'main',
     branchesUnder: async (_r: string, prefix: string) => [...branches].filter((b) => b.startsWith(prefix)),
@@ -41,7 +42,7 @@ function world() {
 /** Replays a recorded run: spawn_agent calls go through spawnAgent, every other event to hookEvent. */
 async function replay(file: string, missionName: string) {
   const { m } = world()
-  const id = await m.startMission({ repoPath: '/repo', name: missionName, permissionMode: 'acceptEdits' })
+  const id = await m.startMission({ repoPath: '/repo', name: missionName, permissionMode: 'acceptEdits', gating: 'none' })
   const term = (agent: string) => `${id}:${agent}`
   for (const e of fixture(file)) {
     const agent = String(e.agent).split(':')[1]
@@ -74,7 +75,7 @@ ok('failure text carries Claude Code\'s answer', v1.feed.some((f) => f.status ==
 // Steering -----------------------------------------------------------------
 {
   const { m } = world()
-  const id = await m.startMission({ repoPath: '/repo', name: 'steer', permissionMode: 'acceptEdits' })
+  const id = await m.startMission({ repoPath: '/repo', name: 'steer', permissionMode: 'acceptEdits', gating: 'none' })
   await m.spawnAgent(`${id}:coordinator`, 'post-api', 'Build the post API.')
   const w = `${id}:post-api`
   m.hookEvent(w, { hook_event_name: 'UserPromptSubmit', prompt: 'Build the post API.' })

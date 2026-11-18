@@ -27,6 +27,10 @@ export interface AgentView {
   /** Size of the context on the latest turn (input + cache writes + cache reads). */
   contextTokens: number
   startedAt: number
+  /** Where this worker's work stands in git (null for the coordinator, or before report_done). */
+  merge: 'committed' | 'review' | 'merged' | 'conflict' | 'nothing' | null
+  /** Conflicting files when merge is "conflict". */
+  conflictFiles: string[]
 }
 
 /** One line of a mission's feed. "message" is a SendMessage as the sender saw it;
@@ -34,13 +38,53 @@ export interface AgentView {
 export interface FeedEntry {
   id: number
   at: number
-  kind: 'spawn' | 'message' | 'delivered' | 'done' | 'question' | 'steer' | 'stopped'
+  kind: 'spawn' | 'message' | 'delivered' | 'done' | 'question' | 'steer' | 'stopped' | 'split' | 'commit' | 'merge' | 'conflict' | 'gate' | 'verifier' | 'main' | 'orc'
   /** Agent names within the mission (or "you"). */
   from: string
   to: string | null
   text: string
   /** For "message": what Claude Code answered the sender. */
-  status?: 'sent' | 'failed'
+  status?: 'sent' | 'failed' | 'ok'
+}
+
+/** Checkpointed: every worker's diff waits for your review before it merges.
+ *  Plan check: the coordinator proposes a split you approve; then merges are automatic.
+ *  No check: merges are automatic. In every mode, Merge to main is your click. */
+export type Gating = 'checkpointed' | 'plan' | 'none'
+
+export interface SplitView {
+  status: 'pending' | 'approved' | 'rejected'
+  summary: string
+  workers: { name: string; task: string }[]
+  at: number
+  note: string | null
+}
+
+export interface GateView {
+  command: string
+  ok: boolean
+  exitCode: number | null
+  output: string
+  at: number
+}
+
+export interface VerifierView {
+  status: 'running' | 'done' | 'failed'
+  report: string
+  /** sha256 of the pinned prompt template, and of the full prompt sent. */
+  templateHash: string
+  promptHash: string
+  at: number
+  /** Integration commit the report is about; stale when integration has moved since. */
+  integrationCommit: string | null
+}
+
+export interface DiffView {
+  base: string
+  head: string
+  files: { path: string; added: number; removed: number }[]
+  patch: string
+  commits: number
 }
 
 export interface MissionView {
@@ -55,12 +99,22 @@ export interface MissionView {
   agents: AgentView[]
   feed: FeedEntry[]
   tokens: number
+  gating: Gating
+  split: SplitView | null
+  /** Workers merged into integration/<mission>, in order. */
+  merged: string[]
+  integrationCommit: string | null
+  gate: GateView | null
+  verifier: VerifierView | null
+  mergedToMain: { commit: string; at: number } | null
 }
 
 /** A repository the user has opened. Missions belong to the space of their repo. */
 export interface SpaceView {
   root: string
   name: string
+  /** Shell command run on the merged result (e.g. "pnpm test"). Null: no gate. */
+  gateCommand: string | null
 }
 
 export type PermissionMode = 'acceptEdits' | 'auto' | 'bypassPermissions' | 'manual' | 'dontAsk'
@@ -71,4 +125,6 @@ export interface StartMissionRequest {
   permissionMode: PermissionMode
   /** Passed as --model to every session in the mission (e.g. "haiku"). Default: Claude Code's own. */
   model?: string
+  /** Default: plan check. */
+  gating?: Gating
 }

@@ -24,6 +24,7 @@ export interface ControlHandlers {
   spawnAgent(caller: string, name: string, task: string): Promise<string>
   reportDone(caller: string, summary: string): void
   askHuman(caller: string, question: string): void
+  proposeSplit(caller: string, summary: string, workers: { name: string; task: string }[]): string
   /** Returns the hook's stdout (JSON for Claude Code), or null for none. */
   hookEvent(caller: string, event: HookEvent): string | null
 }
@@ -94,6 +95,23 @@ function buildMcp(caller: string, h: ControlHandlers): McpServer {
       h.askHuman(caller, question)
       return text('Shown to the human. Their answer will be typed into this session. End your turn now.')
     }
+  )
+  server.registerTool(
+    'propose_split',
+    {
+      description:
+        'Coordinator only, plan-check missions: propose how to split the work before spawning. ' +
+        'Returns "pending" at once; the human approves or rejects in The ORC and you get a [The ORC] message. End your turn after calling it.',
+      inputSchema: {
+        summary: z.string().min(1).describe('One line: the approach'),
+        workers: z
+          .array(z.object({ name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), task: z.string().min(1) }))
+          .min(1)
+          .max(12)
+          .describe('The workers you intend to spawn, each with the files/areas it owns')
+      }
+    },
+    async ({ summary, workers }) => text(h.proposeSplit(caller, summary, workers))
   )
   return server
 }

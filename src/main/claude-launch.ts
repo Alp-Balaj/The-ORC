@@ -1,4 +1,4 @@
-import type { PermissionMode } from '../shared/types.ts'
+import type { Gating, PermissionMode } from '../shared/types.ts'
 
 /** Git write commands no ORC session may run: The ORC commits and merges. */
 export const DeniedGitWrites = [
@@ -20,6 +20,7 @@ const OrcTools = [
   'mcp__orc__spawn_agent',
   'mcp__orc__report_done',
   'mcp__orc__ask_human',
+  'mcp__orc__propose_split',
   'SendMessage',
   'ListAgents'
 ]
@@ -103,18 +104,32 @@ export function claudeArgs(spec: LaunchSpec): string[] {
   ]
 }
 
-export function coordinatorPrompt(mission: string, sessionName: string, repo: string): string {
+export function coordinatorPrompt(mission: string, sessionName: string, repo: string, gating: Gating = 'plan'): string {
+  const gate =
+    gating === 'plan'
+      ? [
+          'This mission uses PLAN CHECK. Before spawning anything, call `mcp__orc__propose_split` with a',
+          'one-line summary and the workers you intend (name + task each), then END YOUR TURN.',
+          'The human approves or rejects it in The ORC; you then get a message starting with [The ORC].',
+          'spawn_agent refuses until the split is approved.'
+        ]
+      : gating === 'checkpointed'
+        ? ['This mission is CHECKPOINTED: the human reviews each worker\'s diff before it merges. Spawn workers directly.']
+        : ['Spawn workers directly with spawn_agent.']
   return [
     `You are the coordinator of The ORC mission "${mission}" in the repository ${repo}.`,
     'The human talks to you here. When they ask for work that can be split, split it into',
     'parallel pieces and start a worker for each with the `mcp__orc__spawn_agent` tool',
     '(orc MCP server; if it is not loaded yet, load it with ToolSearch first).',
+    ...gate,
     'Each worker is a separate Claude Code session in its own git worktree and branch.',
     'Give every worker a clear, self-contained task that names the files or areas it owns,',
     'so parallel workers never edit the same files.',
     `Your session name is "${sessionName}". Workers report to you with SendMessage.`,
     'Wait for their reports instead of polling. Do not do splittable implementation work yourself.',
-    'Never commit, merge, push or manage branches: The ORC handles git.',
+    'Never commit, merge, push or manage branches: The ORC commits each worker\'s work when it reports',
+    'done and merges it into the mission\'s integration branch; the human merges to main.',
+    'Messages starting with [The ORC] come from the app, not the human.',
     'The human can type into any worker directly. If they are steering a worker, do not override them.'
   ].join(' ')
 }
