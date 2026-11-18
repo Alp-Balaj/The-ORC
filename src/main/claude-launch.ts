@@ -1,4 +1,4 @@
-import type { PermissionMode } from '../shared/types'
+import type { PermissionMode } from '../shared/types.ts'
 
 /** Git write commands no ORC session may run: The ORC commits and merges. */
 export const DeniedGitWrites = [

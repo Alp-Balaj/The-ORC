@@ -1,13 +1,18 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import type { AgentView, MissionView, StartMissionRequest } from '../shared/types'
-import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch'
-import type { ControlHandlers, HookEvent } from './control-server'
-import { addWorktree, currentBranch, repoRoot } from './git-worktrees'
-import type { TerminalHost } from './terminals'
+import type { AgentView, MissionView, StartMissionRequest } from '../shared/types.ts'
+import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
+import type { ControlHandlers, HookEvent } from './control-server.ts'
+import { addWorktree, currentBranch, repoRoot } from './git-worktrees.ts'
+import type { TerminalHost } from './terminals.ts'
 
 interface Agent extends AgentView {
   token: string
   missionId: string
+  /** Why the agent is needs-you: a permission prompt clears when the tool runs or the
+   *  session goes idle; a question (ask_human) clears only when a new turn starts. */
+  waitingOn: 'permission' | 'question' | null
+  /** Consecutive `claude agents` polls that saw this session idle while we thought it busy. */
+  idlePolls: number
 }
 
 interface Mission {
@@ -65,7 +70,7 @@ export class Missions implements ControlHandlers {
       baseBranch: m.baseBranch,
       permissionMode: m.permissionMode,
       model: m.model,
-      agents: [...m.agents.values()].map(({ token: _t, missionId: _m, ...view }) => view)
+      agents: [...m.agents.values()].map(({ token: _t, missionId: _m, waitingOn: _w, idlePolls: _i, ...view }) => view)
     }))
   }
 
@@ -136,49 +141,92 @@ export class Missions implements ControlHandlers {
   }
 
   reportDone(callerTerminal: string, summary: string): void {
-    this.update(callerTerminal, { status: 'done', doneSummary: summary, question: null })
+    this.update(callerTerminal, { status: 'done', activity: 'reported done', doneSummary: summary, question: null, waitingOn: null })
   }
 
   askHuman(callerTerminal: string, question: string): void {
-    this.update(callerTerminal, { status: 'needs-you', question })
+    this.update(callerTerminal, { status: 'needs-you', activity: 'asked you a question', question, waitingOn: 'question' })
   }
 
   hookEvent(callerTerminal: string, e: HookEvent): void {
     const agent = this.byTerminal.get(callerTerminal)
     if (!agent) return
-    // A finished or questioning agent stays so until it starts a new turn.
-    const sticky = agent.status === 'done' || agent.status === 'needs-you'
+    const done = agent.status === 'done'
+    const asking = agent.waitingOn === 'question'
     switch (e.hook_event_name) {
       case 'SessionStart':
-        if (agent.status === 'starting') this.update(callerTerminal, { status: 'idle' })
+        if (agent.status === 'starting') this.update(callerTerminal, { status: 'idle', activity: 'ready' })
         break
-      case 'UserPromptSubmit':
-        this.update(callerTerminal, { status: 'working', activity: 'thinking', question: null })
-        break
-      case 'PreToolUse':
+      case 'UserPromptSubmit': {
+        // A new turn: from the human, or a cross-session message from another agent.
+        const from = /<cross-session-message[^>]*from-name="([^"]+)"/.exec(e.prompt ?? '')?.[1]
         this.update(callerTerminal, {
-          ...(sticky ? {} : { status: 'working' as const }),
+          status: 'working',
+          activity: from ? `message from ${from.split('/').pop()}` : 'thinking',
+          question: null,
+          waitingOn: null,
+          ...(from && agent.role === 'worker' ? { lastInstructionBy: 'coordinator' as const, lastInstructionAt: Date.now() } : {})
+        })
+        break
+      }
+      case 'PreToolUse':
+      case 'PostToolUse':
+        // A tool running means any permission prompt was answered yes.
+        this.update(callerTerminal, {
+          ...(done || asking ? {} : { status: 'working' as const, waitingOn: null }),
           activity: describeTool(e.tool_name, e.tool_input)
         })
         break
       case 'Notification':
-        // Claude Code also notifies when a session has merely sat idle waiting for input;
-        // that is not "needs you". Only permission prompts and the like are.
+        // Claude Code also notifies when a session has merely sat idle waiting for input
+        // (notification_type "idle_prompt"); that is not "needs you". Permission prompts are
+        // notification_type "permission_prompt", sent ~6 s after the prompt appears.
         if (e.notification_type === 'idle_prompt' || /waiting for your input/i.test(e.message ?? '')) break
-        if (agent.status !== 'done') {
-          this.update(callerTerminal, {
-            status: 'needs-you',
-            activity: e.message ?? 'needs you'
-          })
+        if (!done && !asking) {
+          this.update(callerTerminal, { status: 'needs-you', activity: e.message ?? 'needs you', waitingOn: 'permission' })
         }
         break
       case 'Stop':
-        if (!sticky) this.update(callerTerminal, { status: 'idle', activity: 'turn finished' })
+        if (!done && !asking) this.update(callerTerminal, { status: 'idle', activity: 'turn finished', waitingOn: null })
         break
       case 'SessionEnd':
-        this.update(callerTerminal, { status: 'exited' })
+        this.update(callerTerminal, { status: 'exited', waitingOn: null })
         break
     }
+  }
+
+  /** Backup status from `claude agents --json` (interactive sessions: busy | idle | waiting).
+   *  Hooks miss some transitions: pressing Esc on a permission prompt interrupts the turn and
+   *  fires no hook at all. A session reported idle
+   *  on two polls in a row while we think it is working or at a permission prompt is idle. */
+  reconcile(states: Map<string, string>): void {
+    for (const agent of this.byTerminal.values()) {
+      // "waiting" = at a permission prompt; it shows up here before the Notification hook does.
+      if (states.get(agent.sessionId) === 'waiting' && agent.status === 'working') {
+        this.update(agent.terminalId, { status: 'needs-you', activity: 'needs your permission', waitingOn: 'permission' })
+        continue
+      }
+      const live = agent.status === 'working' || agent.waitingOn === 'permission'
+      if (!live || states.get(agent.sessionId) !== 'idle') {
+        agent.idlePolls = 0
+        continue
+      }
+      if (++agent.idlePolls >= 2) {
+        agent.idlePolls = 0
+        this.update(agent.terminalId, {
+          status: 'idle',
+          activity: agent.waitingOn === 'permission' ? 'permission prompt dismissed' : 'interrupted',
+          waitingOn: null
+        })
+      }
+    }
+  }
+
+  /** Session ids worth polling for (live and not finished). */
+  liveSessionIds(): string[] {
+    return [...this.byTerminal.values()]
+      .filter((a) => a.status === 'working' || a.status === 'needs-you')
+      .map((a) => a.sessionId)
   }
 
   // Terminal side -----------------------------------------------------------
@@ -223,6 +271,8 @@ export class Missions implements ControlHandlers {
       terminalId,
       question: null,
       doneSummary: null,
+      waitingOn: null,
+      idlePolls: 0,
       token,
       missionId: mission.id
     }
@@ -248,7 +298,7 @@ export class Missions implements ControlHandlers {
     this.changed(this.views())
   }
 
-  private update(terminalId: string, patch: Partial<AgentView>): void {
+  private update(terminalId: string, patch: Partial<Agent>): void {
     const agent = this.byTerminal.get(terminalId)
     if (!agent) return
     Object.assign(agent, patch)

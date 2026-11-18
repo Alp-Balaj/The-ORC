@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { appendFileSync } from 'node:fs'
-import type { StartMissionRequest } from '../shared/types'
-import { ControlServer } from './control-server'
-import { Missions } from './missions'
-import { runSmoke } from './smoke'
-import { TerminalHost } from './terminals'
+import type { StartMissionRequest } from '../shared/types.ts'
+import { ControlServer } from './control-server.ts'
+import { Missions } from './missions.ts'
+import { startStatusPoller } from './agent-status.ts'
+import { runSmoke } from './smoke.ts'
+import { TerminalHost } from './terminals.ts'
 
 let win: BrowserWindow | null = null
 
@@ -37,6 +38,12 @@ const control = new ControlServer({
 })
 
 const smoke = process.env.ORC_SMOKE_OUT ?? null
+if (smoke) {
+  // A hidden window stops producing frames after a while; screenshots then never arrive.
+  app.commandLine.appendSwitch('disable-renderer-backgrounding')
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+  app.commandLine.appendSwitch('disable-background-timer-throttling')
+}
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -50,7 +57,10 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       // A hidden smoke window must still paint terminals for screenshots.
-      backgroundThrottling: !smoke
+      backgroundThrottling: !smoke,
+      // Hidden windows on Wayland stop producing frames after the first; offscreen
+      // rendering keeps painting, so smoke screenshots stay live.
+      offscreen: !!smoke
     }
   })
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -74,6 +84,7 @@ ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
 
 app.whenReady().then(async () => {
   missions.setControlPort(await control.listen())
+  startStatusPoller(() => missions.liveSessionIds(), (s) => missions.reconcile(s))
   createWindow()
   if (smoke) {
     const shutdown = (): void => {

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { MissionView, StartMissionRequest } from '../shared/types'
+import type { MissionView, StartMissionRequest } from '../shared/types.ts'
 
 function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const fn = (_e: unknown, ...args: unknown[]): void => cb(...(args as A))

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Billed end-to-end test (Haiku, ~3 sessions): hidden Electron, a real mission in orc-sandbox.
 # Usage: tests/e2e.sh <out-dir> [prompt]
+#        ORC_SMOKE_SCENARIO=permission tests/e2e.sh <out-dir> '<prompt that needs a Bash approval>'
 set -u
 out=${1:?usage: tests/e2e.sh <out-dir> [prompt]}
 prompt=${2:-'Create two files in parallel with two workers: a.txt containing hello, and b.txt containing world.'}

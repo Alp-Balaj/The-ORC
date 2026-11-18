@@ -4,10 +4,11 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { BrowserWindow } from 'electron'
-import type { MissionView } from '../shared/types'
-import { sessionEnv } from './claude-launch'
-import type { Missions } from './missions'
-import type { TerminalHost } from './terminals'
+import type { MissionView } from '../shared/types.ts'
+import { readAgentStates } from './agent-status.ts'
+import { sessionEnv } from './claude-launch.ts'
+import type { Missions } from './missions.ts'
+import type { TerminalHost } from './terminals.ts'
 
 const run = promisify(execFile)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -70,8 +71,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   }
   const js = <T>(code: string): Promise<T> => d.win.webContents.executeJavaScript(code) as Promise<T>
   let shots = 0
-  // capturePage on a hidden window can wait forever for a frame that never comes: force a
-  // repaint first and give up after 8 s rather than hang the test.
+  // The smoke window renders offscreen (see index.ts), so capturePage keeps working while
+  // hidden. Give up after 8 s rather than hang the test.
   const shot = async (label: string): Promise<void> => {
     const file = `screenshot-${String(++shots).padStart(2, '0')}-${label}.png`
     d.win.webContents.invalidate()
@@ -90,6 +91,7 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
 
   const repo = process.env.ORC_SMOKE_REPO
   const prompt = process.env.ORC_SMOKE_PROMPT
+  const scenario = process.env.ORC_SMOKE_SCENARIO ?? 'mission'
   const deadline = startedAt + Number(process.env.ORC_SMOKE_TIMEOUT_S ?? 480) * 1000
   let missionId: string | null = null
   let timedOut = false
@@ -157,7 +159,10 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       await js(`[...document.querySelectorAll('.card')].find(c => c.textContent.includes('coordinator'))?.click()`)
 
       if (!prompt) {
-        await sleep(12000)
+        for (let i = 0; i < 3; i++) {
+          await sleep(4000)
+          await shot(`idle-${i}`)
+        }
       } else {
         d.missions.maxAgentsPerMission = 4
         const coord = (): MissionView['agents'][number] | undefined =>
@@ -165,7 +170,27 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
         const ready = await waitFor('coordinator SessionStart', () => coord()?.status === 'idle', 2500, 90_000)
         check('coordinator started (SessionStart hook)', ready)
         await shot('coordinator-ready')
-        if (ready) {
+        if (ready && scenario === 'permission') {
+          // One session: ask for a shell command acceptEdits won't auto-approve, and expect
+          // the Notification hook to turn the card ◐ "needs you". Then cancel with Esc.
+          d.terminals.write(coordId, prompt)
+          await sleep(700)
+          d.terminals.write(coordId, '\r')
+          log('prompt typed into coordinator')
+          const asked = await waitFor('needs-you', () => coord()?.status === 'needs-you', 1500, 120_000)
+          check('a pending permission prompt turns the agent needs-you', asked, coord()?.activity)
+          await shot('permission-prompt')
+          const cardText = await js<string>(`document.querySelector('.card')?.textContent ?? ''`)
+          check('the card shows needs-you', cardText.includes('needs-you'), cardText)
+          const sid = coord()?.sessionId ?? ''
+          const during = (await readAgentStates()).get(sid)
+          log(`claude agents says ${during} during the permission prompt`)
+          await sleep(9000)
+          check('needs-you survives the status poller while the prompt is open', coord()?.status === 'needs-you', `${coord()?.status}; claude agents: ${(await readAgentStates()).get(sid)}`)
+          d.terminals.write(coordId, '\x1b')
+          await waitFor('idle after cancel', () => coord()?.status === 'idle', 2000, 30_000)
+          check('Esc on the prompt returns the agent to idle (via the poller)', coord()?.status === 'idle', `${coord()?.status} | ${coord()?.activity}`)
+        } else if (ready) {
           d.terminals.write(coordId, prompt)
           await sleep(700)
           d.terminals.write(coordId, '\r')
@@ -212,7 +237,7 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   }
   untap()
   recordStates()
-  if (!prompt) await shot('final')
+
 
   // Evidence, pass or fail.
   const m = view()
@@ -239,7 +264,7 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   }
   writeFileSync(join(dir, 'claude-agents.json'), agentsJson)
 
-  if (prompt && m) {
+  if (prompt && m && scenario === 'mission') {
     const workers = m.agents.filter((a) => a.role === 'worker')
     check('at least two workers spawned', workers.length >= 2, workers.map((w) => w.name).join(', '))
     check('every worker ran in its own worktree', workers.every((w) => w.cwd.includes('/.orc/worktrees/')) && new Set(workers.map((w) => w.cwd)).size === workers.length)
@@ -250,7 +275,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
     const by = (sid: string, ev: string): unknown[] => hooks.filter((h) => h.session_id === sid && h.hook_event_name === ev)
     for (const w of workers) {
       check(`${w.name}: hooks fired (SessionStart, PreToolUse, Stop)`, ['SessionStart', 'PreToolUse', 'Stop'].every((e) => by(w.sessionId, e).length > 0))
-      check(`${w.name}: model flag`, true, m.model ?? 'default')
+      const banner = stripAnsi(d.terminals.replay(w.terminalId)).slice(0, 4000)
+      check(`${w.name}: runs on the mission's model`, !m.model || banner.toLowerCase().includes(m.model.toLowerCase()), m.model ?? 'default')
     }
     const sends = hooks.filter((h) => h.hook_event_name === 'PreToolUse' && h.tool_name === 'SendMessage' && h.agent !== `${m.id}:coordinator`)
     const undelivered = workers.filter((w) => /Not sent/.test(stripAnsi(d.terminals.replay(w.terminalId))))
