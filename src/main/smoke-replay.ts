@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { MissionView } from '../shared/types.ts'
 import type { Missions } from './missions.ts'
@@ -34,11 +34,12 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
     execFileSync('git', ['-C', spaceB, '-c', 'user.name=orc', '-c', 'user.email=orc@localhost', 'commit', '-q', '--allow-empty', '-m', 'space b'])
   }
   const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, '')
-  const start = (repoPath: string, name: string): Promise<string> =>
-    js<string>(`window.orc.startMission(${JSON.stringify({ repoPath, name, permissionMode: 'acceptEdits' })})`)
+  const start = (repoPath: string, name: string, gating = 'plan'): Promise<string> =>
+    js<string>(`window.orc.startMission(${JSON.stringify({ repoPath, name, permissionMode: 'acceptEdits', gating })})`)
+  missions.verify = async () => ({ ok: true, report: 'VERDICT: PASS\nMATCHES THE BRIEF: the doc was added.\nPROBLEMS: none\nOUTSIDE THE BRIEF: none', promptHash: 'f'.repeat(64) })
   const m1 = await start(c.sandbox, `smoke-r-ui-${stamp}`)
   const m2 = await start(c.sandbox, `smoke-r-feed-${stamp}`)
-  const m3 = await start(spaceB, `smoke-r-b-${stamp}`)
+  const m3 = await start(spaceB, `smoke-r-b-${stamp}`, 'none')
   log('three missions started in two spaces')
 
   const view = (id: string): MissionView => missions.views().find((m) => m.id === id)!
@@ -51,6 +52,21 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   // Mission 1: coordinator → navbar, post-api; post-api → tests (a sub-worker).
   for (const a of ['coordinator']) hook(m1, a, { hook_event_name: 'SessionStart' })
   hook(m1, 'coordinator', { hook_event_name: 'UserPromptSubmit', prompt: 'build the social feed' })
+  // Plan check: spawning is refused until the human approves the split in the UI.
+  check('plan check refuses spawn before a split', /propose_split/.test(await missions.spawnAgent(t(m1, 'coordinator'), 'navbar', 'x')))
+  missions.proposeSplit(t(m1, 'coordinator'), 'navbar and post API in parallel', [
+    { name: 'navbar', task: 'Build the navbar in src/nav.' },
+    { name: 'post-api', task: 'Build the post API in src/api.' }
+  ])
+  hook(m1, 'coordinator', { hook_event_name: 'Stop' })
+  await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m1).name)}] button')?.click()`)
+  await sleep(900)
+  check('the split panel shows the proposal', (await js<number>(`document.querySelectorAll('[data-testid=split-panel] li').length`)) === 2)
+  await shot('replay-split-proposed')
+  await js(`document.querySelector('[data-testid=approve-split]')?.click()`)
+  await sleep(700)
+  check('Approve in the UI approves the split', view(m1).split?.status === 'approved')
+  hook(m1, 'coordinator', { hook_event_name: 'UserPromptSubmit', prompt: '[The ORC] The human approved your split. Spawn the workers now with spawn_agent.' })
   await missions.spawnAgent(t(m1, 'coordinator'), 'navbar', 'Build the navbar in src/nav.')
   await missions.spawnAgent(t(m1, 'coordinator'), 'post-api', 'Build the post API in src/api.')
   await missions.spawnAgent(t(m1, 'post-api'), 'tests', 'Write tests for the post API.')
@@ -74,7 +90,16 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   // Mission 2: one worker, idle. Mission 3 (space b): coordinator only.
   hook(m2, 'coordinator', { hook_event_name: 'SessionStart' })
   hook(m3, 'coordinator', { hook_event_name: 'SessionStart' })
-  hook(m3, 'coordinator', { hook_event_name: 'UserPromptSubmit', prompt: 'hello' })
+  hook(m3, 'coordinator', { hook_event_name: 'UserPromptSubmit', prompt: 'add a doc file' })
+  // Space b, no check: a worker's change is committed by the app and merged on report_done.
+  await js(`window.orc.setGateCommand(${JSON.stringify(spaceB)}, 'test -f doc.txt')`)
+  await missions.spawnAgent(t(m3, 'coordinator'), 'doc', 'Write doc.txt')
+  const docCwd = view(m3).agents.find((a) => a.name === 'doc')!.cwd
+  writeFileSync(join(docCwd, 'doc.txt'), `replay ${stamp}\n`)
+  missions.reportDone(t(m3, 'doc'), 'Wrote doc.txt')
+  await missions.gitWork
+  check('the app committed and merged the worker', view(m3).merged.join() === 'doc' && view(m3).agents.find((a) => a.name === 'doc')?.merge === 'merged')
+  check('the gate ran after the merge', view(m3).gate?.ok === true, JSON.stringify(view(m3).gate))
   await missions.refreshTokens()
   await sleep(800)
 
@@ -129,6 +154,20 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await sleep(800)
   const headerB = await js<string>(`document.querySelector('[data-testid=header-mission]')?.textContent ?? ''`)
   check('selecting the space-b mission switches the header', headerB.includes('space-b'), headerB)
+  // Merge to main screen: diff, gate, Verifier, then the button.
+  await js(`document.querySelector('[data-testid=open-merge]')?.click()`)
+  await sleep(900)
+  check('the merge screen shows the combined diff', (await js<string>(`[...document.querySelectorAll('[data-testid=diff-file]')].map(e => e.textContent).join()`)).includes('doc.txt'))
+  check('the merge screen shows the gate result', /passed/.test(await js<string>(`document.querySelector('[data-testid=gate-result]')?.textContent ?? ''`)))
+  await js(`document.querySelector('[data-testid=run-verifier]')?.click()`)
+  await sleep(900)
+  check('the Verifier verdict shows', /PASS/.test(await js<string>(`document.querySelector('[data-testid=verifier-status]')?.textContent ?? ''`)))
+  await shot('replay-merge-screen')
+  await js(`document.querySelector('[data-testid=confirm-merge]')?.click()`)
+  await sleep(1500)
+  const mergeMsg = await js<string>(`document.querySelector('[data-testid=merge-result]')?.textContent ?? ''`)
+  check('Merge to main fast-forwards space-b main', /Merged/.test(mergeMsg) && existsSync(join(spaceB, 'doc.txt')), mergeMsg)
+  check('…and the mission is finished', !!view(m3).mergedToMain && view(m3).state === 'stopped')
   await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m2).name)}] button')?.click()`)
   await sleep(600)
   await js(`document.querySelector('[data-testid=stop-mission]')?.click()`)

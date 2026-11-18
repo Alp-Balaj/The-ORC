@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, Plus, X } from 'lucide-react'
-import type { MissionView, PermissionMode, SpaceView } from '../../../shared/types'
+import type { Gating, MissionView, PermissionMode, SpaceView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { AgentCard, StatusDot } from './AgentCard'
 import { Button } from './ui/button'
@@ -14,6 +14,7 @@ function NewMissionForm({ space, onStarted, onCancel }: {
 }): React.JSX.Element {
   const [name, setName] = useState('')
   const [mode, setMode] = useState<PermissionMode>('acceptEdits')
+  const [gating, setGating] = useState<Gating>('plan')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -22,7 +23,7 @@ function NewMissionForm({ space, onStarted, onCancel }: {
     setError(null)
     setBusy(true)
     try {
-      onStarted(await window.orc.startMission({ repoPath: space, name, permissionMode: mode }))
+      onStarted(await window.orc.startMission({ repoPath: space, name, permissionMode: mode, gating }))
     } catch (err) {
       setError(String(err).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, ''))
     } finally {
@@ -46,6 +47,11 @@ function NewMissionForm({ space, onStarted, onCancel }: {
         <option value="manual">Ask for everything</option>
         <option value="bypassPermissions">Bypass permissions</option>
       </NativeSelect>
+      <NativeSelect value={gating} onChange={(e) => setGating(e.target.value as Gating)} title="When finished workers merge into the mission's integration branch" data-testid="gating-select">
+        <option value="plan">Plan check: approve the split, then auto-merge</option>
+        <option value="checkpointed">Checkpointed: review every worker's diff</option>
+        <option value="none">No check: auto-merge</option>
+      </NativeSelect>
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" className="flex-1" disabled={busy || !name.trim()}>Start mission</Button>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
@@ -55,13 +61,14 @@ function NewMissionForm({ space, onStarted, onCancel }: {
   )
 }
 
-export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, onSelectMission, onSelectAgent }: {
+export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, onSelectMission, onSelectAgent, onReview }: {
   spaces: SpaceView[]
   missions: MissionView[]
   selectedMission: string | null
   selectedTerminal: string | null
   onSelectMission: (id: string) => void
   onSelectAgent: (terminalId: string) => void
+  onReview: (agent: string) => void
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [formFor, setFormFor] = useState<string | null>(null)
@@ -152,7 +159,7 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
                     {active && (
                       <div className="mt-1 space-y-1.5 pb-1 pl-1 pr-0.5">
                         {m.agents.map((a) => (
-                          <AgentCard key={a.terminalId} a={a} selected={a.terminalId === selectedTerminal} onSelect={() => onSelectAgent(a.terminalId)} />
+                          <AgentCard key={a.terminalId} a={a} selected={a.terminalId === selectedTerminal} onSelect={() => onSelectAgent(a.terminalId)} onReview={() => onReview(a.name)} />
                         ))}
                       </div>
                     )}

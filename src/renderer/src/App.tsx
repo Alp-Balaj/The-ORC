@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { GitMerge, MessagesSquare, Pause, Square, TerminalSquare } from 'lucide-react'
 import type { MissionView, SpaceView } from '../../shared/types'
 import { Feed } from './components/Feed'
+import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
 import { Sidebar } from './components/Sidebar'
 import { Badge } from './components/ui/badge'
@@ -23,6 +24,7 @@ export function App(): React.JSX.Element {
   const [missionId, setMissionId] = useState<string | null>(null)
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [showMessages, setShowMessages] = useState(true)
+  const [view, setView] = useState<'terminal' | 'merge' | { review: string }>('terminal')
   const [, tick] = useState(0)
 
   useEffect(() => {
@@ -45,10 +47,12 @@ export function App(): React.JSX.Element {
   const agent = mission?.agents.find((a) => a.terminalId === terminalId) ?? mission?.agents.find((a) => a.role === 'coordinator') ?? null
 
   const selectMission = (id: string): void => {
+    setView('terminal')
     setMissionId(id)
     setTerminalId(`${id}:coordinator`)
   }
   const selectAgent = (tid: string): void => {
+    setView('terminal')
     setTerminalId(tid)
     setMissionId(tid.split(':')[0])
   }
@@ -71,6 +75,7 @@ export function App(): React.JSX.Element {
             </div>
             <Badge variant="outline" title="Every session in this mission uses this permission mode">{modeLabel[mission.permissionMode] ?? mission.permissionMode}</Badge>
             {mission.model && <Badge variant="outline">{mission.model}</Badge>}
+            <Badge variant="outline" title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</Badge>
             {mission.state === 'stopped' && <Badge variant="exited">stopped</Badge>}
             {needsYou > 0 && <Badge variant="needs-you">{needsYou} need{needsYou === 1 ? 's' : ''} you</Badge>}
             <div className="ml-auto flex items-center gap-1.5">
@@ -90,7 +95,13 @@ export function App(): React.JSX.Element {
               >
                 <Square /> Stop
               </Button>
-              <Button size="sm" disabled title="Merge to main arrives in M3: it shows the combined diff first">
+              <Button
+                size="sm"
+                disabled={mission.merged.length === 0 && !mission.mergedToMain}
+                onClick={() => setView('merge')}
+                data-testid="open-merge"
+                title={mission.merged.length ? 'Review the combined diff, gate and Verifier, then merge' : 'Nothing merged into the integration branch yet'}
+              >
                 <GitMerge /> Merge to main
               </Button>
             </div>
@@ -107,11 +118,17 @@ export function App(): React.JSX.Element {
         selectedTerminal={agent?.terminalId ?? null}
         onSelectMission={selectMission}
         onSelectAgent={selectAgent}
+        onReview={(name) => setView({ review: name })}
       />
 
       {/* Terminal */}
       <main className="flex min-h-0 min-w-0 flex-col bg-background">
-        {agent ? (
+        {mission && <SplitPanel mission={mission} />}
+        {mission && view === 'merge' ? (
+          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
+        ) : mission && typeof view === 'object' ? (
+          <ReviewScreen mission={mission} agent={view.review} onBack={() => setView('terminal')} />
+        ) : agent ? (
           <>
             <div className="flex h-8 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="terminal-head" data-agent={agent.name}>
               <TerminalSquare className="size-3.5" />

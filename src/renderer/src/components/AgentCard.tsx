@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { CircleHelp, GitBranch, CheckCheck } from 'lucide-react'
+import { CircleHelp, GitBranch, CheckCheck, GitMerge, Swords, Eye } from 'lucide-react'
 import type { AgentView, AgentStatus } from '../../../shared/types'
 import { ago, cn, formatTokens } from '../lib/utils'
 import { Badge } from './ui/badge'
@@ -26,7 +26,7 @@ export function StatusDot({ status, className }: { status: AgentStatus; classNam
   return <span className={cn('inline-block size-2 shrink-0 rounded-full', dotClass[status], className)} />
 }
 
-export function AgentCard({ a, selected, onSelect }: { a: AgentView; selected: boolean; onSelect: () => void }): React.JSX.Element {
+export function AgentCard({ a, selected, onSelect, onReview }: { a: AgentView; selected: boolean; onSelect: () => void; onReview?: () => void }): React.JSX.Element {
   return (
     <motion.div
       layout
@@ -62,6 +62,24 @@ export function AgentCard({ a, selected, onSelect }: { a: AgentView; selected: b
         <div className="mt-0.5 text-[11px] text-muted-foreground" data-testid="last-instruction">
           last instruction: <span className={a.lastInstructionBy === 'you' ? 'text-foreground' : ''}>{a.lastInstructionBy}</span>, {ago(a.lastInstructionAt)}
         </div>
+      )}
+      {a.merge === 'merged' && (
+        <div className="mt-1 flex items-center gap-1 text-[11px] text-working" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3" /> merged into integration</div>
+      )}
+      {a.merge === 'conflict' && (
+        <div className="mt-1 flex items-center gap-1 text-[11px] text-destructive" data-testid="merge-state" data-merge="conflict" title={a.conflictFiles.join(', ')}><Swords className="size-3" /> conflict: {a.conflictFiles.join(', ')}</div>
+      )}
+      {a.merge === 'review' && (
+        <button
+          data-testid="review-worker"
+          className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-md border border-needs/40 bg-needs/10 py-1 text-[12px] text-needs hover:bg-needs/20"
+          onClick={(e) => {
+            e.stopPropagation()
+            onReview?.()
+          }}
+        >
+          <Eye className="size-3.5" /> Review diff before it merges
+        </button>
       )}
       {a.question && (
         <div className="mt-1.5 flex gap-1.5 rounded-md bg-needs/10 px-2 py-1 text-[12px] text-needs">
