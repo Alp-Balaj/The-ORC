@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Every unbilled check: typecheck, unit tests, build, and the hidden-UI replay scenario.
 # Usage: tests/free.sh [out-dir]
-set -eu
+set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 out=${1:-$(mktemp -d)}
 cd "$here"
+"$here/tests/clean-sandbox.sh"
 pnpm -s typecheck
 for t in control-server.smoke missions-status.test feed-tokens.test tree-layout.test; do
   node --no-warnings "tests/$t.ts" | tail -1
