@@ -51,6 +51,18 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
     - a done worker's permission prompt never showed ◐;
     - Merge to main deleted unmerged workers' worktrees (found by review).
 
+- **M4 is done** (branch `m4/robust`):
+  - **Crash recovery:** missions persist, and on start every live agent reattaches with
+    `claude --resume`. Verified free by SIGKILLing the app mid-mission and relaunching.
+    Verified billed: a real session paused mid-turn, the app was killed, and after the relaunch
+    the same session answered "PELICAN", a codeword given before the crash. Confirmed from the
+    transcript.
+  - **Pause / Resume:** Esc to agents mid-turn; spawns, merges and messages held. Verified on a
+    real session.
+  - **Live-agent cap per space** and **space settings** (gate, cap, records folder).
+  - **Mission records (vault):** off by default, since D4 is open.
+  - Tests: `tests/recovery.test.ts`, `tests/crash.sh` (free), `tests/resume.sh` (billed).
+
 ## Broken or unverified
 
 - Claude Code *teams* are experimental (behind an env flag), so I deferred them. The MCP tool-call
@@ -58,7 +70,9 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
   pending".
 - Held and expired message states (permission-mode mismatch) are never shown in the feed, because
   they never occur when every session uses the same mode.
-- Pause mission (M4) is a disabled button for now.
+- **Mission records are tested only against a folder inside orc-sandbox.** Nothing was written to
+  your real vault.
+- **A crash during a worker's first turn** restarts that worker fresh, with its task again.
 - Merge to main fails when `main` has moved since the mission began. It says so, but it doesn't
   offer to update the integration branch.
 
@@ -102,12 +116,12 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
 
 ## Billed sessions used
 
-- About 45 Haiku sessions so far, all small: the e2e test ran 7 times (3–4 sessions each), the
+- About 47 Haiku sessions so far, all small: the e2e test ran 7 times (3–4 sessions each), the
   permission scenario 4 times, the deny check once, and the Verifier 3 times.
 
 ## How to see it working
 
-    cd ~/Documents/Projects/The-ORC && git switch main && pnpm install
+    cd ~/Documents/Projects/The-ORC && git switch main && git pull && pnpm install
     tests/free.sh /tmp/orc-free      # free; screenshots in /tmp/orc-free/replay
     tests/e2e.sh /tmp/orc-e2e        # ~1 min, Haiku; then look at /tmp/orc-e2e/screenshot-*.png
     pnpm dev                         # the real window: choose orc-sandbox, start a mission, talk to it
