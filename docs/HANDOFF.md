@@ -1,72 +1,132 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-18 night (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~01:40 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
-## Overnight run status (newest first)
+## Next
 
-- `src/main/smoke.ts`: the hidden smoke mode is now an end-to-end test (`ORC_SMOKE_PROMPT`).
-  See "Smoke mode" below. `tests/kill-strays.sh` kills only ORC-launched `claude` processes.
-- Every session can take `--model` (`StartMissionRequest.model`); tests use Haiku.
-- `SendMessage`/`ListAgents` are pre-allowed in every session's settings.
-- The trust prompt's default highlight is **"No, exit"**: answering needs ↓ then Enter.
+**M2 on branch `m2/ui`**: Spaces → Missions → cards, React Flow tree, message feed, token counts,
+several missions and spaces (plan § Milestones). Then M3 (git and gates), M4 (robustness).
 
+## M1: done and verified (branch `m1/core`, 2026-11-19 ~01:30)
 
-## Done (branch `m1/core`)
+`tests/e2e.sh <out-dir>` automates the M1 "done when" check: a hidden window and a real mission in
+orc-sandbox on Haiku. Run 3 passed all 20 checks:
+- The coordinator found `spawn_agent` by itself.
+- Two workers spawned in `<sandbox>/.orc/worktrees/<mission>/<agent>`. Each wrote its file there
+  (not in the repo root), called `report_done`, and sent `SendMessage` to the coordinator.
+- The coordinator was woken by each message and summarised.
+- Clicking a worker card showed that worker's terminal, and Enter typed through xterm marked
+  "last instruction: you".
+- The screenshots were checked by eye.
+
+`ORC_SMOKE_SCENARIO=permission` (1 session) checks that a permission prompt turns the card ◐ and
+that Esc returns it to idle.
 
 | Piece | File | Verified how |
 |---|---|---|
-| Electron window, React UI, real terminals (node-pty + xterm.js) | `src/main/terminals.ts`, `src/renderer/src/TerminalView.tsx` | node-pty spawned a shell inside Electron's runtime (`ELECTRON_RUN_AS_NODE`) |
-| Control server: HTTP MCP endpoint + hook receiver on 127.0.0.1, a token per agent, Origin refused | `src/main/control-server.ts` | `tests/control-server.smoke.ts` passes: real MCP client, 3 tools, bad name rejected, 401/403 paths |
-| Launch flags for every session: name, session id, permission mode, hooks, denied git writes, MCP config, role prompt | `src/main/claude-launch.ts` | `tests/claude-session.probe.ts` passes on Claude Code 2.1.327: flags accepted, `report_done` reached the app, hooks fired `SessionStart → UserPromptSubmit → PreToolUse → PostToolUse → Stop → SessionEnd` |
-| Missions: coordinator in the repo, `spawn_agent` creates a worktree under `<repo>/.orc/worktrees/<mission>/<agent>` (excluded via `.git/info/exclude`) and starts a worker | `src/main/missions.ts`, `src/main/git-worktrees.ts` | Type-checks and builds. **Not yet run end to end** |
-| Three-panel UI: missions + status cards (left), terminal (centre), tree (right); clicking switches terminals, typing Enter in a terminal marks "last instruction: you" | `src/renderer/src/App.tsx` | Rendered in a hidden window under both `pnpm dev` and the build: no console errors, layout screenshot checked |
-| A real interactive coordinator launched by the app with every ORC flag | `src/main/missions.ts` | Smoke mode (below): it starts and shows Claude Code's trust prompt for the never-trusted sandbox. Quitting with it live kills it cleanly (fixed a crash where exiting sessions sent to the destroyed window) |
+| Electron window, React UI, real terminals (node-pty + xterm.js) | `src/main/terminals.ts`, `src/renderer/src/TerminalView.tsx` | e2e screenshots |
+| Control server: HTTP MCP endpoint + hook receiver on 127.0.0.1, a token per agent, Origin refused | `src/main/control-server.ts` | `tests/control-server.smoke.ts` (free) |
+| Launch flags for every session: name, session id, permission mode, model, hooks, denied git writes, MCP config, role prompt; clean env | `src/main/claude-launch.ts` | e2e |
+| Missions: coordinator in the repo; `spawn_agent` creates a worktree under `<repo>/.orc/worktrees/<mission>/<agent>` (excluded via `.git/info/exclude`) and starts a worker; cap of 8 agents per mission | `src/main/missions.ts`, `src/main/git-worktrees.ts` | e2e |
+| Status from hooks plus `claude agents --json` polling | `src/main/missions.ts`, `src/main/agent-status.ts` | `tests/missions-status.test.ts` (free) + permission scenario |
+| Three-panel UI: cards (left), terminal (centre), tree (right); click switches terminal; Enter marks "last instruction: you" | `src/renderer/src/App.tsx` | e2e clicks + screenshots |
 
-## Next: the M1 hand test (needs the owner at the keyboard)
+### "Watch for" answers (from the e2e runs' `hooks.json` and terminal output)
 
-1. `pnpm dev`, choose `~/Documents/Projects/orc-sandbox`, name a mission, mode *Accept edits*, **Start mission**.
-   **The coordinator's terminal will first ask "Is this a project you trust?"** (the sandbox was never opened interactively). Choose *Yes, I trust this folder*. Its card stays at "starting" until you do.
-2. In the coordinator terminal: *"Create two files in parallel with two workers: `a.txt` saying hello and `b.txt` saying world."*
-3. Expect two nodes in the tree and two cards. Click one, type to it, and check its card says "last instruction: you".
-4. Both workers should end ✓ done, and the coordinator should receive their SendMessage reports.
+- **Workspace trust in worktrees: inherited.** Once orc-sandbox was trusted, workers in
+  `<sandbox>/.orc/worktrees/...` started with no trust prompt (runs 1–3).
+  - The repo itself still needs trust once. The prompt highlights **"No, exit"** by default, so
+    answering it takes ↓ then Enter.
+  - The app does not pre-trust folders, because that would mean writing `~/.claude.json`. The user
+    answers the prompt in the coordinator's terminal.
+- **Permission prompts → ◐: yes, from two sources.**
+  - `Notification` arrives with `notification_type: "permission_prompt"` and the message "Claude
+    needs your permission", about 6 s after the prompt appears.
+  - `claude agents --json` shows the session as `"status": "waiting"` sooner. The app polls it every
+    4 s, and only while some agent is working or needs-you (each call takes about 0.2 s).
+  - **Esc on a permission prompt fires no hook at all.** The poller sees `idle` twice and returns the
+    card to idle.
+- **Idle stays grey: yes.** The idle notification is `notification_type: "idle_prompt"` with the
+  message "Claude is waiting for your input", about 60 s after a turn ends. The app ignores it.
+- **Your own hooks: layered, not replaced.**
+  - Claude Code's spinner showed "running UserPromptSubmit hooks… 0/2" and "Stop hooks… 0/2". Your
+    `~/.claude/settings.json` has one hook on each of those (codegraph, notify.sh), and The ORC adds one.
+  - Consequence: your `notify.sh` fires on every ORC session's Stop and Notification. See the open
+    questions in OVERNIGHT-REPORT.
+- **Deferred tools: fine.** The coordinator ran `ToolSearch select:mcp__orc__spawn_agent` unprompted.
+  Workers loaded `report_done` and `SendMessage` the same way. The role prompts now name the tools
+  and say to use ToolSearch.
+- **Cross-session messages** arrive at the receiver as a `UserPromptSubmit` whose `prompt` is
+  `<cross-session-message from="uds:…" from-name="<mission>/<agent>" from-mode="prompting">…`.
+  - The card's activity shows "message from <agent>" from this.
+  - On a worker, it also sets "last instruction: coordinator".
+- **Not checked yet:**
+  - Claude Code teams.
+  - The MCP tool-call timeout. It matters for `propose_split` in M3, but the plan already says that
+    tool returns "pending" at once.
 
-Watch for, and record here:
-- **Workspace trust in worktrees.** Does a worker in `<sandbox>/.orc/worktrees/...` start without a trust prompt? If one appears, it shows in the worker's terminal. Answer it there, and note that it happened.
-- **Permission prompts → ◐.** Does a pending permission prompt fire the `Notification` hook and turn the card amber? And does an agent that is merely idle *stay* grey? Claude Code also sends a Notification after a while idle. `missions.ts` skips `notification_type: idle_prompt` and "waiting for your input", but the real payload hasn't been seen yet.
-- **Every raw hook payload is logged** to `~/.config/the-orc/hooks.jsonl` (Electron `userData`). Check it for all of the above instead of relying on memory.
-- **Your own hooks.** Do your personal Claude Code hooks still run in ORC sessions (are `--settings` hooks layered or replacing)?
-- **Deferred tools.** In the probe, Claude needed `ToolSearch` before it could call `mcp__orc__report_done`. Check the coordinator finds `spawn_agent` unprompted. If not, strengthen `coordinatorPrompt`.
+### Bugs the e2e runs found, all fixed
 
-## Smoke mode (no window shown)
+- **Inherited session env.** Started from inside Claude Code, the app passed `CLAUDE_CODE_MESSAGING_SOCKET`,
+  `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID` and the like to every session.
+  - Those sessions attached to the *outer* session's messaging. Workers' SendMessage failed with "no
+    agent named … is reachable", and ListAgents listed the outer session.
+  - Fix: `sessionEnv()` in `claude-launch.ts` strips these variables.
+- **Esc on a permission prompt left the card amber forever.** Fixed by the poller (above).
+- **Hidden-window screenshots froze after the first** (Wayland). The smoke window now renders offscreen.
+
+## Tests
+
+    pnpm typecheck
+    node --no-warnings tests/control-server.smoke.ts      # free
+    node --no-warnings tests/missions-status.test.ts      # free
+    tests/e2e.sh <out-dir>                                 # billed: Haiku, 3 sessions, ~1 min
+    ORC_SMOKE_SCENARIO=permission tests/e2e.sh <out-dir> "Use the Bash tool to run exactly this command and nothing else: python3 -c 'print(6*7)'"   # billed: 1 session
+    tests/kill-strays.sh                                   # kills only ORC-launched claude processes
+
+### Smoke mode (no window shown)
 
     pnpm build
     ORC_SMOKE_OUT=<dir> [ORC_SMOKE_REPO=~/Documents/Projects/orc-sandbox] node_modules/.bin/electron .
-    # end to end (billed, Haiku, ~5 sessions):
-    ORC_SMOKE_OUT=<dir> ORC_SMOKE_REPO=~/Documents/Projects/orc-sandbox \
-      ORC_SMOKE_PROMPT='Create two files in parallel with two workers: a.txt containing hello, and b.txt containing world.' \
-      timeout 700 node_modules/.bin/electron .; tests/kill-strays.sh
 
-Without a prompt it loads the UI hidden and, with `ORC_SMOKE_REPO`, starts an unprompted coordinator
-(not billed). With `ORC_SMOKE_PROMPT` it answers trust prompts (orc-sandbox only), types the prompt
-into the coordinator, waits for workers to report done, clicks a worker card and presses Enter in
-its terminal through xterm, and asserts. It always writes `report.json` (checks, timeline, states),
-`screenshot-*.png`, `terminals/<agent>.txt`, `hooks.json` (this run's hook payloads),
-`claude-agents.json`. Exit code 0 = pass. A watchdog kills every session at the deadline.
+- **Without `ORC_SMOKE_PROMPT`:** loads the UI hidden. With `ORC_SMOKE_REPO`, it also starts an
+  unprompted coordinator (not billed).
+- **With `ORC_SMOKE_PROMPT`** (what `tests/e2e.sh` sets):
+  - answers trust prompts, for orc-sandbox only;
+  - types the prompt into the coordinator;
+  - waits for the workers to report done;
+  - clicks a worker card and presses Enter in its terminal through xterm;
+  - then asserts.
+- **Output, written every run:** `report.json` (checks, timeline, states), `timeline.log` (written
+  as it goes), `screenshot-*.png`, `terminals/<agent>.txt`, `hooks.json` (this run's hook payloads)
+  and `claude-agents.json`.
+- **Exit code** 0 means pass. A watchdog kills every session at the deadline.
+- `tests/e2e.sh` first removes earlier `smoke-*` worktrees and branches from the sandbox.
 
-## Known gaps (deliberately left for later milestones)
+## Known gaps (left for later milestones)
 
-- No `claude agents --json` fallback for status yet (hooks only).
 - Missions live in memory only. Closing the app kills every session (no `--resume` reattach yet, M4).
 - No commit on `report_done`, no integration branch, no merge screen (M3).
 - The coordinator isn't told when the human types into a worker (plan §6, M2).
 - Plain indented list as the tree. React Flow, shadcn/ui, styling polish come in M2.
 - Token use on cards (read `usage` from `~/.claude/projects/<dir>/<session-id>.jsonl`), M2.
+- Worktrees and `orc/<mission>/<agent>` branches are never cleaned up by the app (M3: after merge).
 
 ## Facts established (don't re-derive)
 
-- Idle sessions wake on `SendMessage`. `notify_when_idle` works. Mismatched permission modes hold
-  messages, and in background sessions they expire undelivered (`crossSessionInbound: "accept"` turns this off).
-- A brand-new folder needs workspace trust before `claude --bg` will start there.
-- `claude mcp` supports HTTP transport with headers. `--mcp-config` is variadic, so the prompt goes **first** in the args.
-- pnpm 12 needs `allowBuilds` for `electron`, `node-pty`, `esbuild`. The Electron binary downloads on first run.
-- Node 26 runs `.ts` directly but only erasable syntax. `--experimental-transform-types` no longer exists.
+- **Messaging:**
+  - Idle sessions wake on `SendMessage`, and `notify_when_idle` works.
+  - Mismatched permission modes hold messages. In background sessions, held messages expire
+    undelivered (`crossSessionInbound: "accept"` turns this off).
+- A brand-new folder needs workspace trust before `claude --bg` will start there. Subfolders of a
+  trusted folder inherit it.
+- `claude mcp` supports HTTP transport with headers. `--mcp-config` is variadic, so the prompt goes
+  **first** in the args.
+- **`claude agents --json`:**
+  - It lists interactive sessions with `status`: `busy` / `idle` / `waiting` (permission prompt),
+    and background ones with `state`.
+  - Run it with `sessionEnv()`.
+- pnpm 12 needs `allowBuilds` for `electron`, `node-pty`, `esbuild`. The Electron binary downloads
+  on first run.
+- **Node 26** runs `.ts` directly, but only erasable syntax (`--experimental-transform-types` no
+  longer exists). Relative imports in `src/main` carry `.ts`, so tests can import them.
