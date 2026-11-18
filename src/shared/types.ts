@@ -107,6 +107,7 @@ export interface MissionView {
   gate: GateView | null
   verifier: VerifierView | null
   mergedToMain: { commit: string; at: number } | null
+  paused: boolean
 }
 
 /** A repository the user has opened. Missions belong to the space of their repo. */
@@ -115,6 +116,10 @@ export interface SpaceView {
   name: string
   /** Shell command run on the merged result (e.g. "pnpm test"). Null: no gate. */
   gateCommand: string | null
+  /** Most live agents across this space's missions. */
+  maxLive: number
+  /** Optional folder for mission records (the vault, D4). Off when null. */
+  vaultDir: string | null
 }
 
 export type PermissionMode = 'acceptEdits' | 'auto' | 'bypassPermissions' | 'manual' | 'dontAsk'

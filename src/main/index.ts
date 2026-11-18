@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import type { StartMissionRequest } from '../shared/types.ts'
 import { ControlServer } from './control-server.ts'
 import { Missions } from './missions.ts'
@@ -23,8 +23,46 @@ const terminals = new TerminalHost(
     send('terminal:exit', id, code)
   }
 )
-const missions = new Missions(terminals, (views) => send('missions:changed', views))
+const missions = new Missions(terminals, (views) => {
+  send('missions:changed', views)
+  scheduleSave()
+})
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
+missions.liveLimitFor = (repo) => spaces.maxLive(repo)
+
+/** Missions survive restarts (M4). Smoke runs keep their state under ORC_SMOKE_OUT, never in
+ *  the owner's userData; ORC_STATE_FILE overrides (the crash test relaunches on one file). */
+function stateFile(): string {
+  return process.env.ORC_STATE_FILE ?? (smoke ? join(smoke, 'missions.json') : join(app.getPath('userData'), 'missions.json'))
+}
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+/** Set when quitting: killing sessions marks agents exited, and that must not be saved, or
+ *  nothing would resume next time. */
+let frozen = false
+function scheduleSave(): void {
+  if (saveTimer || frozen) return
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    saveNow()
+  }, 300)
+}
+function saveNow(): void {
+  if (frozen) return
+  try {
+    const file = stateFile()
+    writeFileSync(`${file}.tmp`, JSON.stringify(missions.snapshot()))
+    renameSync(`${file}.tmp`, file)
+  } catch (err) {
+    console.error('could not save missions', err)
+  }
+}
+function isOrphan(pid: number, sessionId: string): boolean {
+  try {
+    return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(sessionId)
+  } catch {
+    return false
+  }
+}
 const control = new ControlServer({
   agentForToken: (t) => missions.agentForToken(t),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
@@ -79,6 +117,12 @@ ipcMain.handle('missions:start', async (_e, req: StartMissionRequest) => {
   return missions.startMission(req)
 })
 ipcMain.handle('missions:stop', (_e, id: string) => missions.stopMission(id))
+ipcMain.handle('missions:pause', (_e, id: string) => missions.pauseMission(id))
+ipcMain.handle('missions:resume', (_e, id: string) => missions.resumeMission(id))
+ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string | null; maxLive?: number; vaultDir?: string | null }) => {
+  spaces.update(root, patch)
+  send('spaces:changed', spaces.list())
+})
 ipcMain.handle('missions:decide-split', (_e, id: string, approve: boolean, note: string | null) => missions.decideSplit(id, approve, note))
 ipcMain.handle('missions:approve-worker', (_e, id: string, agent: string) => missions.approveWorker(id, agent))
 ipcMain.handle('missions:send-back', (_e, id: string, agent: string, note: string) => missions.sendBack(id, agent, note))
@@ -119,11 +163,29 @@ ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
 
 app.whenReady().then(async () => {
   missions.setControlPort(await control.listen())
+  // Recovery before anything else: reattach the missions that were running.
+  if (existsSync(stateFile())) {
+    try {
+      const done = await missions.restore(JSON.parse(readFileSync(stateFile(), 'utf8')), {
+        isOrphan,
+        kill: (pid) => {
+          try {
+            process.kill(pid, 'SIGKILL')
+          } catch {}
+        }
+      })
+      if (done.length) console.log(`recovered:\n  ${done.join('\n  ')}`)
+    } catch (err) {
+      console.error('could not restore missions', err)
+    }
+  }
   startStatusPoller(() => missions.liveSessionIds(), (s) => missions.reconcile(s))
   setInterval(() => void missions.refreshTokens(), 5000).unref()
   createWindow()
   if (smoke) {
     const shutdown = (): void => {
+      saveNow()
+      frozen = true
       missions.shutdown()
       control.close()
     }
@@ -148,6 +210,8 @@ app.whenReady().then(async () => {
 })
 app.on('window-all-closed', () => {
   win = null
+  saveNow()
+  frozen = true
   missions.shutdown()
   control.close()
   app.quit()

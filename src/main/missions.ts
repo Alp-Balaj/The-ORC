@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentView, DiffView, FeedEntry, GateView, Gating, MissionView, SplitView, StartMissionRequest, VerifierView } from '../shared/types.ts'
 import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
@@ -24,6 +24,14 @@ interface Agent extends AgentView {
   /** Between UserPromptSubmit and Stop. Status can say "done" while the turn is still running
    *  (report_done is called mid-turn), so delivery checks this, not the status. */
   inTurn: boolean
+  /** The claude process, for orphan checks after a crash. */
+  pid: number | null
+}
+
+export interface SavedState {
+  version: 1
+  savedAt: number
+  missions: (Omit<Mission, 'agents' | 'held'> & { agents: (AgentView & { transcriptPath: string | null; pid: number | null; notes: string[] })[] })[]
 }
 
 interface Mission {
@@ -46,6 +54,10 @@ interface Mission {
   mergedToMain: { commit: string; at: number } | null
   /** The human's first prompt to the coordinator: what the Verifier checks against. */
   brief: string | null
+  /** Pause mission: no spawns, merges or deliveries; mid-turn agents were sent Esc. */
+  paused: boolean
+  /** Merges held while paused (agent names). */
+  held: string[]
 }
 
 /** Feed entries kept per mission (every change resends the views). */
@@ -131,7 +143,8 @@ export class Missions implements ControlHandlers {
         integrationCommit: m.integrationCommit,
         gate: m.gate,
         verifier: m.verifier,
-        mergedToMain: m.mergedToMain
+        mergedToMain: m.mergedToMain,
+        paused: m.paused
       }
     })
   }
@@ -143,6 +156,9 @@ export class Missions implements ControlHandlers {
     // a mission name must be unique across every space, not just this repo.
     if ([...this.missions.values()].some((m) => m.name === name)) {
       throw new Error(`a mission named "${name}" already exists. Pick another name.`)
+    }
+    if (this.liveIn(repo) >= this.liveLimitFor(repo)) {
+      throw new Error(`this space already has ${this.liveIn(repo)} live agents, the most allowed (${this.liveLimitFor(repo)}). Stop or finish a mission first.`)
     }
     if ((await this.git.branchesUnder(repo, `orc/${name}/`)).length > 0) {
       throw new Error(`a mission named "${name}" ran in this repository before (its orc/${name}/… branches still exist). Pick another name.`)
@@ -165,7 +181,9 @@ export class Missions implements ControlHandlers {
       gate: null,
       verifier: null,
       mergedToMain: null,
-      brief: null
+      brief: null,
+      paused: false,
+      held: []
     }
     this.missions.set(mission.id, mission)
     const sessionName = `${name}/coordinator`
@@ -208,6 +226,12 @@ export class Missions implements ControlHandlers {
     if (!caller) throw new Error('unknown caller')
     const mission = this.missions.get(caller.missionId)!
     if (mission.state === 'stopped') return 'This mission is stopped. No new workers can start.'
+    if (mission.paused) return 'The human paused this mission. Do not start workers; end your turn and wait.'
+    const live = this.liveIn(mission.repoPath)
+    const limit = this.liveLimitFor(mission.repoPath)
+    if (live >= limit) {
+      return `This space already has ${live} live agents, the most allowed (${limit}). Wait for a worker to finish, or reuse one by messaging it.`
+    }
     // Plan check is enforced here, not only asked for in the prompt.
     if (mission.gating === 'plan' && mission.split?.status !== 'approved') {
       return mission.split?.status === 'pending'
@@ -550,6 +574,11 @@ export class Missions implements ControlHandlers {
       return
     }
     a.merge = 'committed'
+    if (mission.paused) {
+      if (!mission.held.includes(a.name)) mission.held.push(a.name)
+      this.feed(mission, { kind: 'orc', from: 'orc', to: a.name, text: 'merge held: mission paused' })
+      return
+    }
     if (mission.gating === 'checkpointed') {
       a.merge = 'review'
       this.feed(mission, { kind: 'orc', from: a.name, to: 'you', text: 'diff waiting for your review before it merges' })
@@ -596,6 +625,42 @@ export class Missions implements ControlHandlers {
     this.emit()
   }
 
+  /** Most live agents per space. index.ts wires this to Spaces. */
+  liveLimitFor: (repo: string) => number = () => 6
+
+  /** Live = its process is running and it isn't done or exited (done agents sit idle and
+   *  cost nothing; working, idle, starting and needs-you agents count). */
+  liveIn(repo: string): number {
+    let n = 0
+    for (const m of this.missions.values()) {
+      if (m.repoPath !== repo || m.state !== 'running') continue
+      for (const a of m.agents.values()) if (a.status !== 'done' && a.status !== 'exited' && this.terminals.isRunning(a.terminalId)) n++
+    }
+    return n
+  }
+
+  /** Pause: every agent mid-turn gets Esc; spawns, merges and deliveries are held. The human
+   *  can still type to any agent. */
+  pauseMission(id: string): void {
+    const m = this.missions.get(id)
+    if (!m || m.paused || m.state !== 'running') return
+    m.paused = true
+    for (const a of m.agents.values()) if (a.inTurn) this.terminals.write(a.terminalId, '\x1b')
+    this.feed(m, { kind: 'orc', from: 'you', to: null, text: 'mission paused: agents interrupted; spawns, merges and messages from The ORC are held' })
+  }
+
+  resumeMission(id: string): void {
+    const m = this.missions.get(id)
+    if (!m || !m.paused) return
+    m.paused = false
+    this.feed(m, { kind: 'orc', from: 'you', to: null, text: `mission resumed${m.held.length ? `; merging held work: ${m.held.join(', ')}` : ''}`, status: 'ok' })
+    for (const name of m.held.splice(0)) {
+      const a = m.agents.get(name)
+      if (a) this.gitWork = this.gitWork.then(() => this.mergeWorker(m, a)).catch((err) => this.orcNote(m, `merge error: ${String(err)}`))
+    }
+    for (const a of m.agents.values()) this.flushNotes(a)
+  }
+
   /** Where a space's gate command comes from. index.ts wires this to Spaces. */
   gateCommandFor: (repo: string) => string | null = () => null
 
@@ -604,7 +669,7 @@ export class Missions implements ControlHandlers {
   deliver(a: Agent, text: string): void {
     const line = text.replace(/\s+/g, ' ')
     if (a.status === 'exited') return
-    if (!a.inTurn && (a.status === 'idle' || a.status === 'done')) {
+    if (!a.inTurn && !this.missions.get(a.missionId)?.paused && (a.status === 'idle' || a.status === 'done')) {
       this.terminals.write(a.terminalId, line)
       setTimeout(() => this.terminals.write(a.terminalId, '\r'), 500)
     } else {
@@ -614,14 +679,14 @@ export class Missions implements ControlHandlers {
 
   /** Types queued notes into an agent that has gone idle. */
   private flushNotes(a: Agent): void {
-    if (!a.notes.length || a.inTurn || (a.status !== 'idle' && a.status !== 'done')) return
+    if (!a.notes.length || a.inTurn || this.missions.get(a.missionId)?.paused || (a.status !== 'idle' && a.status !== 'done')) return
     const text = a.notes.splice(0).join(' ')
     this.terminals.write(a.terminalId, text)
     setTimeout(() => this.terminals.write(a.terminalId, '\r'), 500)
   }
 
-  private orcNote(mission: Mission, text: string): void {
-    this.feed(mission, { kind: 'orc', from: 'orc', to: null, text: oneLine(text), status: 'failed' })
+  private orcNote(mission: Mission, text: string, status: 'ok' | 'failed' = 'failed'): void {
+    this.feed(mission, { kind: 'orc', from: 'orc', to: null, text: oneLine(text), status })
   }
 
   private humanSteered(mission: Mission, worker: Agent, prompt: string): void {
@@ -693,28 +758,137 @@ export class Missions implements ControlHandlers {
       tally: null,
       notes: [],
       inTurn: false,
+      pid: null,
       token,
       missionId: mission.id
     }
     delete (agent as Partial<typeof a>).systemPrompt
     delete (agent as Partial<typeof a>).firstPrompt
     mission.agents.set(a.name, agent)
-    this.byToken.set(token, agent)
     this.byTerminal.set(terminalId, agent)
+    this.startSession(mission, agent, { systemPrompt: a.systemPrompt, firstPrompt: a.firstPrompt })
+  }
+
+  /** Starts (or, with `resume`, reattaches) an agent's claude in a terminal, with a fresh
+   *  bearer token. Tokens are never saved: every launch gets new ones. */
+  private startSession(mission: Mission, agent: Agent, o: { systemPrompt: string; firstPrompt?: string; resume?: boolean }): void {
+    if (agent.token) this.byToken.delete(agent.token)
+    agent.token = randomBytes(24).toString('hex')
+    this.byToken.set(agent.token, agent)
     const { command, args } = this.launcher(
       claudeArgs({
-        sessionName: a.sessionName,
+        sessionName: agent.sessionName,
         sessionId: agent.sessionId,
-        token,
+        resume: o.resume,
+        token: agent.token,
         controlPort: this.controlPort,
         permissionMode: mission.permissionMode,
         model: mission.model,
-        systemPrompt: a.systemPrompt,
-        firstPrompt: a.firstPrompt
+        systemPrompt: o.systemPrompt,
+        firstPrompt: o.firstPrompt
       })
     )
-    this.terminals.start({ id: terminalId, command, args, cwd: a.cwd, env: sessionEnv() })
+    this.terminals.start({ id: agent.terminalId, command, args, cwd: agent.cwd, env: sessionEnv() })
+    agent.pid = this.terminals.pid(agent.terminalId)
     this.emit()
+  }
+
+  private systemPromptFor(mission: Mission, a: Agent): string {
+    if (a.role === 'coordinator') return coordinatorPrompt(mission.name, a.sessionName, mission.repoPath, mission.gating)
+    const parent = a.parent ? mission.agents.get(a.parent) : null
+    return workerPrompt(mission.name, a.sessionName, parent?.sessionName ?? `${mission.name}/coordinator`)
+  }
+
+  // Persistence and recovery (M4) --------------------------------------------
+
+  /** Everything needed to bring missions back after a restart. No tokens, no live state. */
+  snapshot(): SavedState {
+    return {
+      version: 1,
+      savedAt: Date.now(),
+      missions: [...this.missions.values()].map((m) => ({
+        id: m.id, name: m.name, repoPath: m.repoPath, baseBranch: m.baseBranch, permissionMode: m.permissionMode,
+        model: m.model, state: m.state, createdAt: m.createdAt, feed: m.feed.slice(-MaxFeed), gating: m.gating,
+        split: m.split, merged: m.merged, integrationCommit: m.integrationCommit, gate: m.gate,
+        verifier: m.verifier?.status === 'running' ? null : m.verifier, mergedToMain: m.mergedToMain, brief: m.brief, paused: m.paused,
+        agents: [...m.agents.values()].map((a) => ({
+          ...agentView(a),
+          transcriptPath: a.tally?.path ?? null,
+          pid: a.pid ?? null,
+          notes: a.notes
+        }))
+      }))
+    }
+  }
+
+  /** Brings saved missions back. Running missions' live agents are reattached with
+   *  `claude --resume` (or started fresh if they never had a turn). Returns what it did. */
+  async restore(saved: SavedState, opts: { isOrphan: (pid: number, sessionId: string) => boolean; kill: (pid: number) => void }): Promise<string[]> {
+    const log: string[] = []
+    if (saved?.version !== 1) return log
+    for (const sm of saved.missions) {
+      if (this.missions.has(sm.id)) continue
+      const { agents: savedAgents, ...rest } = sm
+      const mission: Mission = { ...rest, agents: new Map(), held: [] }
+      this.missions.set(mission.id, mission)
+      this.feedSeq = Math.max(this.feedSeq, ...mission.feed.map((f) => f.id))
+      for (const sa of savedAgents) {
+        const { transcriptPath, pid, notes, ...view } = sa
+        const agent: Agent = {
+          ...view,
+          waitingOn: view.question ? 'question' : null,
+          idlePolls: 0,
+          tally: transcriptPath ? new TranscriptTally(transcriptPath) : null,
+          notes: notes ?? [],
+          inTurn: false,
+          token: '',
+          missionId: mission.id,
+          pid: null
+        }
+        mission.agents.set(agent.name, agent)
+        this.byTerminal.set(agent.terminalId, agent)
+        // A process that outlived the app and is still this agent's session: end it first.
+        if (pid && opts.isOrphan(pid, agent.sessionId)) {
+          opts.kill(pid)
+          log.push(`${mission.name}/${agent.name}: ended orphaned process ${pid}`)
+        }
+      }
+      if (mission.state !== 'running' || mission.mergedToMain) continue
+      // A merge cut off by the crash: abort it in the integration worktree only.
+      const integ = missionGit.integrationPath(mission.repoPath, mission.name)
+      if (existsSync(integ) && (await missionGit.git(integ, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFail: true })).code === 0) {
+        await missionGit.git(integ, ['merge', '--abort'], { allowFail: true })
+        log.push(`${mission.name}: aborted a merge left half-done in the integration worktree`)
+      }
+      for (const agent of mission.agents.values()) {
+        if (agent.status === 'exited') continue
+        if (!existsSync(agent.cwd)) {
+          agent.status = 'exited'
+          agent.activity = 'worktree missing after restart'
+          log.push(`${mission.name}/${agent.name}: worktree is gone, not resumed`)
+          continue
+        }
+        const hadTurn = !!agent.tally && existsSync(agent.tally.path)
+        // A turn cut off by the restart is over; questions and done stay as they were.
+        if (agent.status === 'working' || agent.status === 'starting' || (agent.status === 'needs-you' && !agent.question)) {
+          agent.status = hadTurn ? 'idle' : 'starting'
+          agent.activity = hadTurn ? 'resumed after restart' : 'restarted'
+        }
+        this.startSession(mission, agent, {
+          systemPrompt: this.systemPromptFor(mission, agent),
+          resume: hadTurn,
+          firstPrompt: hadTurn || agent.role !== 'worker' ? undefined : agent.task
+        })
+        if (agent.role === 'worker' && agent.branch) {
+          const dirty = (await missionGit.git(agent.cwd, ['status', '--porcelain'], { allowFail: true })).stdout
+          if (dirty) log.push(`${mission.name}/${agent.name}: worktree has uncommitted changes (kept)`)
+        }
+        log.push(`${mission.name}/${agent.name}: ${hadTurn ? 'resumed' : 'restarted'}`)
+      }
+      for (const line of log.filter((l) => l.startsWith(`${mission.name}`))) this.orcNote(mission, line, 'ok')
+    }
+    this.emit()
+    return log
   }
 
   private update(terminalId: string, patch: Partial<Agent>): void {

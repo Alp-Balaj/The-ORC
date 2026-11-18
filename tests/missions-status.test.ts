@@ -6,7 +6,7 @@ import { Missions } from '../src/main/missions.ts'
 import type { TerminalHost } from '../src/main/terminals.ts'
 
 const started: string[] = []
-const fakeHost = { start: (s: { id: string }) => started.push(s.id), killAll: () => {} } as unknown as TerminalHost
+const fakeHost = { start: (s: { id: string }) => started.push(s.id), killAll: () => {}, pid: () => null, isRunning: () => true, write: () => {} } as unknown as TerminalHost
 const m = new Missions(fakeHost, () => {})
 const id = await m.startMission({ repoPath: join(homedir(), 'Documents/Projects/orc-sandbox'), name: 'status test', permissionMode: 'acceptEdits' })
 const t = `${id}:coordinator`

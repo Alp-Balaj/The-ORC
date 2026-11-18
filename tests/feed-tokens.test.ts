@@ -23,7 +23,7 @@ ok('re-reading an unchanged file changes nothing', again.tokens === c.tokens)
 
 // A fake world --------------------------------------------------------------
 function world() {
-  const host = { start: () => {}, kill: () => {}, killAll: () => {} } as unknown as TerminalHost
+  const host = { start: () => {}, kill: () => {}, killAll: () => {}, pid: () => null, isRunning: () => true, write: () => {} } as unknown as TerminalHost
   const m = new Missions(host, () => {})
   const branches = new Set<string>()
   m.git = {

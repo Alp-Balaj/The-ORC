@@ -58,6 +58,8 @@ export function sessionEnv(base: NodeJS.ProcessEnv = process.env): Record<string
 export interface LaunchSpec {
   sessionName: string
   sessionId: string
+  /** Reattach to this session's conversation (after a restart) instead of starting it. */
+  resume?: boolean
   token: string
   controlPort: number
   permissionMode: PermissionMode
@@ -95,7 +97,7 @@ export function claudeArgs(spec: LaunchSpec): string[] {
   return [
     ...(spec.firstPrompt ? [spec.firstPrompt] : []),
     '--name', spec.sessionName,
-    '--session-id', spec.sessionId,
+    ...(spec.resume ? ['--resume', spec.sessionId] : ['--session-id', spec.sessionId]),
     '--permission-mode', spec.permissionMode,
     ...(spec.model ? ['--model', spec.model] : []),
     '--settings', JSON.stringify(settings),

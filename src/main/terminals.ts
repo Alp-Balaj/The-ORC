@@ -80,6 +80,10 @@ export class TerminalHost {
     return Object.fromEntries([...this.terminals].map(([id, t]) => [id, t.pid]))
   }
 
+  pid(id: TerminalId): number | null {
+    return this.terminals.get(id)?.pid ?? null
+  }
+
   isRunning(id: TerminalId): boolean {
     return this.terminals.has(id)
   }
