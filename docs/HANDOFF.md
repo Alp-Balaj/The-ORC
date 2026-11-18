@@ -1,40 +1,50 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~03:10 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~03:50 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
 ## Next
 
-**M4 (robustness) on branch `m4/robust`.** `main` is at the end of M3.
-- The final M3 billed batch on `4dd090b` passed: conflict scenario, mission e2e (Verifier PASS) and
-  permission scenario.
-- In the real conflict, the worker resolved it by itself in 28 s, with no question and no prompt.
-  The notice now says "edit the file only, run no git".
+**M4 (robustness), branch `m4/robust`: built; free tests pass; billed `tests/resume.sh` in progress.**
+- If it passes: update the reports, consult the advisor, then fast-forward with
+  `git push origin m4/robust:main` and `git fetch origin main:main`. Don't switch branches in the
+  owner's checkout.
+- After M4: polish and harden error handling.
+  - The owner's global CLAUDE.md requires Mobbin research before designing screens. Run ToolSearch
+    for the Mobbin tools first. If they're missing, the rule says to ask: note it in the report and
+    do error-handling work meanwhile.
 
-### M4 design, decided before coding
+## M4: how it works
 
-1. **Persist** missions to `<userData>/missions.json`: a schema version, written atomically (tmp +
-   rename) on every change. Smoke mode keeps it under `ORC_SMOKE_OUT`, never the owner's userData.
-   On load, recompute merged state from git, and abort a half-finished merge in `_integration` only.
-2. **Recover on start** (before anything else):
-   - **Orphans:** kill only a recorded PID whose `/proc/<pid>/cmdline` still carries that agent's
-     `--session-id`.
-   - **Reattach:** every live agent restarts with `claude --resume <session-id>` and a fresh token,
-     port, `--settings` and `--mcp-config`. Check with one billed run whether the session id and
-     transcript path survive.
-   - **Dirty worktrees:** list them on the mission instead of touching them.
-3. **Pause mission**, enforced in the main process:
-   - `spawn_agent` is refused, and merges and deliveries are held.
-   - Live agents get a `PreToolUse` `permissionDecision: "deny"` reply with a "mission paused"
-     reason (verify with one session).
-   - Resume releases everything.
-4. **Live-agent cap per space**, enforced in `spawnAgent` and `startMission`. "Live" means the
-   process is running and the status isn't done/exited.
-5. **Localhost token:** already done (per-agent tokens, regenerated each launch).
-6. **Vault:** last, off by default, per-space folder, tested only under orc-sandbox (D4 is open).
-7. **Tests:**
-   - free: a persistence round-trip with the fake launcher, and a smoke crash scenario (SIGKILL
-     Electron, relaunch hidden on the same state; the wrapper runs `kill-strays`);
-   - billed: one resume run.
+- **Persistence:** `Missions.snapshot()` and `restore()`. The state lives in
+  `<userData>/missions.json` (smoke: `ORC_SMOKE_OUT/missions.json`; `ORC_STATE_FILE` overrides).
+  - It is versioned and written atomically. No bearer tokens are saved.
+  - Saves are frozen at quit, so killed sessions don't save as exited.
+- **Recovery at start** (`index.ts`, before the window opens):
+  - An orphan is killed only if its `/proc/<pid>/cmdline` holds the agent's session id.
+  - A half-done merge in `_integration` is aborted.
+  - Agents whose transcript exists are relaunched with `claude --resume <session-id>`, fresh tokens
+    and fresh settings. Agents that never had a turn are started fresh, and workers get their task
+    again.
+  - A cut-off turn becomes idle. Questions and done stay as they were. A missing worktree means
+    the agent is not resumed. Each of these is written to the feed.
+  - Our `--session-id` equals the hook `session_id` and the transcript file name.
+- **Pause / Resume:** Pause sends Esc to agents mid-turn (`inTurn`) and holds spawns, merges and
+  deliveries. Resume merges the held work and flushes queued notes. The human can always type.
+- **Live-agent cap** (space setting, default 6), enforced in `spawnAgent` and `startMission`.
+  "Live" = the process is running and its status isn't done or exited.
+- **Vault records** (`src/main/vault.ts`, space setting "Mission records folder", off by default):
+  one append-only note per mission. It holds the brief, approved split, worker reports, Verifier
+  report (with hashes), and the merge commit plus every session id.
+- **Space settings UI:** the gear on a space row holds the gate command, live cap and records
+  folder, and the row shows the live count.
+- **Tests:**
+  - `tests/recovery.test.ts` (free, 21 checks);
+  - `tests/crash.sh` (free: SIGKILL the app's process group, relaunch on the same state, fake
+    sessions come back resumed);
+  - `tests/resume.sh` (billed, 1 session: a real turn, Pause mid-turn, SIGKILL, relaunch, the
+    session still remembers the codeword).
+- `tests/kill-strays.sh` now only kills `claude` processes whose cwd is under orc-sandbox. It is
+  safe while the owner runs real missions elsewhere.
 
 ## M3: done and verified (branch `m3/git`, 2026-11-19 ~02:35)
 
