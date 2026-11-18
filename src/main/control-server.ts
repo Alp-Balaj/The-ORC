@@ -11,6 +11,9 @@ export interface HookEvent {
   tool_input?: Record<string, unknown>
   message?: string
   prompt?: string
+  tool_response?: unknown
+  transcript_path?: string
+  notification_type?: string
   [key: string]: unknown
 }
 
@@ -21,7 +24,8 @@ export interface ControlHandlers {
   spawnAgent(caller: string, name: string, task: string): Promise<string>
   reportDone(caller: string, summary: string): void
   askHuman(caller: string, question: string): void
-  hookEvent(caller: string, event: HookEvent): void
+  /** Returns the hook's stdout (JSON for Claude Code), or null for none. */
+  hookEvent(caller: string, event: HookEvent): string | null
 }
 
 const MaxBody = 1024 * 1024
@@ -123,8 +127,11 @@ export class ControlServer {
       const url = req.url ?? ''
       if (url === '/hook' && req.method === 'POST') {
         const event = JSON.parse(await readBody(req)) as HookEvent
-        this.handlers.hookEvent(caller, event)
-        return end(res, 204, '')
+        const out = this.handlers.hookEvent(caller, event)
+        if (!out) return end(res, 204, '')
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(out)
+        return
       }
       if (url === '/mcp') {
         if (req.method !== 'POST') return end(res, 405, 'method not allowed')

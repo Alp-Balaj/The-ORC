@@ -1,0 +1,341 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "name": "UI rendered",
+      "ok": true,
+      "detail": "root children 1"
+    },
+    {
+      "name": "coordinator started (SessionStart hook)",
+      "ok": true
+    },
+    {
+      "name": "clicking a worker card shows its terminal",
+      "ok": true,
+      "detail": "smoke-003009/write-a-txt · /home/alpi/Documents/Projects/orc-sandbox/.orc/worktrees/smoke-003009/write-a-txt"
+    },
+    {
+      "name": "Enter typed in worker terminal marks \"last instruction: you\"",
+      "ok": true
+    },
+    {
+      "name": "worker card shows \"last instruction: you\"",
+      "ok": true,
+      "detail": "write-a-txtdoneSendMessagelast instruction: you, 0s agoorc/smoke-003009/write-a-txt✓ Created a.txt in the worktree root (write-a-txt). Its entire contents are the single word \"hello\" with no trailing newline. No other files touched; no git operations performed."
+    },
+    {
+      "name": "at least two workers spawned",
+      "ok": true,
+      "detail": "write-a-txt, write-b-txt"
+    },
+    {
+      "name": "every worker ran in its own worktree",
+      "ok": true
+    },
+    {
+      "name": "every worker reported done",
+      "ok": true,
+      "detail": "write-a-txt=done, write-b-txt=done"
+    },
+    {
+      "name": "a.txt and b.txt exist in worker worktrees",
+      "ok": true,
+      "detail": "write-a-txt/a.txt, write-b-txt/b.txt"
+    },
+    {
+      "name": "a.txt and b.txt are not in the repo root",
+      "ok": true
+    },
+    {
+      "name": "write-a-txt: hooks fired (SessionStart, PreToolUse, Stop)",
+      "ok": true
+    },
+    {
+      "name": "write-a-txt: runs on the mission's model",
+      "ok": true,
+      "detail": "haiku"
+    },
+    {
+      "name": "write-b-txt: hooks fired (SessionStart, PreToolUse, Stop)",
+      "ok": true
+    },
+    {
+      "name": "write-b-txt: runs on the mission's model",
+      "ok": true,
+      "detail": "haiku"
+    },
+    {
+      "name": "no SendMessage came back \"Not sent\"",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "workers sent SendMessage reports",
+      "ok": true,
+      "detail": "2 SendMessage calls from workers"
+    },
+    {
+      "name": "coordinator was active after the first report (woken by a message)",
+      "ok": true,
+      "detail": "4 coordinator hook events after first report_done"
+    },
+    {
+      "name": "coordinator used spawn_agent",
+      "ok": true
+    },
+    {
+      "name": "no timeout",
+      "ok": true
+    },
+    {
+      "name": "no console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "timeline": [
+    {
+      "t": 2,
+      "event": "PASS UI rendered: root children 1"
+    },
+    {
+      "t": 2,
+      "event": "mission smoke-003009 started"
+    },
+    {
+      "t": 2,
+      "event": "coordinator: starting | starting"
+    },
+    {
+      "t": 3,
+      "event": "coordinator: idle | ready"
+    },
+    {
+      "t": 5,
+      "event": "PASS coordinator started (SessionStart hook)"
+    },
+    {
+      "t": 5,
+      "event": "screenshot screenshot-01-coordinator-ready.png"
+    },
+    {
+      "t": 6,
+      "event": "prompt typed into coordinator"
+    },
+    {
+      "t": 7,
+      "event": "coordinator: working | thinking"
+    },
+    {
+      "t": 9,
+      "event": "coordinator: working | ToolSearch"
+    },
+    {
+      "t": 12,
+      "event": "coordinator: working | orc: spawn_agent"
+    },
+    {
+      "t": 12,
+      "event": "write-a-txt: idle | ready"
+    },
+    {
+      "t": 12,
+      "event": "write-b-txt: starting | starting"
+    },
+    {
+      "t": 12,
+      "event": "screenshot screenshot-02-workers-spawned.png"
+    },
+    {
+      "t": 13,
+      "event": "write-a-txt: working | thinking"
+    },
+    {
+      "t": 13,
+      "event": "write-b-txt: idle | ready"
+    },
+    {
+      "t": 14,
+      "event": "coordinator: idle | turn finished"
+    },
+    {
+      "t": 14,
+      "event": "write-b-txt: working | thinking"
+    },
+    {
+      "t": 16,
+      "event": "write-a-txt: working | ToolSearch"
+    },
+    {
+      "t": 17,
+      "event": "write-b-txt: working | ToolSearch"
+    },
+    {
+      "t": 19,
+      "event": "write-a-txt: done | orc: report_done"
+    },
+    {
+      "t": 20,
+      "event": "write-b-txt: done | orc: report_done"
+    },
+    {
+      "t": 26,
+      "event": "PASS clicking a worker card shows its terminal: smoke-003009/write-a-txt · /home/alpi/Documents/Projects/orc-sandbox/.orc/worktrees/smoke-003009/write-a-txt"
+    },
+    {
+      "t": 28,
+      "event": "PASS Enter typed in worker terminal marks \"last instruction: you\""
+    },
+    {
+      "t": 28,
+      "event": "PASS worker card shows \"last instruction: you\": write-a-txtdoneSendMessagelast instruction: you, 0s agoorc/smoke-003009/write-a-txt✓ Created a.txt in the worktree root (write-a-txt). Its entire contents are the single word \"hello\" with no trailing newline. No other files touched; no git operations performed."
+    },
+    {
+      "t": 28,
+      "event": "screenshot screenshot-03-worker-selected.png"
+    },
+    {
+      "t": 30,
+      "event": "screenshot screenshot-04-coordinator-final.png"
+    },
+    {
+      "t": 30,
+      "event": "write-a-txt: done | SendMessage"
+    },
+    {
+      "t": 30,
+      "event": "write-b-txt: done | SendMessage"
+    },
+    {
+      "t": 30,
+      "event": "PASS at least two workers spawned: write-a-txt, write-b-txt"
+    },
+    {
+      "t": 30,
+      "event": "PASS every worker ran in its own worktree"
+    },
+    {
+      "t": 30,
+      "event": "PASS every worker reported done: write-a-txt=done, write-b-txt=done"
+    },
+    {
+      "t": 30,
+      "event": "PASS a.txt and b.txt exist in worker worktrees: write-a-txt/a.txt, write-b-txt/b.txt"
+    },
+    {
+      "t": 30,
+      "event": "PASS a.txt and b.txt are not in the repo root"
+    },
+    {
+      "t": 30,
+      "event": "PASS write-a-txt: hooks fired (SessionStart, PreToolUse, Stop)"
+    },
+    {
+      "t": 30,
+      "event": "PASS write-a-txt: runs on the mission's model: haiku"
+    },
+    {
+      "t": 30,
+      "event": "PASS write-b-txt: hooks fired (SessionStart, PreToolUse, Stop)"
+    },
+    {
+      "t": 30,
+      "event": "PASS write-b-txt: runs on the mission's model: haiku"
+    },
+    {
+      "t": 30,
+      "event": "PASS no SendMessage came back \"Not sent\""
+    },
+    {
+      "t": 30,
+      "event": "PASS workers sent SendMessage reports: 2 SendMessage calls from workers"
+    },
+    {
+      "t": 30,
+      "event": "PASS coordinator was active after the first report (woken by a message): 4 coordinator hook events after first report_done"
+    },
+    {
+      "t": 30,
+      "event": "PASS coordinator used spawn_agent"
+    },
+    {
+      "t": 30,
+      "event": "PASS no timeout"
+    },
+    {
+      "t": 30,
+      "event": "PASS no console errors"
+    }
+  ],
+  "errors": [],
+  "pids": {
+    "3d0e8f39-a356-476e-90c5-858346e94fe8:coordinator": 64427,
+    "3d0e8f39-a356-476e-90c5-858346e94fe8:write-a-txt": 64832,
+    "3d0e8f39-a356-476e-90c5-858346e94fe8:write-b-txt": 64951
+  },
+  "missions": [
+    {
+      "id": "3d0e8f39-a356-476e-90c5-858346e94fe8",
+      "name": "smoke-003009",
+      "repoPath": "/home/alpi/Documents/Projects/orc-sandbox",
+      "baseBranch": "main",
+      "permissionMode": "acceptEdits",
+      "model": "haiku",
+      "agents": [
+        {
+          "name": "coordinator",
+          "sessionName": "smoke-003009/coordinator",
+          "role": "coordinator",
+          "parent": null,
+          "task": "",
+          "cwd": "/home/alpi/Documents/Projects/orc-sandbox",
+          "branch": "main",
+          "status": "idle",
+          "activity": "turn finished",
+          "lastInstructionBy": null,
+          "lastInstructionAt": null,
+          "sessionId": "b4a301f3-7f29-4c75-a476-eb37b43b0f76",
+          "terminalId": "3d0e8f39-a356-476e-90c5-858346e94fe8:coordinator",
+          "question": null,
+          "doneSummary": null
+        },
+        {
+          "name": "write-a-txt",
+          "sessionName": "smoke-003009/write-a-txt",
+          "role": "worker",
+          "parent": "coordinator",
+          "task": "In your worktree of the repo at /home/alpi/Documents/Projects/orc-sandbox, create a file named a.txt in the repository root whose entire contents are exactly the single word: hello (no trailing newline needed beyond what a normal text file has). You own only a.txt; do not touch any other file. Then send a short completion report to the coordinator session \"smoke-003009/coordinator\" with SendMessage saying a.txt was created and what it contains. Do not commit, merge, push or manage branches; ORC handles git.",
+          "cwd": "/home/alpi/Documents/Projects/orc-sandbox/.orc/worktrees/smoke-003009/write-a-txt",
+          "branch": "orc/smoke-003009/write-a-txt",
+          "status": "done",
+          "activity": "SendMessage",
+          "lastInstructionBy": "you",
+          "lastInstructionAt": 1794961834620,
+          "sessionId": "7abd5f7e-e1fa-4d73-9a92-48d514a7f582",
+          "terminalId": "3d0e8f39-a356-476e-90c5-858346e94fe8:write-a-txt",
+          "question": null,
+          "doneSummary": "Created a.txt in the worktree root (write-a-txt). Its entire contents are the single word \"hello\" with no trailing newline. No other files touched; no git operations performed."
+        },
+        {
+          "name": "write-b-txt",
+          "sessionName": "smoke-003009/write-b-txt",
+          "role": "worker",
+          "parent": "coordinator",
+          "task": "In your worktree of the repo at /home/alpi/Documents/Projects/orc-sandbox, create a file named b.txt in the repository root whose entire contents are exactly the single word: world (no trailing newline needed beyond what a normal text file has). You own only b.txt; do not touch any other file. Then send a short completion report to the coordinator session \"smoke-003009/coordinator\" with SendMessage saying b.txt was created and what it contains. Do not commit, merge, push or manage branches; ORC handles git.",
+          "cwd": "/home/alpi/Documents/Projects/orc-sandbox/.orc/worktrees/smoke-003009/write-b-txt",
+          "branch": "orc/smoke-003009/write-b-txt",
+          "status": "done",
+          "activity": "SendMessage",
+          "lastInstructionBy": "coordinator",
+          "lastInstructionAt": 1794961819908,
+          "sessionId": "605bf2cf-6f6f-4315-b05e-e20d70a897cc",
+          "terminalId": "3d0e8f39-a356-476e-90c5-858346e94fe8:write-b-txt",
+          "question": null,
+          "doneSummary": "Created b.txt in the worktree root (/home/alpi/Documents/Projects/orc-sandbox/.orc/worktrees/smoke-003009/write-b-txt/b.txt). Contents: the word \"world\" followed by a trailing newline. No other files touched; no git operations performed."
+        }
+      ]
+    }
+  ],
+  "survivorsKilled": []
+}

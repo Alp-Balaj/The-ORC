@@ -6,6 +6,7 @@ import { ControlServer } from './control-server.ts'
 import { Missions } from './missions.ts'
 import { startStatusPoller } from './agent-status.ts'
 import { runSmoke } from './smoke.ts'
+import { Spaces } from './spaces.ts'
 import { TerminalHost } from './terminals.ts'
 
 let win: BrowserWindow | null = null
@@ -33,11 +34,13 @@ const control = new ControlServer({
     try {
       appendFileSync(join(app.getPath('userData'), 'hooks.jsonl'), JSON.stringify({ at: Date.now(), agent: c, ...e }) + '\n')
     } catch {}
-    missions.hookEvent(c, e)
+    return missions.hookEvent(c, e)
   }
 })
 
 const smoke = process.env.ORC_SMOKE_OUT ?? null
+// Test runs never touch the owner's saved spaces.
+const spaces = new Spaces(smoke ? null : join(app.getPath('userData'), 'spaces.json'))
 if (smoke) {
   // A hidden window stops producing frames after a while; screenshots then never arrive.
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
@@ -68,7 +71,22 @@ function createWindow(): void {
 }
 
 ipcMain.handle('missions:list', () => missions.views())
-ipcMain.handle('missions:start', (_e, req: StartMissionRequest) => missions.startMission(req))
+ipcMain.handle('missions:start', async (_e, req: StartMissionRequest) => {
+  await spaces.add(req.repoPath)
+  send('spaces:changed', spaces.list())
+  return missions.startMission(req)
+})
+ipcMain.handle('missions:stop', (_e, id: string) => missions.stopMission(id))
+ipcMain.handle('spaces:list', () => spaces.list())
+ipcMain.handle('spaces:add', async (_e, path: string) => {
+  const root = await spaces.add(path)
+  send('spaces:changed', spaces.list())
+  return root
+})
+ipcMain.handle('spaces:remove', (_e, root: string) => {
+  spaces.remove(root)
+  send('spaces:changed', spaces.list())
+})
 ipcMain.handle('dialog:pick-repo', async () => {
   const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'] })
   return r.canceled ? null : r.filePaths[0]
@@ -85,6 +103,7 @@ ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
 app.whenReady().then(async () => {
   missions.setControlPort(await control.listen())
   startStatusPoller(() => missions.liveSessionIds(), (s) => missions.reconcile(s))
+  setInterval(() => void missions.refreshTokens(), 5000).unref()
   createWindow()
   if (smoke) {
     const shutdown = (): void => {

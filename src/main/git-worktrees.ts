@@ -48,3 +48,9 @@ export async function addWorktree(
   await git(repo, 'worktree', 'add', '-b', branch, path, base)
   return { path, branch }
 }
+
+/** Branches under refs/heads/<prefix>, e.g. "orc/ui-revamp/". */
+export async function branchesUnder(repo: string, prefix: string): Promise<string[]> {
+  const out = await git(repo, 'for-each-ref', '--format=%(refname:short)', `refs/heads/${prefix}`)
+  return out ? out.split('\n') : []
+}

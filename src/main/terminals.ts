@@ -84,6 +84,10 @@ export class TerminalHost {
     return this.terminals.has(id)
   }
 
+  kill(id: TerminalId): void {
+    this.terminals.get(id)?.kill()
+  }
+
   killAll(): void {
     for (const term of this.terminals.values()) term.kill()
     this.terminals.clear()

@@ -15,7 +15,7 @@ const server = new ControlServer({
   spawnAgent: async () => 'not in probe',
   reportDone: (_c, s) => { calls.push(`report_done: ${s}`) },
   askHuman: () => {},
-  hookEvent: (_c, e) => { events.push(e.hook_event_name + (e.tool_name ? `(${e.tool_name})` : '')) }
+  hookEvent: (_c, e) => { events.push(e.hook_event_name + (e.tool_name ? `(${e.tool_name})` : '')); return null }
 })
 const port = await server.listen()
 const args = claudeArgs({

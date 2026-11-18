@@ -8,7 +8,7 @@ const server = new ControlServer({
   spawnAgent: async (caller, name, task) => { calls.push(`spawn ${caller} ${name} ${task}`); return `started ${name}` },
   reportDone: (caller, s) => { calls.push(`done ${caller} ${s}`) },
   askHuman: (caller, q) => { calls.push(`ask ${caller} ${q}`) },
-  hookEvent: (caller, e: HookEvent) => { calls.push(`hook ${caller} ${e.hook_event_name}`) }
+  hookEvent: (caller, e: HookEvent) => { calls.push(`hook ${caller} ${e.hook_event_name}`); return e.hook_event_name === 'PreToolUse' ? '{"hookSpecificOutput":{}}' : null }
 })
 const port = await server.listen()
 const base = `http://127.0.0.1:${port}`
@@ -28,6 +28,8 @@ await client.close()
 
 const hook = await fetch(`${base}/hook`, { method: 'POST', headers: { Authorization: 'Bearer good' }, body: JSON.stringify({ hook_event_name: 'Stop' }) })
 if (hook.status !== 204) fail(`hook ${hook.status}`)
+const reply = await fetch(`${base}/hook`, { method: 'POST', headers: { Authorization: 'Bearer good' }, body: JSON.stringify({ hook_event_name: 'PreToolUse' }) })
+if (reply.status !== 200 || !(await reply.text()).includes('hookSpecificOutput')) fail(`hook reply ${reply.status}`)
 const noTok = await fetch(`${base}/hook`, { method: 'POST', body: '{}' })
 if (noTok.status !== 401) fail(`no token ${noTok.status}`)
 const browser = await fetch(`${base}/hook`, { method: 'POST', headers: { Authorization: 'Bearer good', Origin: 'https://evil.example' }, body: '{}' })

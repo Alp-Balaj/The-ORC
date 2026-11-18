@@ -1,0 +1,77 @@
+{"type": "custom-title"}
+{"type": "agent-name"}
+{"type": "mode"}
+{"type": "permission-mode"}
+{"type": "session-owner"}
+{"type": "atis-latch"}
+{"type": "file-history-snapshot"}
+{"type": "file-history-snapshot"}
+{"type": "user"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "api-request-shape"}
+{"type": "api-request-blob"}
+{"type": "api-request-blob"}
+{"type": "api-request"}
+{"type": "last-prompt"}
+{"type": "custom-title"}
+{"type": "agent-name"}
+{"type": "mode"}
+{"type": "permission-mode"}
+{"type": "session-owner"}
+{"type": "atis-latch"}
+{"type": "file-history-delta"}
+{"type": "tools-used"}
+{"type": "assistant", "message": {"id": "msg_011Ch9T2K1coxuJQ77oCn82M", "role": "assistant", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 15981, "cache_read_input_tokens": 27435, "output_tokens": 391, "output_tokens_details": {"thinking_tokens": 184}, "server_tool_use": {"web_search_requests": 0, "web_fetch_requests": 0}, "service_tier": "standard", "cache_creation": {"ephemeral_1h_input_tokens": 15981, "ephemeral_5m_input_tokens": 0}, "inference_geo": "global", "iterations": [{"input_tokens": 2, "output_tokens": 391, "cache_read_input_tokens": 27435, "cache_creation_input_tokens": 15981, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 15981}, "type": "message"}], "speed": "standard", "fallback_credit": null}}}
+{"type": "assistant", "message": {"id": "msg_011Ch9T2K1coxuJQ77oCn82M", "role": "assistant", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 15981, "cache_read_input_tokens": 27435, "output_tokens": 391, "output_tokens_details": {"thinking_tokens": 184}, "server_tool_use": {"web_search_requests": 0, "web_fetch_requests": 0}, "service_tier": "standard", "cache_creation": {"ephemeral_1h_input_tokens": 15981, "ephemeral_5m_input_tokens": 0}, "inference_geo": "global", "iterations": [{"input_tokens": 2, "output_tokens": 391, "cache_read_input_tokens": 27435, "cache_creation_input_tokens": 15981, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 15981}, "type": "message"}], "speed": "standard", "fallback_credit": null}}}
+{"type": "assistant", "message": {"id": "msg_011Ch9T2K1coxuJQ77oCn82M", "role": "assistant", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 15981, "cache_read_input_tokens": 27435, "output_tokens": 391, "output_tokens_details": {"thinking_tokens": 184}, "server_tool_use": {"web_search_requests": 0, "web_fetch_requests": 0}, "service_tier": "standard", "cache_creation": {"ephemeral_1h_input_tokens": 15981, "ephemeral_5m_input_tokens": 0}, "inference_geo": "global", "iterations": [{"input_tokens": 2, "output_tokens": 391, "cache_read_input_tokens": 27435, "cache_creation_input_tokens": 15981, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 15981}, "type": "message"}], "speed": "standard", "fallback_credit": null}}}
+{"type": "tools-used"}
+{"type": "user"}
+{"type": "user"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "api-request-shape"}
+{"type": "api-request-blob"}
+{"type": "api-request-blob"}
+{"type": "api-request"}
+{"type": "last-prompt"}
+{"type": "custom-title"}
+{"type": "agent-name"}
+{"type": "mode"}
+{"type": "permission-mode"}
+{"type": "session-owner"}
+{"type": "atis-latch"}
+{"type": "attachment"}
+{"type": "attachment"}
+{"type": "tools-used"}
+{"type": "assistant", "message": {"id": "msg_011Ch9T2XWCxVwfzLXZ7zD2B", "role": "assistant", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 9414, "cache_read_input_tokens": 43416, "output_tokens": 240, "output_tokens_details": {"thinking_tokens": 130}, "server_tool_use": {"web_search_requests": 0, "web_fetch_requests": 0}, "service_tier": "standard", "cache_creation": {"ephemeral_1h_input_tokens": 9414, "ephemeral_5m_input_tokens": 0}, "inference_geo": "global", "iterations": [{"input_tokens": 2, "output_tokens": 240, "cache_read_input_tokens": 43416, "cache_creation_input_tokens": 9414, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 9414}, "type": "message"}], "speed": "standard", "fallback_credit": null}}}
+{"type": "assistant", "message": {"id": "msg_011Ch9T2XWCxVwfzLXZ7zD2B", "role": "assistant", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 9414, "cache_read_input_tokens": 43416, "output_tokens": 240, "output_tokens_details": {"thinking_tokens": 130}, "server_tool_use": {"web_search_requests": 0, "web_fetch_requests": 0}, "service_tier": "standard", "cache_creation": {"ephemeral_1h_input_tokens": 9414, "ephemeral_5m_input_tokens": 0}, "inference_geo": "global", "iterations": [{"input_tokens": 2, "output_tokens": 240, "cache_read_input_tokens": 43416, "cache_creation_input_tokens": 9414, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 9414}, "type": "message"}], "speed": "standard", "fallback_credit": null}}}
+{"type": "user"}
+{"type": "api-request-blob"}
+{"type": "api-request"}
+{"type": "tools-used"}
+{"type": "attachment"}
+{"type": "assistant", "message": {"id": "msg_011Ch9T2jR4Q381xFwGGvSPn", "role": "assistant", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 294, "cache_read_input_tokens": 52830, "output_tokens": 171, "output_tokens_details": {"thinking_tokens": 0}, "server_tool_use": {"web_search_requests": 0, "web_fetch_requests": 0}, "service_tier": "standard", "cache_creation": {"ephemeral_1h_input_tokens": 294, "ephemeral_5m_input_tokens": 0}, "inference_geo": "global", "iterations": [{"input_tokens": 2, "output_tokens": 171, "cache_read_input_tokens": 52830, "cache_creation_input_tokens": 294, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 294}, "type": "message"}], "speed": "standard", "fallback_credit": null}}}
+{"type": "user"}
+{"type": "api-request-blob"}
+{"type": "api-request-blob"}
+{"type": "api-request"}
+{"type": "attachment"}
+{"type": "assistant", "message": {"id": "msg_011Ch9T2smMUxVobjqtmzzQP", "role": "assistant", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 343, "cache_read_input_tokens": 53124, "output_tokens": 121, "output_tokens_details": {"thinking_tokens": 0}, "server_tool_use": {"web_search_requests": 0, "web_fetch_requests": 0}, "service_tier": "standard", "cache_creation": {"ephemeral_1h_input_tokens": 343, "ephemeral_5m_input_tokens": 0}, "inference_geo": "global", "iterations": [{"input_tokens": 2, "output_tokens": 121, "cache_read_input_tokens": 53124, "cache_creation_input_tokens": 343, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 343}, "type": "message"}], "speed": "standard", "fallback_credit": null}}}
+{"type": "system"}
+{"type": "system"}
+{"type": "cost-state"}
+{"type": "last-prompt"}
+{"type": "cost-state"}

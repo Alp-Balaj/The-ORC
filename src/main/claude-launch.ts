@@ -67,7 +67,8 @@ export interface LaunchSpec {
 
 function hookCommand(port: number, token: string): string {
   return (
-    `curl -s -m 2 -o /dev/null -X POST -H 'Authorization: Bearer ${token}' ` +
+    // stdout carries the app's reply (additionalContext notes); empty for most events.
+    `curl -sf -m 2 -X POST -H 'Authorization: Bearer ${token}' ` +
     `-H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`
   )
 }
