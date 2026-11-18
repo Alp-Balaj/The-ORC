@@ -44,9 +44,12 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   ok('spawn is refused before a split', /propose_split/.test(await m.spawnAgent(c, 'a', 'x')))
   ok('propose_split returns pending at once', /Pending/.test(m.proposeSplit(c, 'two files', [{ name: 'a', task: 'a.txt' }, { name: 'b', task: 'b.txt' }])))
   ok('spawn is refused while the split is pending', /waiting for the human/.test(await m.spawnAgent(c, 'a', 'x')))
-  hook(m, c, { hook_event_name: 'Stop' })
+  // Approve while the coordinator is still finishing its turn (seen in a real run): the note
+  // is queued, then typed once Stop arrives.
   m.decideSplit(id, true, 'keep it tiny')
-  await sleep(600)
+  ok('approval while busy is queued, not typed', !typed.some((t) => t.id === c))
+  hook(m, c, { hook_event_name: 'Stop' })
+  await sleep(1500)
   const toCoord = typed.filter((t) => t.id === c).map((t) => t.data).join('')
   ok('approval is typed into the idle coordinator, then Enter', toCoord.includes('[The ORC] The human approved your split') && toCoord.endsWith('\r'), JSON.stringify(toCoord.slice(-60)))
   hook(m, c, { hook_event_name: 'UserPromptSubmit', prompt: '[The ORC] The human approved your split.' })

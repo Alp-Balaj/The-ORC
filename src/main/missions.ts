@@ -420,6 +420,8 @@ export class Missions implements ControlHandlers {
         break
       case 'Stop':
         if (!done && !asking) this.update(callerTerminal, { status: 'idle', activity: 'turn finished', waitingOn: null })
+        // Notes queued while it was busy would otherwise wait for a hook that never comes.
+        if (agent.notes.length) setTimeout(() => this.flushNotes(agent), 800)
         break
       case 'SessionEnd':
         this.update(callerTerminal, { status: 'exited', waitingOn: null })
@@ -568,6 +570,14 @@ export class Missions implements ControlHandlers {
     } else {
       a.notes.push(line)
     }
+  }
+
+  /** Types queued notes into an agent that has gone idle. */
+  private flushNotes(a: Agent): void {
+    if (!a.notes.length || (a.status !== 'idle' && a.status !== 'done')) return
+    const text = a.notes.splice(0).join(' ')
+    this.terminals.write(a.terminalId, text)
+    setTimeout(() => this.terminals.write(a.terminalId, '\r'), 500)
   }
 
   private orcNote(mission: Mission, text: string): void {
