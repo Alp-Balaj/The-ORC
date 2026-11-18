@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 const run = promisify(execFile)
 
@@ -11,7 +11,9 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
 }
 
 export async function repoRoot(path: string): Promise<string> {
-  return git(path, 'rev-parse', '--show-toplevel')
+  // git prints C:/x/y on Windows; resolve() turns it into C:\x\y, the form dialogs and join()
+  // produce, so roots compare equal wherever they came from. A no-op on POSIX.
+  return resolve(await git(path, 'rev-parse', '--show-toplevel'))
 }
 
 export async function currentBranch(repo: string): Promise<string> {
@@ -23,8 +25,8 @@ export async function currentBranch(repo: string): Promise<string> {
  *  .gitignore, so The ORC leaves no trace in tracked files. */
 export async function ensureOrcExcluded(repo: string): Promise<void> {
   const commonDir = await git(repo, 'rev-parse', '--git-common-dir')
-  const exclude = join(repo, commonDir, 'info', 'exclude')
-  await mkdir(join(repo, commonDir, 'info'), { recursive: true })
+  const exclude = resolve(repo, commonDir, 'info', 'exclude')
+  await mkdir(resolve(repo, commonDir, 'info'), { recursive: true })
   const existing = await readFile(exclude, 'utf8').catch(() => '')
   if (!existing.split('\n').includes('/.orc/')) {
     await appendFile(exclude, `${existing.endsWith('\n') || existing === '' ? '' : '\n'}/.orc/\n`)

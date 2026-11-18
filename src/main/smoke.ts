@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { appendFileSync, existsSync, readFileSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { BrowserWindow } from 'electron'
 import type { MissionView } from '../shared/types.ts'
@@ -42,7 +42,7 @@ interface Check {
 function inSandbox(cwd: string): boolean {
   try {
     const real = realpathSync(cwd)
-    return real === Sandbox || real.startsWith(Sandbox + '/')
+    return real === Sandbox || real.startsWith(Sandbox + sep)
   } catch {
     return false
   }

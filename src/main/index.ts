@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import type { StartMissionRequest } from '../shared/types.ts'
 import { ControlServer } from './control-server.ts'
+import { renameOver } from './rename-over.ts'
 import { Missions } from './missions.ts'
 import { startStatusPoller } from './agent-status.ts'
 import { runSmoke } from './smoke.ts'
@@ -55,13 +57,22 @@ function saveNow(): void {
   try {
     const file = stateFile()
     writeFileSync(`${file}.tmp`, JSON.stringify(missions.snapshot()))
-    renameSync(`${file}.tmp`, file)
+    renameOver(`${file}.tmp`, file)
   } catch (err) {
     console.error('could not save missions', err)
   }
 }
 function isOrphan(pid: number, sessionId: string): boolean {
   try {
+    if (process.platform === 'win32') {
+      // No /proc on Windows: ask WMI for the process's command line.
+      const cmdline = execFileSync(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${Math.trunc(pid)}").CommandLine`],
+        { encoding: 'utf8', timeout: 10_000, windowsHide: true }
+      )
+      return cmdline.includes(sessionId)
+    }
     return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(sessionId)
   } catch {
     return false

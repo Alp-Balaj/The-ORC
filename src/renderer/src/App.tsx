@@ -86,7 +86,7 @@ export function App(): React.JSX.Element {
         {mission ? (
           <>
             <div className="flex min-w-0 items-center gap-1.5 text-[13px]" data-testid="header-mission">
-              <span className="text-muted-foreground">{mission.repoPath.split('/').pop()}</span>
+              <span className="text-muted-foreground">{mission.repoPath.split(/[\\/]/).pop()}</span>
               <span className="text-muted-foreground/50">/</span>
               <span className="truncate font-semibold">{mission.name}</span>
             </div>

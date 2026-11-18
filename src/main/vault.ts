@@ -23,7 +23,7 @@ export function appendRecord(
       file,
       [
         '---',
-        `project: ${m.repoPath.split('/').pop()}`,
+        `project: ${m.repoPath.split(/[\\/]/).pop()}`,
         'type: mission',
         `created: ${date}`,
         '---',

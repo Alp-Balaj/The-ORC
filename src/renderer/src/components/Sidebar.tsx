@@ -144,7 +144,7 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
           </div>
         )}
         {roots.map((root) => {
-          const name = root.split('/').pop()
+          const name = root.split(/[\\/]/).pop()
           const ms = missions.filter((m) => m.repoPath === root)
           const open = !collapsed.has(root)
           const space = spaces.find((s) => s.root === root)

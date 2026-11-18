@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 /** Git for missions. The app owns git: agents never commit. Every call in one repository is
  *  serialized (two workers finishing at once would otherwise race on index locks), times
@@ -118,10 +118,32 @@ export interface GateResult {
   at: number
 }
 
+/** The bash that runs gate commands. On Windows a bare `bash` on PATH is usually WSL's
+ *  (System32\bash.exe), so Git for Windows' bash is found next to git.exe instead. */
+let gateBash: string | undefined
+export function bashPath(): string {
+  if (gateBash) return gateBash
+  gateBash = 'bash'
+  if (process.platform === 'win32') {
+    const candidates: string[] = []
+    try {
+      // git.exe lives in <Git>\cmd or <Git>\bin (or <Git>\mingw64\bin); bash.exe in <Git>\bin.
+      for (const git of execFileSync('where.exe', ['git'], { encoding: 'utf8', windowsHide: true }).split(/\r?\n/).filter(Boolean)) {
+        const dir = dirname(git)
+        candidates.push(join(dir, '..', 'bin', 'bash.exe'), join(dir, '..', '..', 'bin', 'bash.exe'))
+      }
+    } catch {}
+    candidates.push(join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe'))
+    const found = candidates.find((c) => existsSync(c))
+    if (found) gateBash = found
+  }
+  return gateBash
+}
+
 /** Runs the space's gate command in the integration worktree (shell, 10 min cap). */
 export function runGate(cwd: string, command: string, timeoutMs = 600_000): Promise<GateResult> {
   return new Promise((resolve) => {
-    execFile('bash', ['-lc', command], { cwd, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(bashPath(), ['-lc', command], { cwd, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as { code?: unknown }).code === 'number' ? ((err as { code: number }).code) : null) : 0
       const output = `${stdout}${stderr}`.slice(-8000)
       resolve({ command, ok: !err, exitCode: code, output, at: Date.now() })

@@ -1,4 +1,5 @@
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { renameOver } from './rename-over.ts'
 import { basename } from 'node:path'
 import type { SpaceView } from '../shared/types.ts'
 import { repoRoot } from './git-worktrees.ts'
@@ -99,7 +100,7 @@ export class Spaces {
     try {
       const tmp = `${this.file}.tmp`
       writeFileSync(tmp, JSON.stringify(this.list().map(({ name: _n, ...rest }) => rest), null, 2))
-      renameSync(tmp, this.file)
+      renameOver(tmp, this.file)
     } catch {}
   }
 }

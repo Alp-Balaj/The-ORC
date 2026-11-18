@@ -1,4 +1,6 @@
 import * as pty from 'node-pty'
+import { statSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 
 export type TerminalId = string
 
@@ -11,7 +13,26 @@ export interface TerminalSpec {
   env?: Record<string, string>
 }
 
-type DataListener = (id: TerminalId, data: string) => void
+/** On Windows, node-pty (ConPTY) needs the program's real file: unlike CreateProcess it neither
+ *  appends .exe nor searches PATH for `claude`. So find it on PATH with PATHEXT here. Other
+ *  platforms (and paths that are already a file) pass through unchanged. */
+export function resolveCommand(command: string, env: Record<string, string | undefined>): string {
+  if (process.platform !== 'win32' || isAbsolute(command) || /[\\/]/.test(command)) return command
+  const get = (name: string): string =>
+    Object.entries(env).find(([k]) => k.toUpperCase() === name)?.[1] ?? ''
+  const exts = ['', ...(get('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)]
+  for (const dir of get('PATH').split(';').filter(Boolean)) {
+    for (const ext of exts) {
+      const candidate = join(dir, command + ext)
+      try {
+        if (ext !== '' || /\.[^\\/.]+$/.test(command)) if (statSync(candidate).isFile()) return candidate
+      } catch {}
+    }
+  }
+  return command
+}
+
+type DataListener =(id: TerminalId, data: string) => void
 type ExitListener = (id: TerminalId, exitCode: number) => void
 
 /** Owns every live pseudo-terminal. Output is buffered so a renderer that
@@ -32,12 +53,13 @@ export class TerminalHost {
 
   start(spec: TerminalSpec, cols = 120, rows = 32): void {
     if (this.terminals.has(spec.id)) throw new Error(`terminal ${spec.id} already running`)
-    const term = pty.spawn(spec.command, spec.args, {
+    const env = spec.env ?? (process.env as Record<string, string>)
+    const term = pty.spawn(resolveCommand(spec.command, env), spec.args, {
       name: 'xterm-256color',
       cols,
       rows,
       cwd: spec.cwd,
-      env: spec.env ?? (process.env as Record<string, string>)
+      env
     })
     this.terminals.set(spec.id, term)
     this.scrollback.set(spec.id, '')

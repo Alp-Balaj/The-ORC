@@ -10,8 +10,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "rebuild:native": "electron-rebuild -f -w node-pty",
-    "postinstall": "electron-rebuild -f -w node-pty"
+    "rebuild:native": "node scripts/rebuild-native.mjs",
+    "postinstall": "node scripts/rebuild-native.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

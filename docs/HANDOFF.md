@@ -226,6 +226,29 @@ that Esc returns it to idle.
 - **Exit code** 0 means pass. A watchdog kills every session at the deadline.
 - `tests/e2e.sh` first removes earlier `smoke-*` worktrees and branches from the sandbox.
 
+## Windows (branch `windows-support`, 2026-11-18)
+
+Runs on Windows 11. Checked there: typecheck, all 7 unit tests, and the hidden replay at 42/42
+(twice). Not run on Windows yet: `crash.sh`, `resume.sh`, `e2e.sh` (billed). Setup: `npm i -g pnpm`
+(corepack can't write to Program Files without admin), `pnpm install`, then
+`node node_modules/electron/install.js` if `node_modules/electron/dist` is missing.
+
+- `pnpm install` skips `electron-rebuild` on Windows (`scripts/rebuild-native.mjs`): node-pty's
+  N-API prebuilds load in Electron, and the source build needs Visual Studio and fails on winpty.
+- `repoRoot` passes git's `C:/x` through `resolve()`, so space roots match dialog and `join()` paths.
+  Without it, gate lookups missed.
+- Gates and the replay's fake sessions use Git for Windows' bash (`bashPath()` in `mission-git.ts`).
+  A bare `bash` there is WSL.
+- node-pty's ConPTY needs the program's real file (no PATH/.exe lookup), so `TerminalHost` resolves
+  commands with `resolveCommand()` (PATH + PATHEXT). Without it every mission failed with
+  "File not found:". The replay missed this because its fake sessions use a full bash path.
+- A mission whose coordinator fails to start is now forgotten, so its name can be used again.
+- `isOrphan` reads the command line through PowerShell/WMI (there's no `/proc`).
+- State files are renamed with `renameOver` (retries EPERM: the virus scanner holds files briefly).
+- Tests use `fileURLToPath`, not `URL.pathname` (which gives `/C:/...`).
+- The `tests/*.sh` scripts run in Git Bash; `kill-strays.sh`, `crash.sh` and `resume.sh` assume `/proc` or POSIX
+  signals and haven't been ported.
+
 ## Known gaps (left for later milestones)
 
 - Missions live in memory only. Closing the app kills every session (no `--resume` reattach yet, M4).

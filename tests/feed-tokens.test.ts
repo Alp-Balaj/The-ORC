@@ -1,6 +1,7 @@
 // Free: replays recorded hook payloads (tests/fixtures) through Missions with fake sessions
 // and fake git, and checks the feed, token counts, steering notes and name rules.
 // node --no-warnings tests/feed-tokens.test.ts
+import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { Missions } from '../src/main/missions.ts'
 import type { TerminalHost } from '../src/main/terminals.ts'
@@ -14,7 +15,7 @@ const ok = (what: string, cond: boolean, detail = ''): void => {
 const fixture = (f: string) => JSON.parse(readFileSync(new URL(`fixtures/${f}`, import.meta.url), 'utf8')) as Record<string, any>[]
 
 // Tokens -------------------------------------------------------------------
-const tally = new TranscriptTally(new URL('fixtures/transcript-worker.jsonl', import.meta.url).pathname)
+const tally = new TranscriptTally(fileURLToPath(new URL('fixtures/transcript-worker.jsonl', import.meta.url)))
 const c = await tally.update()
 ok('transcript tokens = input + cache writes + output, deduped by message id', c.tokens === 8 + 26032 + 923, String(c.tokens))
 ok('context = latest message input + cache', c.contextTokens > 26000 && c.contextTokens < 60000, String(c.contextTokens))

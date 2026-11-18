@@ -31,12 +31,20 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       fit.fit()
       window.orc.resize(id, term.cols, term.rows)
     }
-    const observer = new ResizeObserver(sync)
+    // Fit on the next frame, not inside the observer callback: fitting resizes the observed
+    // element, and doing it synchronously trips "ResizeObserver loop completed…" (seen on
+    // Windows, where scrollbars take layout width).
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(sync)
+    })
     observer.observe(ref.current!)
     sync()
 
     return () => {
       disposed = true
+      cancelAnimationFrame(frame)
       offData()
       input.dispose()
       observer.disconnect()

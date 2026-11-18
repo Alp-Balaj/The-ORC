@@ -1,5 +1,6 @@
 // Free: M4 in Missions with fake sessions and real git: save → restore (resume), Pause holds
 // spawns/merges/deliveries, the live-agent cap. node --no-warnings tests/recovery.test.ts
+import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -19,7 +20,7 @@ function repo(name: string): string {
   writeFileSync(join(r, 'x.txt'), 'x\n'); g(r, 'add', '.'); g(r, 'commit', '-qm', 'base')
   return r
 }
-const transcript = new URL('fixtures/transcript-worker.jsonl', import.meta.url).pathname
+const transcript = fileURLToPath(new URL('fixtures/transcript-worker.jsonl', import.meta.url))
 function world() {
   const launches: { id: string; args: string[] }[] = []
   const typed: { id: string; data: string }[] = []

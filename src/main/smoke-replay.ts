@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { MissionView } from '../shared/types.ts'
 import type { Missions } from './missions.ts'
+import { bashPath } from './mission-git.ts'
 
 /** What the replay needs from the smoke harness. */
 export interface ReplayCtx {
@@ -23,7 +24,7 @@ export interface ReplayCtx {
 export function fakeLauncher(args: string[]): { command: string; args: string[] } {
   const name = args[args.indexOf('--name') + 1]
   const how = args.includes('--resume') ? 'resumed' : 'started'
-  return { command: 'bash', args: ['-c', `printf '\\033[1mfake session\\033[0m %s (${how})\\r\\n(ORC replay: no Claude here)\\r\\n' "${name}"; exec sleep 3600`] }
+  return { command: bashPath(), args: ['-c', `printf '\\033[1mfake session\\033[0m %s (${how})\\r\\n(ORC replay: no Claude here)\\r\\n' "${name}"; exec sleep 3600`] }
 }
 
 export async function runReplay(c: ReplayCtx): Promise<void> {

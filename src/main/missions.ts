@@ -80,7 +80,7 @@ function describeTool(name: string | undefined, input: Record<string, unknown> |
   const pick = (k: string): string | undefined =>
     typeof input?.[k] === 'string' ? (input[k] as string) : undefined
   const file = pick('file_path') ?? pick('path') ?? pick('notebook_path')
-  if (file) return `${name} ${file.split('/').slice(-2).join('/')}`
+  if (file) return `${name} ${file.split(/[\\/]/).slice(-2).join('/')}`
   const cmd = pick('command')
   if (cmd) return `${name}: ${cmd.slice(0, 60)}`
   const to = pick('to')
@@ -191,16 +191,27 @@ export class Missions implements ControlHandlers {
     }
     this.missions.set(mission.id, mission)
     const sessionName = `${name}/coordinator`
-    this.launch(mission, {
-      name: 'coordinator',
-      sessionName,
-      role: 'coordinator',
-      parent: null,
-      task: '',
-      cwd: repo,
-      branch: mission.baseBranch,
-      systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating)
-    })
+    try {
+      this.launch(mission, {
+        name: 'coordinator',
+        sessionName,
+        role: 'coordinator',
+        parent: null,
+        task: '',
+        cwd: repo,
+        branch: mission.baseBranch,
+        systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating)
+      })
+    } catch (err) {
+      // The coordinator never started: forget the mission so the name can be used again.
+      for (const a of mission.agents.values()) {
+        this.byTerminal.delete(a.terminalId)
+        if (a.token) this.byToken.delete(a.token)
+      }
+      this.missions.delete(mission.id)
+      this.emit()
+      throw err
+    }
     return mission.id
   }
 
