@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import type { BrowserWindow } from 'electron'
 import type { MissionView } from '../shared/types.ts'
 import { readAgentStates } from './agent-status.ts'
+import { runReplay } from './smoke-replay.ts'
 import { sessionEnv } from './claude-launch.ts'
 import type { Missions } from './missions.ts'
 import type { TerminalHost } from './terminals.ts'
@@ -26,6 +27,7 @@ export interface SmokeDeps {
   missions: Missions
   terminals: TerminalHost
   userData: string
+  appPath: string
   shutdown: () => void
 }
 
@@ -146,7 +148,9 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   }
 
   try {
-    if (repo) {
+    if (scenario === 'replay') {
+      await runReplay({ js, shot, check, log, sleep, missions: d.missions, sandbox: Sandbox, transcriptFixture: join(d.appPath, 'tests', 'fixtures', 'transcript-worker.jsonl') })
+    } else if (repo) {
       const name = prompt ? `smoke-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}` : 'smoke'
       // Through the renderer's preload API, so the IPC path the UI uses is covered too.
       const req = {
@@ -158,7 +162,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       missionId = await js<string>(`window.orc.startMission(${JSON.stringify(req)})`)
       log(`mission ${name} started via window.orc.startMission`)
       const coordId = `${missionId}:coordinator`
-      await js(`[...document.querySelectorAll('.card')].find(c => c.textContent.includes('coordinator'))?.click()`)
+      await sleep(300)
+      await js(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.click()`)
 
       if (!prompt) {
         for (let i = 0; i < 3; i++) {
@@ -182,8 +187,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           const asked = await waitFor('needs-you', () => coord()?.status === 'needs-you', 1500, 120_000)
           check('a pending permission prompt turns the agent needs-you', asked, coord()?.activity)
           await shot('permission-prompt')
-          const cardText = await js<string>(`document.querySelector('.card')?.textContent ?? ''`)
-          check('the card shows needs-you', cardText.includes('needs-you'), cardText)
+          const cardStatus = await js<string>(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.dataset.status ?? ''`)
+          check('the card shows needs-you', cardStatus === 'needs-you', cardStatus)
           const sid = coord()?.sessionId ?? ''
           const during = (await readAgentStates()).get(sid)
           log(`claude agents says ${during} during the permission prompt`)
@@ -211,9 +216,16 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           // UI: click a worker card, press Enter in its terminal, expect "last instruction: you".
           const w = workers()[0]
           if (w) {
-            await js(`[...document.querySelectorAll('.card')].find(c => c.querySelector('strong')?.textContent === ${JSON.stringify(w.name)})?.click()`)
+            // The tree node first (the plan's core interaction), then the card.
+            await js(`document.querySelector('[data-testid=tree-node][data-agent=${JSON.stringify(w.name)}]')?.click()`)
+            await sleep(1200)
+            const viaTree = await js<string>(`document.querySelector('[data-testid=terminal-head]')?.textContent ?? ''`)
+            check('clicking a tree node shows that agent\'s terminal', viaTree.includes(w.sessionName), viaTree)
+            await js(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.click()`)
+            await sleep(600)
+            await js(`document.querySelector('[data-testid=agent-card][data-agent=${JSON.stringify(w.name)}]')?.click()`)
             await sleep(1500)
-            const head = await js<string>(`document.querySelector('.center-head')?.textContent ?? ''`)
+            const head = await js<string>(`document.querySelector('[data-testid=terminal-head]')?.textContent ?? ''`)
             check('clicking a worker card shows its terminal', head.includes(w.sessionName), head)
             await js(`(() => {
               const ta = document.querySelector('.xterm-helper-textarea');
@@ -223,11 +235,11 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
             await sleep(1500)
             const after = d.missions.views().find((m) => m.id === missionId)?.agents.find((a) => a.name === w.name)
             check('Enter typed in worker terminal marks "last instruction: you"', after?.lastInstructionBy === 'you')
-            const cardText = await js<string>(`[...document.querySelectorAll('.card')].find(c => c.querySelector('strong')?.textContent === ${JSON.stringify(w.name)})?.textContent ?? ''`)
+            const cardText = await js<string>(`document.querySelector('[data-testid=agent-card][data-agent=${JSON.stringify(w.name)}] [data-testid=last-instruction]')?.textContent ?? ''`)
             check('worker card shows "last instruction: you"', cardText.includes('last instruction: you'), cardText)
             await shot('worker-selected')
           }
-          await js(`[...document.querySelectorAll('.card')].find(c => c.querySelector('strong')?.textContent === 'coordinator')?.click()`)
+          await js(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.click()`)
           await sleep(1500)
           await shot('coordinator-final')
         }

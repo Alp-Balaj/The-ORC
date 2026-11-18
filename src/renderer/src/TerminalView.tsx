@@ -12,7 +12,7 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       fontFamily: 'JetBrainsMono Nerd Font, monospace',
       fontSize: 13,
       cursorBlink: true,
-      theme: { background: '#0b0d10' }
+      theme: { background: '#0a0c0f' }
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -44,5 +44,5 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
     }
   }, [id])
 
-  return <div className="terminal" ref={ref} />
+  return <div className="min-h-0 flex-1 p-1.5" data-testid="terminal" ref={ref} />
 }

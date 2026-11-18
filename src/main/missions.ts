@@ -157,7 +157,10 @@ export class Missions implements ControlHandlers {
     m.state = 'stopped'
     for (const a of m.agents.values()) {
       this.terminals.kill(a.terminalId)
-      if (a.status !== 'done') a.status = 'exited'
+      if (a.status !== 'done') {
+        a.status = 'exited'
+        a.activity = 'stopped'
+      }
     }
     this.feed(m, { kind: 'stopped', from: 'you', to: null, text: 'Mission stopped. Every session was ended; worktrees are kept.' })
   }

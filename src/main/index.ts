@@ -117,7 +117,7 @@ app.whenReady().then(async () => {
       shutdown()
       app.exit(3)
     }, hardMs).unref()
-    void runSmoke(smoke, { win: win!, missions, terminals, userData: app.getPath('userData'), shutdown })
+    void runSmoke(smoke, { win: win!, missions, terminals, userData: app.getPath('userData'), appPath: app.getAppPath(), shutdown })
       .then((ok) => {
         shutdown()
         app.exit(ok ? 0 : 1)
