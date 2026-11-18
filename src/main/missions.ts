@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import type { AgentView, MissionView, StartMissionRequest } from '../shared/types'
-import { claudeArgs, coordinatorPrompt, workerPrompt } from './claude-launch'
+import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch'
 import type { ControlHandlers, HookEvent } from './control-server'
 import { addWorktree, currentBranch, repoRoot } from './git-worktrees'
 import type { TerminalHost } from './terminals'
@@ -242,7 +242,8 @@ export class Missions implements ControlHandlers {
         systemPrompt: a.systemPrompt,
         firstPrompt: a.firstPrompt
       }),
-      cwd: a.cwd
+      cwd: a.cwd,
+      env: sessionEnv()
     })
     this.changed(this.views())
   }

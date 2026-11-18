@@ -7,6 +7,7 @@ export interface TerminalSpec {
   command: string
   args: string[]
   cwd: string
+  /** The full environment. Defaults to this process's own. */
   env?: Record<string, string>
 }
 
@@ -36,7 +37,7 @@ export class TerminalHost {
       cols,
       rows,
       cwd: spec.cwd,
-      env: { ...process.env, ...spec.env } as Record<string, string>
+      env: spec.env ?? (process.env as Record<string, string>)
     })
     this.terminals.set(spec.id, term)
     this.scrollback.set(spec.id, '')

@@ -34,6 +34,26 @@ const HookEvents = [
   'SessionEnd'
 ]
 
+/** Variables that mark a process as running *inside* a Claude Code session. If The ORC was
+ *  started from one (a terminal tab inside Claude Code, or an agent testing it), its sessions
+ *  inherit them and attach to that outer session's messaging socket: SendMessage then can't
+ *  find mission peers ("no agent named … is reachable"), ListAgents shows the outer session,
+ *  and transcripts are off. Every ORC session starts without them. */
+export function isInheritedSessionVar(name: string): boolean {
+  return (
+    name === 'CLAUDECODE' ||
+    name === 'CLAUDE_PID' ||
+    name === 'CLAUDE_EFFORT' ||
+    /^CLAUDE_CODE_(SESSION|CHILD|MESSAGING|ENTRYPOINT|EXECPATH|SSE_PORT)/.test(name)
+  )
+}
+
+export function sessionEnv(base: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [k, v] of Object.entries(base)) if (v !== undefined && !isInheritedSessionVar(k)) env[k] = v
+  return env
+}
+
 export interface LaunchSpec {
   sessionName: string
   sessionId: string

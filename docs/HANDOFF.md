@@ -1,6 +1,15 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-18 at the end of the groundwork session._
+_Updated 2026-11-18 night (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+
+## Overnight run status (newest first)
+
+- `src/main/smoke.ts`: the hidden smoke mode is now an end-to-end test (`ORC_SMOKE_PROMPT`).
+  See "Smoke mode" below. `tests/kill-strays.sh` kills only ORC-launched `claude` processes.
+- Every session can take `--model` (`StartMissionRequest.model`); tests use Haiku.
+- `SendMessage`/`ListAgents` are pre-allowed in every session's settings.
+- The trust prompt's default highlight is **"No, exit"**: answering needs ↓ then Enter.
+
 
 ## Done (branch `m1/core`)
 
@@ -30,9 +39,19 @@ Watch for, and record here:
 
 ## Smoke mode (no window shown)
 
-    ORC_SMOKE_OUT=<dir> [ORC_SMOKE_REPO=<sandbox>] node_modules/.bin/electron .   # after pnpm build
+    pnpm build
+    ORC_SMOKE_OUT=<dir> [ORC_SMOKE_REPO=~/Documents/Projects/orc-sandbox] node_modules/.bin/electron .
+    # end to end (billed, Haiku, ~5 sessions):
+    ORC_SMOKE_OUT=<dir> ORC_SMOKE_REPO=~/Documents/Projects/orc-sandbox \
+      ORC_SMOKE_PROMPT='Create two files in parallel with two workers: a.txt containing hello, and b.txt containing world.' \
+      timeout 700 node_modules/.bin/electron .; tests/kill-strays.sh
 
-It loads the UI hidden and, with `ORC_SMOKE_REPO`, starts an unprompted coordinator (not billed). It writes `report.json` (console errors, agent states), `screenshot.png` and `coordinator.txt` (terminal output), then quits. Use it after every UI or launch change.
+Without a prompt it loads the UI hidden and, with `ORC_SMOKE_REPO`, starts an unprompted coordinator
+(not billed). With `ORC_SMOKE_PROMPT` it answers trust prompts (orc-sandbox only), types the prompt
+into the coordinator, waits for workers to report done, clicks a worker card and presses Enter in
+its terminal through xterm, and asserts. It always writes `report.json` (checks, timeline, states),
+`screenshot-*.png`, `terminals/<agent>.txt`, `hooks.json` (this run's hook payloads),
+`claude-agents.json`. Exit code 0 = pass. A watchdog kills every session at the deadline.
 
 ## Known gaps (deliberately left for later milestones)
 

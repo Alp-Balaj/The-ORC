@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process'
-import { existsSync, readFileSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { BrowserWindow } from 'electron'
 import type { MissionView } from '../shared/types'
+import { sessionEnv } from './claude-launch'
 import type { Missions } from './missions'
 import type { TerminalHost } from './terminals'
 
@@ -56,7 +57,12 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   const timeline: { t: number; event: string }[] = []
   const checks: Check[] = []
   const log = (event: string): void => {
-    timeline.push({ t: Math.round((Date.now() - startedAt) / 1000), event })
+    const entry = { t: Math.round((Date.now() - startedAt) / 1000), event }
+    timeline.push(entry)
+    // Written as it happens, so a hang still leaves a trail.
+    try {
+      appendFileSync(join(dir, 'timeline.log'), `${entry.t}s ${event}\n`)
+    } catch {}
   }
   const check = (name: string, ok: boolean, detail?: string): void => {
     checks.push({ name, ok, detail })
@@ -64,10 +70,14 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   }
   const js = <T>(code: string): Promise<T> => d.win.webContents.executeJavaScript(code) as Promise<T>
   let shots = 0
+  // capturePage on a hidden window can wait forever for a frame that never comes: force a
+  // repaint first and give up after 8 s rather than hang the test.
   const shot = async (label: string): Promise<void> => {
     const file = `screenshot-${String(++shots).padStart(2, '0')}-${label}.png`
-    writeFileSync(join(dir, file), (await d.win.webContents.capturePage()).toPNG())
-    log(`screenshot ${file}`)
+    d.win.webContents.invalidate()
+    const img = await Promise.race([d.win.webContents.capturePage(), sleep(8000).then(() => null)])
+    if (img) writeFileSync(join(dir, file), img.toPNG())
+    log(img ? `screenshot ${file}` : `screenshot ${file} timed out`)
   }
 
   d.win.webContents.on('console-message', (e) => {
@@ -223,7 +233,7 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   writeFileSync(join(dir, 'hooks.json'), JSON.stringify(hooks, null, 2))
   let agentsJson = ''
   try {
-    agentsJson = (await run('claude', ['agents', '--json'], { timeout: 20_000 })).stdout
+    agentsJson = (await run('claude', ['agents', '--json'], { timeout: 20_000, env: sessionEnv() })).stdout
   } catch (err) {
     agentsJson = `error: ${String(err)}`
   }
@@ -243,6 +253,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       check(`${w.name}: model flag`, true, m.model ?? 'default')
     }
     const sends = hooks.filter((h) => h.hook_event_name === 'PreToolUse' && h.tool_name === 'SendMessage' && h.agent !== `${m.id}:coordinator`)
+    const undelivered = workers.filter((w) => /Not sent/.test(stripAnsi(d.terminals.replay(w.terminalId))))
+    check('no SendMessage came back "Not sent"', undelivered.length === 0, undelivered.map((w) => w.name).join(', '))
     check('workers sent SendMessage reports', sends.length >= workers.length, `${sends.length} SendMessage calls from workers`)
     const coord = m.agents.find((a) => a.role === 'coordinator')!
     const firstDone = hooks.find((h) => h.hook_event_name === 'PreToolUse' && h.tool_name === 'mcp__orc__report_done')
