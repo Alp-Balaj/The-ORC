@@ -41,7 +41,15 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
   - Verified by:
     - free tests on real git (`mission-git`, `mission-flow`) and the hidden-UI replay;
     - the billed e2e: split approved in the UI → merged → Verifier PASS → Merge to main;
-    - a billed check that an agent's `git commit` is denied.
+    - a billed check that an agent's `git commit` is denied;
+    - a billed real conflict: two workers wrote the same file, the second was handed the conflict,
+      resolved it and merged.
+  - The billed runs found five bugs, all fixed:
+    - a split approval was lost when clicked mid-turn;
+    - done workers were reset to exited;
+    - the Verifier judged steering to be outside the brief;
+    - a done worker's permission prompt never showed ◐;
+    - Merge to main deleted unmerged workers' worktrees (found by review).
 
 ## Broken or unverified
 
@@ -94,7 +102,7 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
 
 ## Billed sessions used
 
-- About 35 Haiku sessions so far, all small: the e2e test ran 7 times (3–4 sessions each), the
+- About 45 Haiku sessions so far, all small: the e2e test ran 7 times (3–4 sessions each), the
   permission scenario 4 times, the deny check once, and the Verifier 3 times.
 
 ## How to see it working

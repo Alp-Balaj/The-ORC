@@ -1,11 +1,14 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~02:40 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~03:10 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
 ## Next
 
-**M4 (robustness) on branch `m4/robust`**, after the billed conflict scenario
-(`ORC_SMOKE_SCENARIO=conflict`) passes and `main` is fast-forwarded to M3.
+**M4 (robustness) on branch `m4/robust`.** `main` is at the end of M3.
+- The final M3 billed batch on `4dd090b` passed: conflict scenario, mission e2e (Verifier PASS) and
+  permission scenario.
+- In the real conflict, the worker resolved it by itself in 28 s, with no question and no prompt.
+  The notice now says "edit the file only, run no git".
 
 ### M4 design, decided before coding
 
