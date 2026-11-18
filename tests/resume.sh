@@ -17,5 +17,6 @@ sleep 2
 ORC_SMOKE_OUT="$out/b" ORC_STATE_FILE="$state" ORC_SMOKE_SCENARIO=resume-b \
   timeout 240 node_modules/.bin/electron . 2>&1 | grep -E "SMOKE|ok|FAIL"
 code=${PIPESTATUS[0]}
+if grep -q " FAIL " "$out/a/timeline.log"; then echo "part 1 had failures:"; grep " FAIL " "$out/a/timeline.log"; code=1; fi
 "$here/tests/kill-strays.sh"; "$here/tests/clean-sandbox.sh"
 exit "$code"

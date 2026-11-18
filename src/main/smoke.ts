@@ -29,6 +29,8 @@ export interface SmokeDeps {
   userData: string
   appPath: string
   shutdown: () => void
+  /** The real quit path (before-quit, windows closing), as Ctrl+Q would. */
+  quit: () => void
 }
 
 interface Check {
@@ -160,7 +162,29 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       d.missions.hookEvent(`${id}:survivor`, { hook_event_name: 'PreToolUse', tool_name: 'Write' } as never)
       await sleep(1200) // > the 300 ms save debounce
       log('ready-for-crash')
+      if (process.env.ORC_SMOKE_QUIT) {
+        // Normal quit instead of a crash: the state must still say "running", not "exited".
+        d.quit()
+        await sleep(10_000)
+      }
       await sleep(120_000)
+    } else if (scenario === 'fresh-a') {
+      // Free: a real coordinator that never gets a prompt, then a normal quit.
+      const id = await js<string>(`window.orc.startMission(${JSON.stringify({ repoPath: Sandbox, name: `smoke-fresh-${Date.now() % 100000}`, permissionMode: 'acceptEdits', gating: 'none', model: 'haiku' })})`)
+      missionId = id
+      check('real session started', await waitFor('SessionStart', () => view()?.agents[0]?.status === 'idle', 2500, 60_000))
+      await sleep(800)
+      log('ready-for-crash')
+      d.quit()
+      await sleep(120_000)
+    } else if (scenario === 'fresh-b') {
+      const m = (): MissionView | undefined => d.missions.views()[0]
+      missionId = m()?.id ?? null
+      check('the never-prompted mission is back', m()?.state === 'running')
+      const c = (): MissionView['agents'][number] | undefined => m()?.agents[0]
+      check('its session starts again with the same --session-id', await waitFor('SessionStart again', () => c()?.status === 'idle' && c()?.activity === 'ready', 0, 60_000) && d.terminals.isRunning(c()!.terminalId), `${c()?.status} | ${c()?.activity}`)
+      const out = stripAnsi(d.terminals.replay(c()!.terminalId))
+      check('no session-id error from claude', !/already in use|invalid session|error/i.test(out.slice(0, 3000)), out.slice(0, 160))
     } else if (scenario === 'resume-a') {
       // Billed (1 Haiku session): a real turn, Pause mid-turn, Resume, then wait to be killed.
       const id = await js<string>(`window.orc.startMission(${JSON.stringify({ repoPath: Sandbox, name: `smoke-resume-${Date.now() % 100000}`, permissionMode: 'acceptEdits', gating: 'none', model: process.env.ORC_SMOKE_MODEL ?? 'haiku' })})`)
@@ -204,8 +228,21 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       d.terminals.write(coordId, '\r')
       await waitFor('answer', () => coord()?.status === 'working', 0, 30_000)
       await waitFor('answer done', () => coord()?.status === 'idle', 2000, 90_000)
-      const text = stripAnsi(d.terminals.replay(coordId))
-      check('the resumed session remembers the conversation from before the crash', /PELICAN/i.test(text.slice(text.lastIndexOf('codeword I asked'))), (/.{0,60}PELICAN.{0,20}/i.exec(text)?.[0] ?? 'no PELICAN').trim())
+      // The evidence is the transcript's last assistant message (the screen redraws old text).
+      const tp = d.missions.snapshot().missions[0]?.agents.find((a) => a.role === 'coordinator')?.transcriptPath
+      let last = ''
+      if (tp && existsSync(tp)) {
+        for (const line of readFileSync(tp, 'utf8').split('\n')) {
+          try {
+            const r = JSON.parse(line) as { type?: string; message?: { content?: unknown } }
+            if (r.type !== 'assistant') continue
+            const c = r.message?.content
+            const t = Array.isArray(c) ? c.map((x: { text?: string }) => x.text ?? '').join(' ') : String(c ?? '')
+            if (t.trim()) last = t.trim()
+          } catch {}
+        }
+      }
+      check('the resumed session remembers the conversation from before the crash', /PELICAN/i.test(last), `last answer: ${last.slice(0, 80)}`)
       await shot('resumed')
     } else if (scenario === 'crash-b') {
       // Part 2, relaunched on the same state file: everything must be back.

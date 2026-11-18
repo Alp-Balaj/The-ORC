@@ -13,6 +13,7 @@ const api = {
     ipcRenderer.invoke('missions:start', req),
   stopMission: (id: string): Promise<void> => ipcRenderer.invoke('missions:stop', id),
   pauseMission: (id: string): Promise<void> => ipcRenderer.invoke('missions:pause', id),
+  removeMission: (id: string): Promise<boolean> => ipcRenderer.invoke('missions:remove', id),
   resumeMission: (id: string): Promise<void> => ipcRenderer.invoke('missions:resume', id),
   updateSpace: (root: string, patch: { gateCommand?: string | null; maxLive?: number; vaultDir?: string | null }): Promise<void> => ipcRenderer.invoke('spaces:update', root, patch),
   decideSplit: (id: string, approve: boolean, note: string | null): Promise<void> => ipcRenderer.invoke('missions:decide-split', id, approve, note),

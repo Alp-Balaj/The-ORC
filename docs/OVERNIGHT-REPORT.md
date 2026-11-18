@@ -61,7 +61,14 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
     real session.
   - **Live-agent cap per space** and **space settings** (gate, cap, records folder).
   - **Mission records (vault):** off by default, since D4 is open.
-  - Tests: `tests/recovery.test.ts`, `tests/crash.sh` (free), `tests/resume.sh` (billed).
+  - Tests: `tests/recovery.test.ts`; `tests/crash.sh` (free: SIGKILL, normal quit, and a real
+    never-prompted session relaunched); `tests/resume.sh` (billed).
+  - Hardening the advisor review asked for:
+    - one app instance at a time (a second would have killed the first's sessions);
+    - state saved on `before-quit`;
+    - work held by Pause goes through review in checkpointed mode;
+    - held work survives a restart;
+    - Remove for stopped missions.
 
 ## Broken or unverified
 
@@ -72,7 +79,10 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
   they never occur when every session uses the same mode.
 - **Mission records are tested only against a folder inside orc-sandbox.** Nothing was written to
   your real vault.
-- **A crash during a worker's first turn** restarts that worker fresh, with its task again.
+- **A worker cut off mid-turn by a crash comes back idle**, with its conversation, and isn't
+  re-prompted. A worker that never had a turn is started fresh, with its task again.
+- **Until `0d36e6f`, `tests/free.sh` could not fail on the replay** (it read the wrong "ok"). Every
+  replay run since then passes.
 - Merge to main fails when `main` has moved since the mission began. It says so, but it doesn't
   offer to update the integration branch.
 

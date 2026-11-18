@@ -92,6 +92,36 @@ ok('restoring twice is a no-op', w2.m.views().length === 1)
   ok('resume delivers held notes', typed.some((t) => t.id === pc && t.data.includes('[The ORC] hello')))
 }
 
+// Pause + checkpointed, and held work across a restart --------------------------------
+{
+  const r4 = repo('pausecheck')
+  const { m } = world()
+  const pid = await m.startMission({ repoPath: r4, name: 'pchk', permissionMode: 'acceptEdits', gating: 'checkpointed' })
+  await m.spawnAgent(`${pid}:coordinator`, 'a', 'x')
+  const wa = m.views()[0].agents.find((x) => x.name === 'a')!
+  m.pauseMission(pid)
+  writeFileSync(join(wa.cwd, 'a.txt'), 'a\n')
+  m.reportDone(wa.terminalId, 'a'); await m.gitWork
+  m.resumeMission(pid); await m.gitWork
+  ok('resume sends held checkpointed work to review, not straight to merge', m.views()[0].agents.find((x) => x.name === 'a')!.merge === 'review' && m.views()[0].merged.length === 0)
+
+  const r5 = repo('heldrestart')
+  const w = world()
+  const hid = await w.m.startMission({ repoPath: r5, name: 'held', permissionMode: 'acceptEdits', gating: 'none' })
+  await w.m.spawnAgent(`${hid}:coordinator`, 'a', 'x')
+  const ha = w.m.views()[0].agents.find((x) => x.name === 'a')!
+  w.m.pauseMission(hid)
+  writeFileSync(join(ha.cwd, 'a.txt'), 'a\n')
+  w.m.reportDone(ha.terminalId, 'a'); await w.m.gitWork
+  const snap = JSON.parse(JSON.stringify(w.m.snapshot()))
+  const w2b = world()
+  await w2b.m.restore(snap, { isOrphan: () => false, kill: () => {} }); await w2b.m.gitWork
+  ok('a restart while paused keeps the work held', w2b.m.views()[0].merged.length === 0 && w2b.m.views()[0].paused)
+  w2b.m.resumeMission(hid); await w2b.m.gitWork
+  ok('…and resume after the restart merges it', w2b.m.views()[0].merged.join() === 'a')
+  ok('stopped missions can be removed; running ones cannot', !w2b.m.removeMission(hid) && (w2b.m.stopMission(hid), w2b.m.removeMission(hid)) && w2b.m.views().length === 0)
+}
+
 // Live-agent cap ------------------------------------------------------------------
 {
   const r3 = repo('cap')

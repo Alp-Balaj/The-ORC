@@ -14,9 +14,10 @@ own git worktree, shown in terminals you can click into and type into.
                         # automated runs use smoke mode instead (hidden, offscreen): see docs/HANDOFF.md
     pnpm typecheck
     pnpm build
-    tests/free.sh [out-dir]             # free: typecheck, unit tests, hidden replay of the whole UI
+    tests/free.sh [out-dir]             # free: typecheck, unit tests, hidden UI replay, crash/quit recovery
+    tests/resume.sh <out-dir>           # billed (1 Haiku session): pause mid-turn, SIGKILL, resume
     tests/e2e.sh <out-dir>              # billed (Haiku, 3 sessions): hidden window, full mission in orc-sandbox
-    tests/kill-strays.sh                # after any test: kills only ORC-launched claude processes
+    tests/kill-strays.sh                # after any test: kills claude processes whose cwd is in orc-sandbox
     node --no-warnings tests/claude-session.probe.ts <sandbox-repo>   # billed; superseded by e2e.sh
 
 ## Rules

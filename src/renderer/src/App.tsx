@@ -77,6 +77,11 @@ export function App(): React.JSX.Element {
             {mission.model && <Badge variant="outline">{mission.model}</Badge>}
             <Badge variant="outline" title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</Badge>
             {mission.state === 'stopped' && <Badge variant="exited">stopped</Badge>}
+            {mission.state === 'stopped' && (
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" data-testid="remove-mission" title="Forget this mission. Its branches and worktrees stay in git." onClick={() => void window.orc.removeMission(mission.id).then(() => setMissionId(null))}>
+                Remove
+              </Button>
+            )}
             {mission.paused && <Badge variant="needs-you" data-testid="paused-badge">paused</Badge>}
             {needsYou > 0 && <Badge variant="needs-you">{needsYou} need{needsYou === 1 ? 's' : ''} you</Badge>}
             <div className="ml-auto flex items-center gap-1.5">

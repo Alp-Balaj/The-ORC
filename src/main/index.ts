@@ -83,6 +83,18 @@ const control = new ControlServer({
 })
 
 const smoke = process.env.ORC_SMOKE_OUT ?? null
+// One instance owns the missions: a second one would treat the first's live sessions as
+// orphans, kill them and resume them itself, and both would write the state file.
+if (!smoke && !app.requestSingleInstanceLock()) {
+  app.exit(0)
+}
+app.on('second-instance', () => {
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  }
+})
+
 // Test runs never touch the owner's saved spaces.
 const spaces = new Spaces(smoke ? null : join(app.getPath('userData'), 'spaces.json'))
 if (smoke) {
@@ -122,6 +134,7 @@ ipcMain.handle('missions:start', async (_e, req: StartMissionRequest) => {
 })
 ipcMain.handle('missions:stop', (_e, id: string) => missions.stopMission(id))
 ipcMain.handle('missions:pause', (_e, id: string) => missions.pauseMission(id))
+ipcMain.handle('missions:remove', (_e, id: string) => missions.removeMission(id))
 ipcMain.handle('missions:resume', (_e, id: string) => missions.resumeMission(id))
 ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string | null; maxLive?: number; vaultDir?: string | null }) => {
   spaces.update(root, patch)
@@ -200,7 +213,7 @@ app.whenReady().then(async () => {
       shutdown()
       app.exit(3)
     }, hardMs).unref()
-    void runSmoke(smoke, { win: win!, missions, terminals, userData: app.getPath('userData'), appPath: app.getAppPath(), shutdown })
+    void runSmoke(smoke, { win: win!, missions, terminals, userData: app.getPath('userData'), appPath: app.getAppPath(), shutdown, quit: () => app.quit() })
       .then((ok) => {
         shutdown()
         app.exit(ok ? 0 : 1)
@@ -211,6 +224,12 @@ app.whenReady().then(async () => {
         app.exit(2)
       })
   }
+})
+// app.quit() and Ctrl+Q skip window-all-closed and go through before-quit: save there too,
+// before sessions are killed, then freeze.
+app.on('before-quit', () => {
+  saveNow()
+  frozen = true
 })
 app.on('window-all-closed', () => {
   win = null

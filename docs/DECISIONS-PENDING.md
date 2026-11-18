@@ -49,3 +49,16 @@ repository. With no gate command set, the gate shows "not configured" and doesn'
 - **The vault (D4)** will be built last in M4: off by default, a folder you choose per space, and
   tested only against a folder inside orc-sandbox. D4 is still "suggested, awaiting owner", so it
   stays off until you turn it on.
+
+## 5. Restart behaviour (M4)
+
+- **Starting The ORC resumes every mission that was running**, without asking: each live agent is
+  relaunched with `claude --resume`. This starts sessions you may not have meant to restart. The
+  alternative is a "Resume N missions?" prompt on launch. Stop a mission (or use Remove) to keep it
+  from coming back.
+- **A turn cut off by a crash is not re-prompted.** The agent comes back idle with its
+  conversation, and you, or its coordinator, tell it to continue.
+- **Pause** interrupts turns that agents start for each other while paused, but anything you type
+  yourself runs.
+- **Mission record notes** use the UTC date, and they don't include `ask_human` answers yet (those
+  are typed into terminals and The ORC doesn't capture them as answers).

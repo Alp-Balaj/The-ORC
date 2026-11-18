@@ -27,6 +27,7 @@ interface Agent extends AgentView {
   inTurn: boolean
   /** The claude process, for orphan checks after a crash. */
   pid: number | null
+  turnIdlePolls?: number
 }
 
 export interface SavedState {
@@ -201,6 +202,19 @@ export class Missions implements ControlHandlers {
       systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating)
     })
     return mission.id
+  }
+
+  /** Forgets a stopped mission (its git branches and worktrees are left alone). */
+  removeMission(id: string): boolean {
+    const m = this.missions.get(id)
+    if (!m || m.state !== 'stopped') return false
+    for (const a of m.agents.values()) {
+      this.byTerminal.delete(a.terminalId)
+      if (a.token) this.byToken.delete(a.token)
+    }
+    this.missions.delete(id)
+    this.emit()
+    return true
   }
 
   /** Kills every session of the mission. Worktrees and branches stay. */
@@ -440,6 +454,8 @@ export class Missions implements ControlHandlers {
           ...(human ? { lastInstructionBy: 'you' as const, lastInstructionAt: Date.now() } : {})
         })
         if (cross) this.feed(mission, { kind: 'delivered', from: fromName!, to: agent.name, text: oneLine(cross.body) })
+        // Paused: a turn the human didn't start (an agent's message) is interrupted at once.
+        if (mission.paused && (cross || fromOrc)) this.terminals.write(callerTerminal, '\x1b')
         if (human && agent.role === 'worker') this.humanSteered(mission, agent, e.prompt ?? '')
         break
       }
@@ -489,6 +505,15 @@ export class Missions implements ControlHandlers {
    *  working or at a permission prompt is idle. */
   reconcile(states: Map<string, string>): void {
     for (const agent of this.byTerminal.values()) {
+      // An interrupted turn fires no Stop: whatever the status, idle twice means the turn is over.
+      if (agent.inTurn && states.get(agent.sessionId) === 'idle') {
+        agent.turnIdlePolls = (agent.turnIdlePolls ?? 0) + 1
+        if (agent.turnIdlePolls >= 2) {
+          agent.inTurn = false
+          agent.turnIdlePolls = 0
+          if (agent.notes.length) setTimeout(() => this.flushNotes(agent), 800)
+        }
+      } else agent.turnIdlePolls = 0
       // "waiting" = at a permission prompt; it shows up here before the Notification hook does.
       if (states.get(agent.sessionId) === 'waiting' && (agent.status === 'working' || agent.status === 'done')) {
         this.update(agent.terminalId, { status: 'needs-you', activity: 'needs your permission', waitingOn: 'permission' })
@@ -581,6 +606,11 @@ export class Missions implements ControlHandlers {
       return
     }
     a.merge = 'committed'
+    await this.routeCommitted(mission, a)
+  }
+
+  /** What happens to committed work: held while paused, reviewed when checkpointed, else merged. */
+  private async routeCommitted(mission: Mission, a: Agent): Promise<void> {
     if (mission.paused) {
       if (!mission.held.includes(a.name)) mission.held.push(a.name)
       this.feed(mission, { kind: 'orc', from: 'orc', to: a.name, text: 'merge held: mission paused' })
@@ -589,6 +619,7 @@ export class Missions implements ControlHandlers {
     if (mission.gating === 'checkpointed') {
       a.merge = 'review'
       this.feed(mission, { kind: 'orc', from: a.name, to: 'you', text: 'diff waiting for your review before it merges' })
+      this.emit()
       return
     }
     await this.mergeWorker(mission, a)
@@ -681,7 +712,7 @@ export class Missions implements ControlHandlers {
     this.feed(m, { kind: 'orc', from: 'you', to: null, text: `mission resumed${m.held.length ? `; merging held work: ${m.held.join(', ')}` : ''}`, status: 'ok' })
     for (const name of m.held.splice(0)) {
       const a = m.agents.get(name)
-      if (a) this.gitWork = this.gitWork.then(() => this.mergeWorker(m, a)).catch((err) => this.orcNote(m, `merge error: ${String(err)}`))
+      if (a) this.gitWork = this.gitWork.then(() => this.routeCommitted(m, a)).catch((err) => this.orcNote(m, `merge error: ${String(err)}`))
     }
     for (const a of m.agents.values()) this.flushNotes(a)
   }
@@ -909,6 +940,12 @@ export class Missions implements ControlHandlers {
           if (dirty) log.push(`${mission.name}/${agent.name}: worktree has uncommitted changes (kept)`)
         }
         log.push(`${mission.name}/${agent.name}: ${hadTurn ? 'resumed' : 'restarted'}`)
+      }
+      // Work committed but not yet merged (held by a pause, or cut off by the crash).
+      for (const agent of mission.agents.values()) {
+        if (agent.role === 'worker' && agent.merge === 'committed') {
+          this.gitWork = this.gitWork.then(() => this.routeCommitted(mission, agent)).catch((err) => this.orcNote(mission, `merge error: ${String(err)}`))
+        }
       }
       for (const line of log.filter((l) => l.startsWith(`${mission.name}`))) this.orcNote(mission, line, 'ok')
     }
