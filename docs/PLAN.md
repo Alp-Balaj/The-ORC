@@ -200,7 +200,8 @@ In every mode, **Merge to main is your click**.
 - A plain list in place of the tree, where clicking switches terminals.
 - Status from hooks and `claude agents --json`.
 - Answer the M1 checks: worktree trust, hook layering, Claude Code teams, and the MCP timeout.
-- *Progress 2026-11-18:* the launch flags, the HTTP MCP endpoint with per-agent tokens, and hook delivery are verified with a real session (see `docs/HANDOFF.md`). Worktree trust and hook layering are still open and need the hand test.
+- *Progress 2026-11-18:* the launch flags, the HTTP MCP endpoint with per-agent tokens, and hook delivery are verified with a real session (see `docs/HANDOFF.md`). 
+- *Done 2026-11-19 (overnight):* verified end to end by `tests/e2e.sh` (hidden window, Haiku). Worktrees inherit trust, `--settings` hooks layer on top of the user's, and status also polls `claude agents --json`. Teams are deferred (experimental, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`). The MCP tool timeout is a hard wall-clock limit, set by `MCP_TOOL_TIMEOUT` or per server. See `docs/HANDOFF.md`.
 - *Done when:* you ask the coordinator for a two-part task, two workers appear, you click into one and type to it, and both report done.
 
 **M2: the real UI.**

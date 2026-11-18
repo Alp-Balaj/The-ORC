@@ -22,7 +22,9 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
 
 ## Broken or unverified
 
-- Claude Code *teams* and the MCP tool-call timeout were not looked at.
+- Claude Code *teams* are experimental (behind an env flag), so I deferred them. The MCP tool-call
+  timeout is a hard limit (`MCP_TOOL_TIMEOUT`), which confirms the plan's "propose_split returns
+  pending".
 - The UI is still M1-plain (M2 is next).
 
 ## Decisions made, and why
@@ -48,11 +50,13 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
   - Options: leave it as it is; have the ORC set an env var such as `ORC_SESSION=1` so your script
     can skip ORC sessions; or launch with `--setting-sources` without `user`. That last one would also
     drop your permissions and plugins, which goes against "the Claude Code I use".
-  - I left it as is.
+  - I left it as is. **Tonight's test sessions ran through `notify.sh` too** (it sends a desktop
+    notification on Stop unless that session's window has focus), so you may find a pile of
+    notifications from the test runs.
 
 ## Billed sessions used
 
-- About 11 Haiku sessions so far: the e2e test ran three times (3 sessions each), plus two
+- About 12 Haiku sessions so far: the e2e test ran three times (3 sessions each), plus three
   permission runs (1 each).
 
 ## How to see it working

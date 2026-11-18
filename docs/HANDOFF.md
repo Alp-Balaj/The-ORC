@@ -60,10 +60,13 @@ that Esc returns it to idle.
   `<cross-session-message from="uds:…" from-name="<mission>/<agent>" from-mode="prompting">…`.
   - The card's activity shows "message from <agent>" from this.
   - On a worker, it also sets "last instruction: coordinator".
-- **Not checked yet:**
-  - Claude Code teams.
-  - The MCP tool-call timeout. It matters for `propose_split` in M3, but the plan already says that
-    tool returns "pending" at once.
+- **Teams: deferred.** They exist only behind `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`
+  (found in the 2.1.327 binary). `spawn_agent` stays.
+- **MCP tool timeout:** a hard wall-clock limit per call, set by `MCP_TOOL_TIMEOUT` (env) or a
+  per-server value. Progress notifications do not extend it. So `propose_split` must return at once,
+  as the plan says.
+- `tests/claude-session.probe.ts` has not been rerun since the launch flags changed. `tests/e2e.sh`
+  supersedes it.
 
 ### Bugs the e2e runs found, all fixed
 

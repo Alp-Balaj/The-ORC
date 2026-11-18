@@ -148,13 +148,15 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   try {
     if (repo) {
       const name = prompt ? `smoke-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}` : 'smoke'
-      missionId = await d.missions.startMission({
+      // Through the renderer's preload API, so the IPC path the UI uses is covered too.
+      const req = {
         repoPath: repo,
         name,
         permissionMode: 'acceptEdits',
         model: prompt ? (process.env.ORC_SMOKE_MODEL ?? 'haiku') : undefined
-      })
-      log(`mission ${name} started`)
+      }
+      missionId = await js<string>(`window.orc.startMission(${JSON.stringify(req)})`)
+      log(`mission ${name} started via window.orc.startMission`)
       const coordId = `${missionId}:coordinator`
       await js(`[...document.querySelectorAll('.card')].find(c => c.textContent.includes('coordinator'))?.click()`)
 
