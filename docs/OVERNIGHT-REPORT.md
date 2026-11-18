@@ -51,7 +51,7 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
     - a done worker's permission prompt never showed ◐;
     - Merge to main deleted unmerged workers' worktrees (found by review).
 
-- **M4 is done** (branch `m4/robust`):
+- **M4 is done** (branch `m4/robust`, fast-forwarded to `main`):
   - **Crash recovery:** missions persist, and on start every live agent reattaches with
     `claude --resume`. Verified free by SIGKILLing the app mid-mission and relaunching.
     Verified billed: a real session paused mid-turn, the app was killed, and after the relaunch
@@ -109,6 +109,12 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
 
 ## Open questions for the owner
 
+- **UI polish is waiting on you.** Your global CLAUDE.md says to research real apps on Mobbin before
+  designing screens, and to ask if Mobbin isn't available. The Mobbin tools aren't available in
+  this session (ToolSearch found none). So the M2 look stays as built (Tailwind, shadcn-style
+  components, React Flow, Motion), and I spent the time on error-handling hardening instead.
+  Connect Mobbin, or say "skip the research", and the polish pass can follow.
+
 - **`docs/DECISIONS-PENDING.md`** has three items:
   - the ADR the plan asks for: plan check auto-merges into integration;
   - typing `[The ORC] …` notices into an idle coordinator's terminal;
@@ -126,7 +132,7 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
 
 ## Billed sessions used
 
-- About 47 Haiku sessions so far, all small: the e2e test ran 7 times (3–4 sessions each), the
+- About 52 Haiku sessions so far, all small: the e2e test ran 7 times (3–4 sessions each), the
   permission scenario 4 times, the deny check once, and the Verifier 3 times.
 
 ## How to see it working

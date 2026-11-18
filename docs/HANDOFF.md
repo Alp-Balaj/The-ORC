@@ -1,17 +1,14 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~03:50 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~04:20 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
 ## Next
 
-**M4 (robustness), branch `m4/robust`: built; free tests pass; billed `tests/resume.sh` in progress.**
-- If it passes: update the reports, consult the advisor, then fast-forward with
-  `git push origin m4/robust:main` and `git fetch origin main:main`. Don't switch branches in the
-  owner's checkout.
-- After M4: polish and harden error handling.
-  - The owner's global CLAUDE.md requires Mobbin research before designing screens. Run ToolSearch
-    for the Mobbin tools first. If they're missing, the rule says to ask: note it in the report and
-    do error-handling work meanwhile.
+**M1–M4 are done and on `main`.** The final M4 billed batch on `3a2127a` passed: mission e2e with
+Verifier PASS, and `resume.sh` (last answer "PELICAN" after SIGKILL and resume).
+- **Now: error-handling hardening on branch `harden/errors`.**
+- **UI polish waits for the owner.** The Mobbin tools are not available, and their CLAUDE.md says
+  to ask in that case (see OVERNIGHT-REPORT).
 
 ## M4: how it works
 
