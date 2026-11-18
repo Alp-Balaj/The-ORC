@@ -238,6 +238,24 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
             const cardText = await js<string>(`document.querySelector('[data-testid=agent-card][data-agent=${JSON.stringify(w.name)}] [data-testid=last-instruction]')?.textContent ?? ''`)
             check('worker card shows "last instruction: you"', cardText.includes('last instruction: you'), cardText)
             await shot('worker-selected')
+
+            // Steering (plan §6): the human types an instruction into the worker. Its
+            // coordinator must be told, through a hook's additionalContext.
+            const steerText = 'Also add a second line saying bye to your file, then report to your coordinator again.'
+            await js(`window.orc.write(${JSON.stringify(w.terminalId)}, ${JSON.stringify(steerText)})`)
+            await sleep(700)
+            await js(`(() => {
+              const ta = document.querySelector('.xterm-helper-textarea');
+              ta.focus();
+              ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+            })()`)
+            log('steering instruction typed into the worker')
+            const steered = await waitFor('steer in feed', () => !!view()?.feed.some((f) => f.kind === 'steer' && f.to === w.name), 0, 60_000)
+            check('typing into a worker shows as steering in the feed', steered)
+            await waitFor('worker done again', () => view()?.agents.find((a) => a.name === w.name)?.status === 'done', 0, 120_000)
+            await waitFor('coordinator idle after the second report', () => coord()?.status === 'idle', 6000, 120_000)
+            await sleep(6000) // one token refresh
+            await shot('after-steering')
           }
           await js(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.click()`)
           await sleep(1500)
@@ -300,6 +318,12 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
     const firstDone = hooks.find((h) => h.hook_event_name === 'PreToolUse' && h.tool_name === 'mcp__orc__report_done')
     const coordAfter = hooks.filter((h) => h.session_id === coord.sessionId && (h.at as number) > ((firstDone?.at as number) ?? Infinity))
     check('coordinator was active after the first report (woken by a message)', coordAfter.length > 0, `${coordAfter.length} coordinator hook events after first report_done`)
+    const coordTranscript = hooks.find((h) => h.session_id === coord.sessionId && typeof h.transcript_path === 'string')?.transcript_path as string | undefined
+    const transcript = coordTranscript && existsSync(coordTranscript) ? readFileSync(coordTranscript, 'utf8') : ''
+    check('the coordinator was told the human steered the worker (hook additionalContext)', transcript.includes('The human typed directly to your worker'), coordTranscript ?? 'no transcript path')
+    check('cards count tokens', workers.every((w) => w.tokens > 0) && m.tokens > 0, workers.map((w) => `${w.name}=${w.tokens}`).join(', ') + ` mission=${m.tokens}`)
+    const feedKinds = new Set(m.feed.map((f) => f.kind))
+    check('feed has spawn, message, delivered, done, steer', ['spawn', 'message', 'delivered', 'done', 'steer'].every((k) => feedKinds.has(k as never)), [...feedKinds].join(','))
     check('coordinator used spawn_agent', hooks.some((h) => h.session_id === coord.sessionId && h.tool_name === 'mcp__orc__spawn_agent'))
     check('no timeout', !timedOut)
   }

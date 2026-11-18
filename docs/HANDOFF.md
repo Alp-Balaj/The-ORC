@@ -1,11 +1,45 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~01:40 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-19 ~01:55 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
 
 ## Next
 
-**M2 on branch `m2/ui`**: Spaces → Missions → cards, React Flow tree, message feed, token counts,
-several missions and spaces (plan § Milestones). Then M3 (git and gates), M4 (robustness).
+**M3 (git and gates) on branch `m3/git`**: the app commits on `report_done`; an integration
+branch per mission; merge gate; conflicts become questions; gating modes and `propose_split`; the
+Merge to main screen; the Verifier. Then M4. `main` is at the end of M2.
+
+## M2: done and verified (branch `m2/ui`, 2026-11-19 ~01:55)
+
+- **UI:** Tailwind 4, shadcn-style primitives in `src/renderer/src/components/ui` (hand-written
+  following the shadcn layout: `cn`, `components.json`), React Flow 12 tree
+  (`components/MissionTree.tsx`, pure layout in `src/shared/tree-layout.ts`), Motion.
+  - Layout: Spaces → Missions → cards on the left, terminal in the middle, tree plus feed on the right.
+  - Header: mission tokens, Stop. Pause and Merge are disabled until M4 and M3.
+- **Spaces** (`src/main/spaces.ts`): repos are saved to `<userData>/spaces.json`. In smoke mode
+  they are kept in memory only.
+- **Feed** (`missions.ts`), built from hooks:
+  - SendMessage `PostToolUse` → `tool_response` gives `{success, message}`, so sent or failed;
+  - the receiver's `<cross-session-message>` → delivered;
+  - also spawn, done, question, steer and stopped.
+  - Held and expired messages are **unverified** (never seen).
+- **Tokens** (`src/main/tokens.ts`) are read from each hook payload's `transcript_path`.
+  - `tokens` = input + cache writes + output, deduplicated by message id. Cache reads are excluded.
+  - `contextTokens` = the context size on the latest turn.
+- **Steering (plan §6):** when the human submits a prompt in a worker (a `UserPromptSubmit` that is
+  neither the launch task nor a cross-session message), the app queues a note for the worker's
+  parent.
+  - The note is returned as the hook's stdout `hookSpecificOutput.additionalContext` on the
+    parent's next `PreToolUse`/`UserPromptSubmit`. Both accept it on 2.1.327.
+  - Verified with a real coordinator, which answered: "You typed that change to the worker
+    directly, so I've left it alone."
+- **Mission names** are unique across spaces, because session names are machine-wide. A name is
+  also refused if `orc/<name>/` branches exist from an earlier run.
+- **Stop mission** kills the mission's sessions and keeps its worktrees.
+- **Tests:**
+  - `tests/free.sh` runs the typecheck, 4 unit tests and the hidden replay scenario (28 UI
+    checks: fake sessions, two spaces, three missions, a nested worker, every status).
+  - The billed `tests/e2e.sh` now also checks tree-node clicks, steering, tokens and the feed.
+    It passed (25 checks), and so did the permission scenario.
 
 ## M1: done and verified (branch `m1/core`, 2026-11-19 ~01:30)
 
@@ -82,7 +116,7 @@ that Esc returns it to idle.
 
     pnpm typecheck
     node --no-warnings tests/control-server.smoke.ts      # free
-    node --no-warnings tests/missions-status.test.ts      # free
+    tests/free.sh [out-dir]                                # free: everything below marked free + replay UI
     tests/e2e.sh <out-dir>                                 # billed: Haiku, 3 sessions, ~1 min
     ORC_SMOKE_SCENARIO=permission tests/e2e.sh <out-dir> "Use the Bash tool to run exactly this command and nothing else: python3 -c 'print(6*7)'"   # billed: 1 session
     tests/kill-strays.sh                                   # kills only ORC-launched claude processes
@@ -110,9 +144,7 @@ that Esc returns it to idle.
 
 - Missions live in memory only. Closing the app kills every session (no `--resume` reattach yet, M4).
 - No commit on `report_done`, no integration branch, no merge screen (M3).
-- The coordinator isn't told when the human types into a worker (plan §6, M2).
-- Plain indented list as the tree. React Flow, shadcn/ui, styling polish come in M2.
-- Token use on cards (read `usage` from `~/.claude/projects/<dir>/<session-id>.jsonl`), M2.
+- Messages from a sub-worker to its parent show "last instruction: coordinator" (the type only knows you/coordinator).
 - Worktrees and `orc/<mission>/<agent>` branches are never cleaned up by the app (M3: after merge).
 
 ## Facts established (don't re-derive)
