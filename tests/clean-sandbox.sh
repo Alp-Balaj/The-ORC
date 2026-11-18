@@ -7,6 +7,6 @@ for wt in $(git -C "$sandbox" worktree list --porcelain | sed -n 's/^worktree //
 done
 git -C "$sandbox" worktree prune
 # for-each-ref patterns match whole path components, so list under orc/ and filter.
-git -C "$sandbox" for-each-ref --format='%(refname:short)' refs/heads/orc/ | grep '^orc/smoke-' | while read -r b; do
+git -C "$sandbox" for-each-ref --format='%(refname:short)' refs/heads/orc/ refs/heads/integration/ | grep -E '^(orc|integration)/smoke-' | while read -r b; do
   git -C "$sandbox" branch -D "$b" >/dev/null
 done

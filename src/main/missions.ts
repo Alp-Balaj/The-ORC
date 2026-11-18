@@ -427,12 +427,16 @@ export class Missions implements ControlHandlers {
         // notification_type "permission_prompt", sent ~6 s after the prompt appears.
         if (e.notification_type === 'idle_prompt' || /waiting for your input/i.test(e.message ?? '')) break
         // Even a "done" agent can be at a permission prompt (it kept working after reporting).
-        if (!asking) {
+        if (!asking && (!done || e.notification_type === 'permission_prompt')) {
           this.update(callerTerminal, { status: 'needs-you', activity: e.message ?? 'needs you', waitingOn: 'permission' })
         }
         break
       case 'Stop':
-        if (!done && !asking) this.update(callerTerminal, { status: 'idle', activity: 'turn finished', waitingOn: null })
+        // A worker that has reported (and isn't in conflict) goes back to done, not idle.
+        if (!done && !asking) {
+          const back = agent.doneSummary && agent.merge !== 'conflict' ? 'done' : 'idle'
+          this.update(callerTerminal, { status: back, activity: back === 'done' ? 'reported done' : 'turn finished', waitingOn: null })
+        }
         // Notes queued while it was busy would otherwise wait for a hook that never comes.
         if (agent.notes.length) setTimeout(() => this.flushNotes(agent), 800)
         break
@@ -466,6 +470,9 @@ export class Missions implements ControlHandlers {
       }
       if (++agent.idlePolls >= 2) {
         agent.idlePolls = 0
+        // Esc fires no Stop: the turn is over, so queued notes can go now.
+        agent.inTurn = false
+        if (agent.notes.length) setTimeout(() => this.flushNotes(agent), 800)
         this.update(agent.terminalId, {
           status: 'idle',
           activity: agent.waitingOn === 'permission' ? 'permission prompt dismissed' : 'interrupted',
@@ -568,7 +575,7 @@ export class Missions implements ControlHandlers {
       // report_done commits the resolution and the merge is retried.
       await this.git.prepareConflict(mission.repoPath, a.cwd, missionGit.integrationBranch(mission.name))
       const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
-      this.deliver(a, `[The ORC] Your branch conflicts with work already merged (${r.files.join(', ')}). The conflict markers are now in your worktree. Resolve them so both changes survive, then call report_done again.`)
+      this.deliver(a, `[The ORC] Your branch conflicts with work already merged (${r.files.join(', ')}). The conflict markers are now in your worktree. Edit the files to resolve them so both changes survive. Run no git commands (The ORC stages and commits), then call report_done again.`)
       if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${r.files.join(', ')}. ${a.name} has been asked to resolve it; step in if it needs direction.`)
       // Its work is not done any more: it has a conflict to resolve. Without this, "done" is
       // sticky and a permission prompt during the resolution never shows as needs-you.
