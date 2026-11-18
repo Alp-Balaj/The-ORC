@@ -62,7 +62,10 @@ export async function commitAll(repo: string, worktree: string, message: string)
   return serialized(repo, async () => {
     await git(worktree, ['add', '-A'])
     const staged = await git(worktree, ['diff', '--cached', '--quiet'], { allowFail: true })
-    if (staged.code === 0) return null
+    // A conflict resolved in favour of the worker's own version stages nothing, but the merge
+    // still has to be concluded, or the retry loops forever.
+    const merging = (await git(worktree, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFail: true })).code === 0
+    if (staged.code === 0 && !merging) return null
     await git(worktree, [...(await identityArgs(worktree)), 'commit', '-q', '--no-verify', '-m', message])
     return (await git(worktree, ['rev-parse', 'HEAD'])).stdout
   })
@@ -160,22 +163,25 @@ export async function mergeToMain(repo: string, mission: string, base: string): 
     if (dirty) return { ok: false as const, reason: `Your checkout of ${base} has uncommitted changes:\n${dirty}` }
     const ff = await git(repo, ['merge-base', '--is-ancestor', base, head], { allowFail: true })
     if (ff.code !== 0) return { ok: false as const, reason: `${base} has moved since the mission started; the integration branch no longer fast-forwards. Merge ${base} into ${head} first.` }
-    await git(repo, ['merge', '--ff-only', '-q', head])
+    const r = await git(repo, ['merge', '--ff-only', '-q', head], { allowFail: true })
+    if (r.code !== 0) return { ok: false as const, reason: `git refused the merge: ${r.stderr || 'unknown error'}` }
     return { ok: true as const, commit: (await git(repo, ['rev-parse', 'HEAD'])).stdout }
   })
 }
 
 /** After a merge to main: remove the mission's worktrees and branches (they are in main now). */
-export async function cleanupMission(repo: string, mission: string, workerBranches: string[]): Promise<void> {
+/** After a merge to main: remove the worktrees and branches of the workers that are in main
+ *  now, and the integration worktree. Anything else (a worker still working, in review or in
+ *  conflict) is left exactly as it is. */
+export async function cleanupMission(repo: string, mission: string, merged: { path: string; branch: string }[]): Promise<void> {
   return serialized(repo, async () => {
-    const list = (await git(repo, ['worktree', 'list', '--porcelain'])).stdout
-    const prefix = join(repo, '.orc', 'worktrees', mission) + '/'
-    for (const line of list.split('\n')) {
-      const p = line.startsWith('worktree ') ? line.slice(9) : ''
-      if (p.startsWith(prefix)) await git(repo, ['worktree', 'remove', '--force', p], { allowFail: true })
+    for (const w of merged) {
+      await git(repo, ['worktree', 'remove', '--force', w.path], { allowFail: true })
+      await git(repo, ['branch', '-D', w.branch], { allowFail: true })
     }
+    await git(repo, ['worktree', 'remove', '--force', integrationPath(repo, mission)], { allowFail: true })
     await git(repo, ['worktree', 'prune'], { allowFail: true })
-    for (const b of [...workerBranches, integrationBranch(mission)]) await git(repo, ['branch', '-D', b], { allowFail: true })
+    await git(repo, ['branch', '-D', integrationBranch(mission)], { allowFail: true })
   })
 }
 

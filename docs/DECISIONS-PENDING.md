@@ -35,3 +35,16 @@ comes from.
 
 **Built:** a per-space setting, saved in the app's `spaces.json`. Nothing is written into your
 repository. With no gate command set, the gate shows "not configured" and doesn't block the merge.
+
+## 4. Where the build differs from the plan's wording (small)
+
+- **The Verifier runs when you press its button** on the Merge to main screen, not automatically
+  before the button appears. It is billed, and a stale report is marked as such. Making it
+  automatic is a one-line change.
+- **Conflicts go to the worker that conflicted:** the markers are left in its worktree, and its
+  coordinator is told. The plan says "a ◐ question to the coordinator, or to you". The card shows
+  the conflict in red, but the agent doesn't turn ◐.
+- **Workers merge into the integration branch in the order they report done**, not in dependency
+  order. The ORC has no dependency information between workers yet.
+- **The vault (D4) is not built.** It is still "suggested, awaiting owner", and your real vault is
+  off-limits overnight.

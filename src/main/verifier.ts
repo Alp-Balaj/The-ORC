@@ -68,6 +68,9 @@ export function runVerifier(i: VerifierInput, timeoutMs = 300_000): Promise<Veri
     '--allowedTools', 'Read,Grep,Glob',
     '--permission-mode', 'dontAsk',
     '--no-session-persistence',
+    // The diff is untrusted: no MCP servers (the user's own included) in the Verifier.
+    '--strict-mcp-config',
+    '--mcp-config', '{"mcpServers":{}}',
     ...(i.model ? ['--model', i.model] : [])
   ]
   return new Promise((resolve) => {

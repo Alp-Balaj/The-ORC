@@ -157,7 +157,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
         repoPath: repo,
         name,
         permissionMode: 'acceptEdits',
-        model: prompt ? (process.env.ORC_SMOKE_MODEL ?? 'haiku') : undefined
+        model: prompt ? (process.env.ORC_SMOKE_MODEL ?? 'haiku') : undefined,
+        gating: process.env.ORC_SMOKE_GATING ?? (scenario === 'conflict' ? 'none' : 'plan')
       }
       missionId = await js<string>(`window.orc.startMission(${JSON.stringify(req)})`)
       log(`mission ${name} started via window.orc.startMission`)
@@ -177,7 +178,24 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
         const ready = await waitFor('coordinator SessionStart', () => coord()?.status === 'idle', 2500, 90_000)
         check('coordinator started (SessionStart hook)', ready)
         await shot('coordinator-ready')
-        if (ready && scenario === 'deny') {
+        if (ready && scenario === 'conflict') {
+          // Two real workers write the same file: the second merge conflicts, goes back to that
+          // worker with the markers in place, and its retry merges.
+          d.terminals.write(coordId, prompt)
+          await sleep(700)
+          d.terminals.write(coordId, '\r')
+          const hadConflict = await waitFor('a conflict', () => !!view()?.feed.some((f) => f.kind === 'conflict'), 0, 300_000)
+          check('a real conflict was detected', hadConflict)
+          await shot('conflict')
+          const both = await waitFor('both merged after resolution', () => (view()?.merged.length ?? 0) >= 2, 3000, 300_000)
+          check('the conflicted worker resolved it and both merged', both, (view()?.agents ?? []).map((a) => `${a.name}=${a.merge}`).join(', '))
+          const integ = join(view()!.repoPath, '.orc', 'worktrees', view()!.name, '_integration')
+          const files = existsSync(integ) ? (await run('git', ['-C', integ, 'grep', '-l', '^<<<<<<<'], {}).catch(() => ({ stdout: '' }))).stdout.trim() : 'no integration worktree'
+          check('no conflict markers reached integration', files === '', files)
+          const typedMidTurn = view()!.feed.filter((f) => f.kind === 'conflict').length
+          log(`conflict entries: ${typedMidTurn}`)
+          await shot('conflict-resolved')
+        } else if (ready && scenario === 'deny') {
           // Agents never commit: a git commit must be refused by the deny rules, without a prompt.
           const before = (await run('git', ['-C', Sandbox, 'rev-parse', 'HEAD'])).stdout.trim()
           d.terminals.write(coordId, prompt)

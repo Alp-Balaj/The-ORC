@@ -1,4 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { AgentView, DiffView, FeedEntry, GateView, Gating, MissionView, SplitView, StartMissionRequest, VerifierView } from '../shared/types.ts'
 import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
@@ -19,6 +21,9 @@ interface Agent extends AgentView {
   tally: TranscriptTally | null
   /** Notes for this agent, delivered as hook additionalContext on its next turn or tool call. */
   notes: string[]
+  /** Between UserPromptSubmit and Stop. Status can say "done" while the turn is still running
+   *  (report_done is called mid-turn), so delivery checks this, not the status. */
+  inTurn: boolean
 }
 
 interface Mission {
@@ -356,9 +361,13 @@ export class Missions implements ControlHandlers {
     this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}`, status: 'ok' })
     // The work is in main: end the sessions, then remove worktrees and branches.
     this.stopMission(mission.id)
-    const branches = [...mission.agents.values()].filter((x) => x.role === 'worker' && x.branch).map((x) => x.branch!)
-    await this.git.cleanupMission(mission.repoPath, mission.name, branches)
-    return { ok: true, message: `Merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}. Worktrees and branches removed.` }
+    const workers = [...mission.agents.values()].filter((x) => x.role === 'worker' && x.branch)
+    const merged = workers.filter((x) => x.merge === 'merged' && mission.merged.includes(x.name))
+    const kept = workers.filter((x) => !merged.includes(x))
+    await this.git.cleanupMission(mission.repoPath, mission.name, merged.map((x) => ({ path: x.cwd, branch: x.branch! })))
+    const keptNote = kept.length ? ` Kept (not merged): ${kept.map((x) => `${x.name} on ${x.branch}`).join(', ')}.` : ''
+    if (kept.length) this.orcNote(mission, `not merged, worktrees kept: ${kept.map((x) => x.name).join(', ')}`)
+    return { ok: true, message: `Merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}. Merged workers' worktrees and branches removed.${keptNote}` }
   }
 
   askHuman(callerTerminal: string, question: string): void {
@@ -376,6 +385,8 @@ export class Missions implements ControlHandlers {
     if (!agent.tally && typeof e.transcript_path === 'string') agent.tally = new TranscriptTally(e.transcript_path)
     const done = agent.status === 'done'
     const asking = agent.waitingOn === 'question'
+    if (e.hook_event_name === 'UserPromptSubmit' || e.hook_event_name === 'PreToolUse') agent.inTurn = true
+    if (e.hook_event_name === 'Stop' || e.hook_event_name === 'SessionEnd') agent.inTurn = false
     switch (e.hook_event_name) {
       case 'SessionStart':
         if (agent.status === 'starting') this.update(callerTerminal, { status: 'idle', activity: 'ready' })
@@ -508,6 +519,20 @@ export class Missions implements ControlHandlers {
 
   private async afterDone(mission: Mission, a: Agent, summary: string): Promise<void> {
     if (!a.branch || mission.mergedToMain) return
+    // A conflict hand-back is only finished when the markers are gone.
+    if (a.merge === 'conflict') {
+      const left = a.conflictFiles.filter((f) => {
+        try {
+          return /^<{7}( |$)/m.test(readFileSync(join(a.cwd, f), 'utf8'))
+        } catch {
+          return false
+        }
+      })
+      if (left.length) {
+        this.deliver(a, `[The ORC] Conflict markers are still in ${left.join(', ')}. Resolve them, then call report_done again.`)
+        return
+      }
+    }
     const title = oneLine(summary.split('\n')[0], 72)
     const sha = await this.git.commitAll(mission.repoPath, a.cwd, `${a.name}: ${title}\n\n${summary}\n\nMission: ${mission.name}\nORC-Agent: ${a.sessionName}`)
     if (sha) this.feed(mission, { kind: 'commit', from: 'orc', to: a.name, text: `committed ${sha.slice(0, 8)} on ${a.branch}` })
@@ -566,7 +591,7 @@ export class Missions implements ControlHandlers {
   deliver(a: Agent, text: string): void {
     const line = text.replace(/\s+/g, ' ')
     if (a.status === 'exited') return
-    if (a.status === 'idle' || a.status === 'done') {
+    if (!a.inTurn && (a.status === 'idle' || a.status === 'done')) {
       this.terminals.write(a.terminalId, line)
       setTimeout(() => this.terminals.write(a.terminalId, '\r'), 500)
     } else {
@@ -576,7 +601,7 @@ export class Missions implements ControlHandlers {
 
   /** Types queued notes into an agent that has gone idle. */
   private flushNotes(a: Agent): void {
-    if (!a.notes.length || (a.status !== 'idle' && a.status !== 'done')) return
+    if (!a.notes.length || a.inTurn || (a.status !== 'idle' && a.status !== 'done')) return
     const text = a.notes.splice(0).join(' ')
     this.terminals.write(a.terminalId, text)
     setTimeout(() => this.terminals.write(a.terminalId, '\r'), 500)
@@ -654,6 +679,7 @@ export class Missions implements ControlHandlers {
       idlePolls: 0,
       tally: null,
       notes: [],
+      inTurn: false,
       token,
       missionId: mission.id
     }

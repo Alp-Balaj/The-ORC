@@ -156,7 +156,12 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
         >
           <GitMerge /> Merge to {mission.baseBranch}
         </Button>
-        <span className="text-[12px] text-muted-foreground">Fast-forward only. Ends the mission's sessions and removes its worktrees and branches.</span>
+        <span className="text-[12px] text-muted-foreground">
+          Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.
+          {mission.agents.some((a) => a.role === 'worker' && a.merge !== 'merged') && (
+            <span className="text-needs" data-testid="unmerged-warning"> Not merged, kept as they are: {mission.agents.filter((a) => a.role === 'worker' && a.merge !== 'merged').map((a) => a.name).join(', ')}.</span>
+          )}
+        </span>
         {(result || mission.mergedToMain) && (
           <span className={cn('text-[12px]', result && !result.ok ? 'text-destructive' : 'text-working')} data-testid="merge-result">
             {result?.message ?? `Merged at ${mission.mergedToMain!.commit.slice(0, 8)}.`}

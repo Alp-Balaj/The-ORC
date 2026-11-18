@@ -106,6 +106,44 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   ok('integration has both changes', integ.includes('A') && integ.includes('B'))
 }
 
+// Conflict hand-back edge cases: markers left in, and "keep mine" -------------
+{
+  const r = repo('conflict2')
+  const { m, typed } = world()
+  const id = await m.startMission({ repoPath: r, name: 'conf2', permissionMode: 'acceptEdits', gating: 'none' })
+  await m.spawnAgent(`${id}:coordinator`, 'a', 'x'); await m.spawnAgent(`${id}:coordinator`, 'b', 'y')
+  const v = () => m.views()[0]
+  const wa = v().agents.find((x) => x.name === 'a')!, wb = v().agents.find((x) => x.name === 'b')!
+  hook(m, wb.terminalId, { hook_event_name: 'Stop' })
+  writeFileSync(join(wa.cwd, 'shared.txt'), 'one\nA\nthree\n'); writeFileSync(join(wb.cwd, 'shared.txt'), 'one\nB\nthree\n')
+  m.reportDone(wa.terminalId, 'A'); await m.gitWork
+  m.reportDone(wb.terminalId, 'B'); await m.gitWork
+  m.reportDone(wb.terminalId, 'B again, markers untouched'); await m.gitWork
+  await sleep(600)
+  ok('report_done with markers still in the file is refused', v().agents.find((x) => x.name === 'b')!.merge === 'conflict' && typed.some((t) => t.id === wb.terminalId && t.data.includes('markers are still in')))
+  ok('…and nothing with markers reached integration', !readFileSync(join(r, '.orc/worktrees/conf2/_integration/shared.txt'), 'utf8').includes('<<<<<<<'))
+  // Resolve by taking the integration version exactly (nothing new to stage vs. HEAD's merge).
+  writeFileSync(join(wb.cwd, 'shared.txt'), 'one\nA\nthree\n')
+  m.reportDone(wb.terminalId, 'B: kept A'); await m.gitWork
+  ok('a resolution that equals one side still concludes the merge', v().agents.find((x) => x.name === 'b')!.merge === 'merged', v().agents.find((x) => x.name === 'b')!.merge ?? '')
+}
+
+// Merge to main keeps unmerged work ---------------------------------------------
+{
+  const r = repo('partial')
+  const { m } = world()
+  const id = await m.startMission({ repoPath: r, name: 'part', permissionMode: 'acceptEdits', gating: 'none' })
+  await m.spawnAgent(`${id}:coordinator`, 'done-one', 'x'); await m.spawnAgent(`${id}:coordinator`, 'busy-one', 'y')
+  const v = () => m.views()[0]
+  const wd = v().agents.find((x) => x.name === 'done-one')!, wbz = v().agents.find((x) => x.name === 'busy-one')!
+  writeFileSync(join(wd.cwd, 'd.txt'), 'd\n'); m.reportDone(wd.terminalId, 'd'); await m.gitWork
+  writeFileSync(join(wbz.cwd, 'wip.txt'), 'unsaved work\n')
+  const res = await m.mergeToMain(id)
+  ok('merge to main with an unfinished worker succeeds and names it', res.ok && /busy-one/.test(res.message), res.message)
+  ok('the unfinished worker keeps its worktree, file and branch', existsSync(join(wbz.cwd, 'wip.txt')) && g(r, 'branch', '--list', wbz.branch!) !== '')
+  ok('the merged worker is cleaned up', !existsSync(wd.cwd) && g(r, 'branch', '--list', wd.branch!) === '')
+}
+
 // Checkpointed ---------------------------------------------------------------
 {
   const r = repo('check')

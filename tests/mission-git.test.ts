@@ -54,7 +54,7 @@ function repo(name: string): string {
   g(r, 'checkout', '-q', '--', 'shared.txt')
   const done = await mergeToMain(r, 'm', 'main')
   ok('merge to main fast-forwards', done.ok && existsSync(join(r, 'a.txt')) && existsSync(join(r, 'b.txt')))
-  await cleanupMission(r, 'm', [a.branch, b.branch])
+  await cleanupMission(r, 'm', [{ path: a.path, branch: a.branch }, { path: b.path, branch: b.branch }])
   ok('cleanup removes worktrees and branches', !existsSync(join(r, '.orc/worktrees/m/a')) && g(r, 'branch', '--list', 'orc/*', 'integration/*') === '')
 }
 
