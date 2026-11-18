@@ -426,7 +426,8 @@ export class Missions implements ControlHandlers {
         // (notification_type "idle_prompt"); that is not "needs you". Permission prompts are
         // notification_type "permission_prompt", sent ~6 s after the prompt appears.
         if (e.notification_type === 'idle_prompt' || /waiting for your input/i.test(e.message ?? '')) break
-        if (!done && !asking) {
+        // Even a "done" agent can be at a permission prompt (it kept working after reporting).
+        if (!asking) {
           this.update(callerTerminal, { status: 'needs-you', activity: e.message ?? 'needs you', waitingOn: 'permission' })
         }
         break
@@ -454,7 +455,7 @@ export class Missions implements ControlHandlers {
   reconcile(states: Map<string, string>): void {
     for (const agent of this.byTerminal.values()) {
       // "waiting" = at a permission prompt; it shows up here before the Notification hook does.
-      if (states.get(agent.sessionId) === 'waiting' && agent.status === 'working') {
+      if (states.get(agent.sessionId) === 'waiting' && (agent.status === 'working' || agent.status === 'done')) {
         this.update(agent.terminalId, { status: 'needs-you', activity: 'needs your permission', waitingOn: 'permission' })
         continue
       }
@@ -569,6 +570,11 @@ export class Missions implements ControlHandlers {
       const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
       this.deliver(a, `[The ORC] Your branch conflicts with work already merged (${r.files.join(', ')}). The conflict markers are now in your worktree. Resolve them so both changes survive, then call report_done again.`)
       if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${r.files.join(', ')}. ${a.name} has been asked to resolve it; step in if it needs direction.`)
+      // Its work is not done any more: it has a conflict to resolve. Without this, "done" is
+      // sticky and a permission prompt during the resolution never shows as needs-you.
+      a.status = 'working'
+      a.activity = 'resolving a conflict'
+      this.emit()
       return
     }
     a.merge = 'merged'

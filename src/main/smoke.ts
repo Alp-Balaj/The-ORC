@@ -191,12 +191,17 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           const asker = async (): Promise<MissionView['agents'][number] | undefined> => view()?.agents.find((a) => a.status === 'needs-you' && a.role === 'worker')
           if (await waitFor('a worker asks about the conflict', () => !!view()?.agents.some((a) => a.status === 'needs-you' && a.role === 'worker') || (view()?.merged.length ?? 0) >= 2, 2000, 120_000)) {
             const w = await asker()
-            if (w) {
-              check('the conflicted worker asked the human (◐)', true, w.question ?? '')
+            if (w?.question) {
+              check('the conflicted worker asked the human (◐)', true, w.question)
               d.terminals.write(w.terminalId, 'Keep both: line 1 red, line 2 blue. Remove the conflict markers, then call report_done again.')
               await sleep(700)
               d.terminals.write(w.terminalId, '\r')
               log(`answered ${w.name}'s question`)
+            } else if (w) {
+              // A permission prompt (◐) while resolving: approve it, as the human would.
+              check('the resolving worker shows needs-you at its permission prompt', true, w.activity)
+              d.terminals.write(w.terminalId, '\r')
+              log(`approved ${w.name}'s permission prompt`)
             }
           }
           const both = await waitFor('both merged after resolution', () => (view()?.merged.length ?? 0) >= 2, 3000, 300_000)
