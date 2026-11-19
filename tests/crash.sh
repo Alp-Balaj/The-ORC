@@ -8,6 +8,7 @@
 set -u
 out=${1:?usage: tests/crash.sh <out-dir>}
 here=$(cd "$(dirname "$0")/.." && pwd)
+. "$here/tests/proc.sh"
 rm -rf "$out"; mkdir -p "$out"
 cd "$here" && pnpm -s build >/dev/null || exit 1
 fail=0
@@ -16,13 +17,13 @@ round() { # name scenario-a scenario-b extra-env-for-a... ; fake sessions unless
   mkdir -p "$out/$name/a" "$out/$name/b"
   local state="$out/$name/missions.json" fake=1
   [ "${REAL:-}" = 1 ] && fake=
-  env ORC_SMOKE_OUT="$out/$name/a" ORC_STATE_FILE="$state" ORC_SMOKE_FAKE=$fake ORC_SMOKE_SCENARIO=$a "$@" \
-    setsid timeout 120 node_modules/.bin/electron . >/dev/null 2>&1 &
-  local pg=$!
+  start_group env ORC_SMOKE_OUT="$out/$name/a" ORC_STATE_FILE="$state" ORC_SMOKE_FAKE=$fake ORC_SMOKE_SCENARIO=$a "$@" \
+    timeout 120 node_modules/.bin/electron .
+  local pg=$group
   for _ in $(seq 90); do grep -q ready-for-crash "$out/$name/a/timeline.log" 2>/dev/null && break; sleep 1; done
   grep -q ready-for-crash "$out/$name/a/timeline.log" || { echo "$name: part 1 never got ready"; fail=1; }
   if [ "${QUIT:-}" = 1 ]; then for _ in $(seq 20); do kill -0 "$pg" 2>/dev/null || break; sleep 1; done; fi
-  kill -KILL -- -"$pg" 2>/dev/null
+  kill_group "$pg"
   sleep 2
   "$here/tests/kill-strays.sh" >/dev/null
   env ORC_SMOKE_OUT="$out/$name/b" ORC_STATE_FILE="$state" ORC_SMOKE_FAKE=$fake ORC_SMOKE_SCENARIO=$b \

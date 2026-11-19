@@ -21,6 +21,7 @@ const OrcTools = [
   'mcp__orc__report_done',
   'mcp__orc__ask_human',
   'mcp__orc__propose_split',
+  'mcp__orc__stop_agent',
   'SendMessage',
   'ListAgents'
 ]
@@ -129,6 +130,9 @@ export function coordinatorPrompt(mission: string, sessionName: string, repo: st
     'so parallel workers never edit the same files.',
     `Your session name is "${sessionName}". Workers report to you with SendMessage.`,
     'Wait for their reports instead of polling. Do not do splittable implementation work yourself.',
+    'Once a worker has reported done, its work is merged and you have no further use for it, you may',
+    'shut its session down with `mcp__orc__stop_agent` to free resources. A stopped worker cannot be',
+    'messaged again, so keep any worker you may still send follow-up work to.',
     'Never commit, merge, push or manage branches: The ORC commits each worker\'s work when it reports',
     'done and merges it into the mission\'s integration branch; the human merges to main.',
     'Messages starting with [The ORC] come from the app, not the human.',

@@ -205,7 +205,9 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
                     {active && (
                       <div className="mt-1 space-y-1.5 pb-1 pl-1 pr-0.5">
                         {m.agents.map((a) => (
-                          <AgentCard key={a.terminalId} a={a} selected={a.terminalId === selectedTerminal} onSelect={() => onSelectAgent(a.terminalId)} onReview={() => onReview(a.name)} />
+                          <AgentCard key={a.terminalId} a={a} selected={a.terminalId === selectedTerminal} onSelect={() => onSelectAgent(a.terminalId)} onReview={() => onReview(a.name)}
+                            onStop={m.state === 'running' && a.role === 'worker' && a.status !== 'exited' ? () => window.orc.stopWorker(m.id, a.name) : undefined}
+                          />
                         ))}
                       </div>
                     )}

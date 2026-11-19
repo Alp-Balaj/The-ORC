@@ -24,6 +24,8 @@ export interface ControlHandlers {
   spawnAgent(caller: string, name: string, task: string): Promise<string>
   reportDone(caller: string, summary: string): void
   askHuman(caller: string, question: string): void
+  /** Ends a finished worker's session. Returns the reply for the caller. */
+  stopAgent(caller: string, name: string, reason: string | null): string
   proposeSplit(caller: string, summary: string, workers: { name: string; task: string }[]): string
   /** Returns the hook's stdout (JSON for Claude Code), or null for none. */
   hookEvent(caller: string, event: HookEvent): string | null
@@ -95,6 +97,21 @@ function buildMcp(caller: string, h: ControlHandlers): McpServer {
       h.askHuman(caller, question)
       return text('Shown to the human. Their answer will be typed into this session. End your turn now.')
     }
+  )
+  server.registerTool(
+    'stop_agent',
+    {
+      description:
+        'Shut down a worker you started, once its job is finished: it has called report_done and ' +
+        'The ORC has merged its work (or found nothing to merge). Ends its Claude Code session; its ' +
+        'worktree and branch are kept. A stopped worker cannot be messaged again. Refused (with the ' +
+        'reason) while its work is still being committed, reviewed or in conflict.',
+      inputSchema: {
+        name: z.string().min(1).describe('The worker\'s name, e.g. "post-api" (or its session name "<mission>/post-api")'),
+        reason: z.string().optional().describe('Optional: why, shown in the mission feed')
+      }
+    },
+    async ({ name, reason }) => text(h.stopAgent(caller, name, reason ?? null))
   )
   server.registerTool(
     'propose_split',

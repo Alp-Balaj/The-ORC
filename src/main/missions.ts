@@ -270,8 +270,10 @@ export class Missions implements ControlHandlers {
     if (mission.agents.has(name)) {
       return `A worker named "${name}" already exists in this mission. Pick another name.`
     }
-    if (mission.agents.size >= this.maxAgentsPerMission) {
-      return `This mission already has ${mission.agents.size} agents, the most allowed. Reuse an existing worker by messaging it.`
+    // Stopped workers don't count: shutting one down makes room for another.
+    const running = [...mission.agents.values()].filter((x) => x.status !== 'exited').length
+    if (running >= this.maxAgentsPerMission) {
+      return `This mission already has ${running} running agents, the most allowed. Reuse an existing worker by messaging it, or stop a finished one with stop_agent.`
     }
     let wt: { path: string; branch: string }
     try {
@@ -432,6 +434,72 @@ export class Missions implements ControlHandlers {
     return { ok: true, message: `Merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}. Merged workers' worktrees and branches removed.${keptNote}` }
   }
 
+  /** A coordinator (or the worker's parent) shuts down a worker whose job is finished. Only
+   *  once its work is merged or there was nothing to merge: before that, The ORC may still need
+   *  to reach it (a conflict to resolve, a diff sent back). The agent becomes "exited", so a
+   *  restart doesn't resume it and nothing is typed into its dead terminal. Worktree and branch
+   *  stay (Merge to main cleans them up). */
+  stopAgent(callerTerminal: string, rawName: string, reason: string | null): string {
+    const caller = this.byTerminal.get(callerTerminal)
+    if (!caller) throw new Error('unknown caller')
+    const mission = this.missions.get(caller.missionId)!
+    const given = rawName.trim()
+    const name = given.startsWith(`${mission.name}/`) ? given.slice(mission.name.length + 1) : given
+    const a = mission.agents.get(name)
+    if (!a || a.role !== 'worker') return `There is no worker named "${name}" in this mission.`
+    if (a === caller) return 'You cannot stop yourself. Call report_done when your task is finished.'
+    if (caller.role !== 'coordinator' && a.parent !== caller.name) return `Only the coordinator or the agent that started "${name}" can stop it.`
+    if (a.status === 'exited') return `"${name}" is already stopped.`
+    if (!a.doneSummary) return `"${name}" has not reported done yet. Wait for its report, or message it; only finished workers can be stopped.`
+    const live = [...mission.agents.values()].filter((x) => x.parent === a.name && x.status !== 'exited')
+    if (live.length) return `"${name}" still has running workers of its own (${live.map((x) => x.name).join(', ')}). Stop those first.`
+    if (a.merge !== 'merged' && a.merge !== 'nothing') {
+      const why =
+        a.merge === 'review' ? 'its diff is waiting for the human\'s review, and they may send it back'
+          : a.merge === 'conflict' ? 'its work conflicts with merged work and it is resolving that'
+            : 'The ORC is still committing and merging its work'
+      return `Not stopped: ${why}. Try again once its work is merged.`
+    }
+    this.endAgent(mission, a, caller.name, reason?.trim() ? `shut down: ${oneLine(reason)}` : 'shut down: job finished')
+    return `Stopped "${a.sessionName}". Its worktree and branch are kept; it can no longer be messaged.`
+  }
+
+  /** The human pressed Stop on a worker's card. Unlike stop_agent this works at any point (the
+   *  human decides); unfinished changes stay uncommitted in its worktree. Its parent is told so
+   *  it stops messaging it. Throws with the reason when refused (the UI shows it). */
+  stopWorker(missionId: string, name: string): void {
+    const mission = this.missions.get(missionId)
+    const a = mission?.agents.get(name)
+    if (!mission || !a || a.role !== 'worker') throw new Error(`no worker named "${name}"`)
+    if (mission.state !== 'running') throw new Error('this mission is stopped')
+    if (a.status === 'exited') return
+    const live = [...mission.agents.values()].filter((x) => x.parent === a.name && x.status !== 'exited')
+    if (live.length) throw new Error(`${name} still has running workers of its own (${live.map((x) => x.name).join(', ')}). Stop those first.`)
+    const finished = !!a.doneSummary && (a.merge === 'merged' || a.merge === 'nothing')
+    this.endAgent(mission, a, 'you', finished ? 'shut down: job finished' : 'shut down before its work was merged')
+    const parent = a.parent ? mission.agents.get(a.parent) : null
+    if (parent && parent.status !== 'exited') {
+      // Queued, not typed: it reaches the parent on its next turn or tool call without starting one.
+      parent.notes.push(`[The ORC] The human stopped your worker "${a.sessionName}". Its session has ended; do not message it.${finished ? '' : ' Its unfinished work was not merged.'}`)
+    }
+  }
+
+  /** Ends an agent's session for good. Exited before the kill: terminalExited and SessionEnd
+   *  leave it alone, restore() doesn't resume it and deliver() types nothing into it. */
+  private endAgent(mission: Mission, a: Agent, by: string, text: string): void {
+    a.status = 'exited'
+    a.shutDown = true
+    a.activity = `shut down by ${by}`
+    a.inTurn = false
+    a.waitingOn = null
+    a.question = null
+    a.notes = []
+    // Its token stops working: no late hook or MCP call (report_done, spawn_agent) acts as it.
+    if (a.token) this.byToken.delete(a.token)
+    this.terminals.kill(a.terminalId)
+    this.feed(mission, { kind: 'stopped', from: by, to: a.name, text })
+  }
+
   askHuman(callerTerminal: string, question: string): void {
     const a = this.byTerminal.get(callerTerminal)
     this.update(callerTerminal, { status: 'needs-you', activity: 'asked you a question', question, waitingOn: 'question' })
@@ -442,7 +510,8 @@ export class Missions implements ControlHandlers {
    *  additionalContext (PreToolUse and UserPromptSubmit accept it), or null for nothing. */
   hookEvent(callerTerminal: string, e: HookEvent): string | null {
     const agent = this.byTerminal.get(callerTerminal)
-    if (!agent) return null
+    // A hook already in flight when the agent was shut down must not bring its status back.
+    if (!agent || agent.shutDown) return null
     const mission = this.missions.get(agent.missionId)!
     if (!agent.tally && typeof e.transcript_path === 'string') agent.tally = new TranscriptTally(e.transcript_path)
     const done = agent.status === 'done'
@@ -660,6 +729,17 @@ export class Missions implements ControlHandlers {
   private async mergeWorker(mission: Mission, a: Agent): Promise<void> {
     await this.git.ensureIntegration(mission.repoPath, mission.name, mission.baseBranch)
     const r = await this.git.mergeIntoIntegration(mission.repoPath, mission.name, a.branch!, `Merge ${a.name} into ${missionGit.integrationBranch(mission.name)}`)
+    if (r.kind === 'conflict' && a.shutDown) {
+      // Its session is gone, so nobody can resolve it in its worktree: leave the worktree alone
+      // (the merge was aborted) and hand the conflict to the coordinator and the human.
+      a.merge = 'conflict'
+      a.conflictFiles = r.files
+      this.feed(mission, { kind: 'conflict', from: a.name, to: 'you', text: `conflicts with ${missionGit.integrationBranch(mission.name)} in ${r.files.join(', ')}; ${a.name} is stopped, so it was not merged`, status: 'failed' })
+      const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
+      if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${r.files.join(', ')}, and ${a.name} was stopped, so it was not merged. Tell the human; a new worker can redo that part.`)
+      this.emit()
+      return
+    }
     if (r.kind === 'conflict') {
       a.merge = 'conflict'
       a.conflictFiles = r.files
@@ -943,41 +1023,8 @@ export class Missions implements ControlHandlers {
         log.push(`${mission.name}: aborted a merge left half-done in the integration worktree`)
       }
       for (const agent of mission.agents.values()) {
-        if (agent.status === 'exited') continue
-        if (!existsSync(agent.cwd)) {
-          agent.status = 'exited'
-          agent.activity = 'worktree missing after restart'
-          log.push(`${mission.name}/${agent.name}: worktree is gone, not resumed`)
-          continue
-        }
-        const hadTurn = !!agent.tally && existsSync(agent.tally.path)
-        // A turn cut off by the restart is over; questions and done stay as they were.
-        // A session started fresh is "starting" until its new SessionStart, whatever it was.
-        if (!hadTurn && !agent.question && agent.status !== 'done') {
-          agent.status = 'starting'
-          agent.activity = 'restarted'
-        } else if (agent.status === 'working' || agent.status === 'starting' || (agent.status === 'needs-you' && !agent.question)) {
-          agent.status = hadTurn ? 'idle' : 'starting'
-          agent.activity = hadTurn ? 'resumed after restart' : 'restarted'
-        }
-        try {
-          this.startSession(mission, agent, {
-            systemPrompt: this.systemPromptFor(mission, agent),
-            resume: hadTurn,
-            firstPrompt: hadTurn || agent.role !== 'worker' ? undefined : agent.task
-          })
-        } catch (err) {
-          // One agent that can't start must not stop the rest from coming back.
-          agent.status = 'exited'
-          agent.activity = `could not restart: ${String((err as Error).message ?? err)}`
-          log.push(`${mission.name}/${agent.name}: could not restart (${String((err as Error).message ?? err)})`)
-          continue
-        }
-        if (agent.role === 'worker' && agent.branch) {
-          const dirty = (await missionGit.git(agent.cwd, ['status', '--porcelain'], { allowFail: true })).stdout
-          if (dirty) log.push(`${mission.name}/${agent.name}: worktree has uncommitted changes (kept)`)
-        }
-        log.push(`${mission.name}/${agent.name}: ${hadTurn ? 'resumed' : 'restarted'}`)
+        if (agent.status === 'exited' || agent.shutDown) continue
+        await this.relaunch(mission, agent, log)
       }
       // Work committed but not yet merged (held by a pause, or cut off by the crash).
       for (const agent of mission.agents.values()) {
@@ -989,6 +1036,76 @@ export class Missions implements ControlHandlers {
     }
     this.emit()
     return log
+  }
+
+  /** Brings one agent's session back: `claude --resume` when it had a turn, else a fresh start
+   *  (workers get their task again). Appends what it did to `log`. */
+  private async relaunch(mission: Mission, agent: Agent, log: string[]): Promise<void> {
+    if (!existsSync(agent.cwd)) {
+      agent.status = 'exited'
+      agent.activity = 'worktree missing after restart'
+      log.push(`${mission.name}/${agent.name}: worktree is gone, not resumed`)
+      return
+    }
+    const hadTurn = !!agent.tally && existsSync(agent.tally.path)
+    // A turn cut off by the restart is over; questions and done stay as they were.
+    // A session started fresh is "starting" until its new SessionStart, whatever it was.
+    if (!hadTurn && !agent.question && agent.status !== 'done') {
+      agent.status = 'starting'
+      agent.activity = 'restarted'
+    } else if (agent.status === 'working' || agent.status === 'starting' || (agent.status === 'needs-you' && !agent.question)) {
+      agent.status = hadTurn ? 'idle' : 'starting'
+      agent.activity = hadTurn ? 'resumed after restart' : 'restarted'
+    }
+    try {
+      this.startSession(mission, agent, {
+        systemPrompt: this.systemPromptFor(mission, agent),
+        resume: hadTurn,
+        firstPrompt: hadTurn || agent.role !== 'worker' ? undefined : agent.task
+      })
+    } catch (err) {
+      // One agent that can't start must not stop the rest from coming back.
+      agent.status = 'exited'
+      agent.activity = `could not restart: ${String((err as Error).message ?? err)}`
+      log.push(`${mission.name}/${agent.name}: could not restart (${String((err as Error).message ?? err)})`)
+      return
+    }
+    if (agent.role === 'worker' && agent.branch) {
+      const dirty = (await missionGit.git(agent.cwd, ['status', '--porcelain'], { allowFail: true })).stdout
+      if (dirty) log.push(`${mission.name}/${agent.name}: worktree has uncommitted changes (kept)`)
+    }
+    log.push(`${mission.name}/${agent.name}: ${hadTurn ? 'resumed' : 'restarted'}`)
+  }
+
+  /** Brings a stopped mission back (Stop pressed by mistake): every session the Stop ended is
+   *  resumed with its conversation. Workers shut down on their own stay down. Throws with the
+   *  reason when it can't (the UI shows it). */
+  async restartMission(id: string): Promise<void> {
+    const m = this.missions.get(id)
+    if (!m || m.state !== 'stopped') return
+    if (m.mergedToMain) throw new Error('this mission was merged to main and its worktrees removed; start a new mission instead')
+    const back = [...m.agents.values()].filter((a) => !a.shutDown)
+    const live = this.liveIn(m.repoPath)
+    const limit = this.liveLimitFor(m.repoPath)
+    const wanted = back.filter((a) => a.status !== 'done').length
+    if (live + wanted > limit) throw new Error(`restarting needs ${wanted} live agents and this space has ${live} of ${limit}. Stop or finish another mission first.`)
+    // Stop only signals the processes: a terminal is running until its exit arrives. Wait for
+    // them, or Restart right after Stop would skip them and their late exits undo the restart.
+    for (const end = Date.now() + 8000; back.some((a) => this.terminals.isRunning(a.terminalId)); await new Promise((r) => setTimeout(r, 100))) {
+      if (Date.now() > end) throw new Error('the stopped sessions have not exited yet. Try Restart again in a few seconds.')
+    }
+    if (m.state !== 'stopped') return
+    m.state = 'running'
+    const log: string[] = []
+    for (const a of back) {
+      // Stop marked unfinished agents exited; what they were doing is gone, so they come back
+      // idle (or still asking, or done) the way a crash restart does.
+      if (a.status === 'exited') a.status = a.doneSummary && a.merge !== 'conflict' ? 'done' : a.question ? 'needs-you' : 'working'
+      a.waitingOn = a.question ? 'question' : null
+      a.inTurn = false
+      await this.relaunch(m, a, log)
+    }
+    this.feed(m, { kind: 'orc', from: 'you', to: null, text: `mission restarted: ${log.length ? log.map((l) => l.replace(`${m.name}/`, '')).join('; ') : 'no sessions to bring back'}`, status: 'ok' })
   }
 
   private update(terminalId: string, patch: Partial<Agent>): void {
@@ -1029,6 +1146,7 @@ function agentView(a: Agent): AgentView {
     contextTokens: a.contextTokens,
     startedAt: a.startedAt,
     merge: a.merge,
-    conflictFiles: a.conflictFiles
+    conflictFiles: a.conflictFiles,
+    ...(a.shutDown ? { shutDown: true } : {})
   }
 }

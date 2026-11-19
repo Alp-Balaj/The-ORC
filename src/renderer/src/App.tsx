@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GitMerge, MessagesSquare, Pause, Play, Square, TerminalSquare } from 'lucide-react'
+import { GitMerge, MessagesSquare, Pause, Play, RotateCcw, Square, TerminalSquare } from 'lucide-react'
 import type { MissionView, SpaceView } from '../../shared/types'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
@@ -94,6 +94,18 @@ export function App(): React.JSX.Element {
             {mission.model && <Badge variant="outline">{mission.model}</Badge>}
             <Badge variant="outline" title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</Badge>
             {mission.state === 'stopped' && <Badge variant="exited">stopped</Badge>}
+            {mission.state === 'stopped' && !mission.mergedToMain && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-[11px]"
+                data-testid="restart-mission"
+                title="Bring back every session Stop ended, each with its conversation (claude --resume). Workers you shut down one by one stay down."
+                onClick={() => void window.orc.restartMission(mission.id)}
+              >
+                <RotateCcw /> Restart
+              </Button>
+            )}
             {mission.state === 'stopped' && (
               <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" data-testid="remove-mission" title="Forget this mission. Its branches and worktrees stay in git." onClick={() => void window.orc.removeMission(mission.id).then(() => setMissionId(null))}>
                 Remove

@@ -66,8 +66,14 @@ export function ReviewScreen({ mission, agent, onBack }: { mission: MissionView;
       {a?.merge === 'review' ? (
         <div className="flex gap-1.5">
           <Button onClick={() => void window.orc.approveWorker(mission.id, agent).then(onBack)} data-testid="approve-worker"><GitMerge /> Approve and merge into integration</Button>
-          <Input placeholder="What should change?" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md" />
-          <Button variant="outline" disabled={!note.trim()} onClick={() => void window.orc.sendBack(mission.id, agent, note).then(onBack)}><Undo2 /> Send back</Button>
+          {a.status === 'exited' ? (
+            <span className="self-center text-[12px] text-muted-foreground">{agent} was stopped, so it can't be sent back.</span>
+          ) : (
+            <>
+              <Input placeholder="What should change?" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md" />
+              <Button variant="outline" disabled={!note.trim()} onClick={() => void window.orc.sendBack(mission.id, agent, note).then(onBack)}><Undo2 /> Send back</Button>
+            </>
+          )}
         </div>
       ) : (
         <div className="text-[12px] text-muted-foreground">State: {a?.merge ?? 'not reported yet'}</div>

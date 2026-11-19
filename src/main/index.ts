@@ -83,6 +83,7 @@ const control = new ControlServer({
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
   reportDone: (c, s) => missions.reportDone(c, s),
   askHuman: (c, q) => missions.askHuman(c, q),
+  stopAgent: (c, n, r) => missions.stopAgent(c, n, r),
   proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
   hookEvent: (c, e) => {
     // Raw payloads, so status bugs can be diagnosed from a file.
@@ -144,6 +145,7 @@ ipcMain.handle('missions:start', async (_e, req: StartMissionRequest) => {
   return missions.startMission(req)
 })
 ipcMain.handle('missions:stop', (_e, id: string) => missions.stopMission(id))
+ipcMain.handle('missions:restart', (_e, id: string) => missions.restartMission(id))
 ipcMain.handle('missions:pause', (_e, id: string) => missions.pauseMission(id))
 ipcMain.handle('missions:remove', (_e, id: string) => missions.removeMission(id))
 ipcMain.handle('missions:resume', (_e, id: string) => missions.resumeMission(id))
@@ -153,6 +155,7 @@ ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string
 })
 ipcMain.handle('missions:decide-split', (_e, id: string, approve: boolean, note: string | null) => missions.decideSplit(id, approve, note))
 ipcMain.handle('missions:approve-worker', (_e, id: string, agent: string) => missions.approveWorker(id, agent))
+ipcMain.handle('missions:stop-worker', (_e, id: string, agent: string) => missions.stopWorker(id, agent))
 ipcMain.handle('missions:send-back', (_e, id: string, agent: string, note: string) => missions.sendBack(id, agent, note))
 ipcMain.handle('missions:worker-diff', (_e, id: string, agent: string) => missions.workerDiff(id, agent))
 ipcMain.handle('missions:diff', (_e, id: string) => missions.missionDiff(id))

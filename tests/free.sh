@@ -7,7 +7,7 @@ out=${1:-$(mktemp -d)}
 cd "$here"
 "$here/tests/clean-sandbox.sh"
 pnpm -s typecheck
-for t in control-server.smoke missions-status.test feed-tokens.test tree-layout.test mission-git.test mission-flow.test recovery.test; do
+for t in control-server.smoke missions-status.test feed-tokens.test tree-layout.test mission-git.test mission-flow.test recovery.test stop-agent.test; do
   node --no-warnings "tests/$t.ts" | tail -1
 done
 pnpm -s build >/dev/null

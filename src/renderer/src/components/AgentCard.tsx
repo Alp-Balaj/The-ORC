@@ -1,8 +1,19 @@
+import { useState } from 'react'
 import { motion } from 'motion/react'
-import { CircleHelp, GitBranch, CheckCheck, GitMerge, Swords, Eye } from 'lucide-react'
+import { CircleHelp, GitBranch, CheckCheck, GitMerge, Swords, Eye, Square } from 'lucide-react'
 import type { AgentView, AgentStatus } from '../../../shared/types'
 import { ago, cn, formatTokens } from '../lib/utils'
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
+
+/** What stopping this worker means for its work, in one line. */
+function stopConsequence(a: AgentView): string {
+  if (a.doneSummary && (a.merge === 'merged' || a.merge === 'nothing')) return 'Its work is merged. The session ends; its worktree and branch are kept.'
+  if (a.merge === 'review') return 'Its diff still waits for your review: you can approve it, but no longer send it back.'
+  if (a.merge === 'conflict') return "It was resolving a merge conflict. The conflict stays unresolved in its worktree and won't merge."
+  if (a.doneSummary) return 'It reported done and its work still merges. The session ends.'
+  return "It hasn't reported done. Its changes so far stay in its worktree but won't be committed or merged."
+}
 
 export const statusLabel: Record<AgentStatus, string> = {
   starting: 'starting',
@@ -26,7 +37,16 @@ export function StatusDot({ status, className }: { status: AgentStatus; classNam
   return <span className={cn('inline-block size-2 shrink-0 rounded-full', dotClass[status], className)} />
 }
 
-export function AgentCard({ a, selected, onSelect, onReview }: { a: AgentView; selected: boolean; onSelect: () => void; onReview?: () => void }): React.JSX.Element {
+export function AgentCard({ a, selected, onSelect, onReview, onStop }: {
+  a: AgentView
+  selected: boolean
+  onSelect: () => void
+  onReview?: () => void
+  /** Present when this worker can be stopped from its card. */
+  onStop?: () => Promise<void>
+}): React.JSX.Element {
+  const [confirming, setConfirming] = useState(false)
+  const [stopping, setStopping] = useState(false)
   return (
     <motion.div
       layout
@@ -47,7 +67,59 @@ export function AgentCard({ a, selected, onSelect, onReview }: { a: AgentView; s
         <StatusDot status={a.status} />
         <span className="truncate font-medium text-foreground">{a.name}</span>
         <Badge variant={a.status} className="ml-auto">{statusLabel[a.status]}</Badge>
+        {onStop && !confirming && (
+          <button
+            data-testid="stop-worker"
+            aria-label={`Stop ${a.name}`}
+            title="Stop this worker"
+            className={cn(
+              'grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100',
+              selected && 'opacity-100'
+            )}
+            onClick={(e) => {
+              e.stopPropagation()
+              setConfirming(true)
+            }}
+          >
+            <Square className="size-3" />
+          </button>
+        )}
       </div>
+      {onStop && confirming && (
+        <div
+          data-testid="stop-worker-confirm"
+          role="alertdialog"
+          aria-label={`Stop ${a.name}?`}
+          className="mt-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.key === 'Escape' && setConfirming(false)}
+        >
+          <div className="text-[12px] font-medium text-foreground">Stop {a.name}?</div>
+          <div className="mt-0.5 text-[11.5px] text-muted-foreground">{stopConsequence(a)}</div>
+          <div className="mt-1.5 flex justify-end gap-1.5">
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" autoFocus onClick={() => setConfirming(false)}>
+              Keep running
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-6 px-2 text-[11px]"
+              data-testid="stop-worker-yes"
+              disabled={stopping}
+              onClick={() => {
+                setStopping(true)
+                // A refusal reaches the action-error banner; the card closes either way.
+                void onStop().finally(() => {
+                  setStopping(false)
+                  setConfirming(false)
+                })
+              }}
+            >
+              <Square /> {stopping ? 'Stopping…' : 'Stop worker'}
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="mt-1 truncate font-mono text-[11.5px] text-muted-foreground" title={a.activity}>{a.activity}</div>
       <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
         {a.branch && a.role === 'worker' && (

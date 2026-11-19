@@ -189,13 +189,18 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await sleep(900)
   check('the merge screen shows the combined diff', (await js<string>(`[...document.querySelectorAll('[data-testid=diff-file]')].map(e => e.textContent).join()`)).includes('doc.txt'))
   check('the merge screen shows the gate result', /passed/.test(await js<string>(`document.querySelector('[data-testid=gate-result]')?.textContent ?? ''`)))
+  // Git is slow on Windows (virus scanner): wait for results instead of a fixed sleep.
+  const textOf = (sel: string): Promise<string> => js<string>(`document.querySelector(${JSON.stringify(sel)})?.textContent ?? ''`)
+  const waitText = async (sel: string, re: RegExp, ms = 10_000): Promise<string> => {
+    let t = ''
+    for (const end = Date.now() + ms; Date.now() < end; await sleep(250)) if (re.test((t = await textOf(sel)))) break
+    return t
+  }
   await js(`document.querySelector('[data-testid=run-verifier]')?.click()`)
-  await sleep(900)
-  check('the Verifier verdict shows', /PASS/.test(await js<string>(`document.querySelector('[data-testid=verifier-status]')?.textContent ?? ''`)))
+  check('the Verifier verdict shows', /PASS/.test(await waitText('[data-testid=verifier-status]', /PASS/)))
   await shot('replay-merge-screen')
   await js(`document.querySelector('[data-testid=confirm-merge]')?.click()`)
-  await sleep(1500)
-  const mergeMsg = await js<string>(`document.querySelector('[data-testid=merge-result]')?.textContent ?? ''`)
+  const mergeMsg = await waitText('[data-testid=merge-result]', /\S/)
   check('Merge to main fast-forwards space-b main', /Merged/.test(mergeMsg) && existsSync(join(spaceB, 'doc.txt')), mergeMsg)
   check('…and the mission is finished', !!view(m3).mergedToMain && view(m3).state === 'stopped')
   await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m2).name)}] button')?.click()`)
@@ -204,6 +209,28 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await sleep(1000)
   check('Stop ends the mission', view(m2).state === 'stopped' && view(m2).agents.every((a) => a.status === 'exited'))
   await shot('replay-stopped')
+
+  // Restart brings a mission stopped by mistake back.
+  await js(`document.querySelector('[data-testid=restart-mission]')?.click()`)
+  await sleep(1000)
+  const coord2 = view(m2).agents.find((a) => a.name === 'coordinator')!
+  check('Restart brings a stopped mission back', view(m2).state === 'running' && coord2.status !== 'exited', `${view(m2).state} ${coord2.status}`)
+  check('…and the Restart button is gone', (await count('[data-testid=restart-mission]')) === 0)
+
+  // Stop one worker from its card: a confirmation first, then only that worker ends.
+  await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m1).name)}] button')?.click()`)
+  await sleep(600)
+  await js(`document.querySelector('[data-testid=agent-card][data-agent=navbar] [data-testid=stop-worker]')?.click()`)
+  await sleep(400)
+  const confirmText = await js<string>(`document.querySelector('[data-testid=agent-card][data-agent=navbar] [data-testid=stop-worker-confirm]')?.textContent ?? ''`)
+  check('the card asks before stopping a worker, and says what happens to its work', /Stop navbar\?/.test(confirmText) && /won't be committed or merged/.test(confirmText), confirmText)
+  check('…nothing is stopped yet', view(m1).agents.find((a) => a.name === 'navbar')!.status !== 'exited')
+  await shot('replay-stop-worker-confirm')
+  await js(`document.querySelector('[data-testid=agent-card][data-agent=navbar] [data-testid=stop-worker-yes]')?.click()`)
+  await sleep(800)
+  const navbar = view(m1).agents.find((a) => a.name === 'navbar')!
+  check('Stop worker ends only that worker', navbar.status === 'exited' && navbar.shutDown === true && view(m1).state === 'running', `${navbar.status} ${view(m1).state}`)
+  check('…and its card has no Stop any more', (await count('[data-testid=agent-card][data-agent=navbar] [data-testid=stop-worker]')) === 0)
 
   // A failed action that nothing awaits still surfaces (the banner), and the UI survives it.
   await js(`void window.orc.addSpace('/tmp')`)
@@ -226,7 +253,7 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await sleep(200)
   await js(`document.querySelector('[data-testid=new-mission-form] button[type=submit]')?.click()`)
   await sleep(800)
-  const err = await js<string>(`document.querySelector('[data-testid=new-mission-error]')?.textContent ?? ''`)
+  const err = await waitText('[data-testid=new-mission-error]', /\S/)
   check('starting a duplicate mission name shows an error', /already exists/.test(err), err)
   await shot('replay-duplicate-name')
 }

@@ -31,6 +31,9 @@ export interface AgentView {
   merge: 'committed' | 'review' | 'merged' | 'conflict' | 'nothing' | null
   /** Conflicting files when merge is "conflict". */
   conflictFiles: string[]
+  /** Shut down on its own (Stop on its card, or stop_agent), not by stopping the mission:
+   *  restarting the mission leaves it down. */
+  shutDown?: boolean
 }
 
 /** One line of a mission's feed. "message" is a SendMessage as the sender saw it;

@@ -184,8 +184,11 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       // Restore sets "starting | restarted"; only a new SessionStart from this launch turns it
       // into "idle | ready" (it may already have, before this check runs).
       check('its session starts again with the same --session-id (a new SessionStart)', await waitFor('SessionStart again', () => c()?.status === 'idle' && c()?.activity === 'ready', 0, 60_000) && d.terminals.isRunning(c()!.terminalId), `${c()?.status} | ${c()?.activity}`)
-      const out = stripAnsi(d.terminals.replay(c()!.terminalId))
-      check('no session-id error from claude', !/already in use|invalid session|error/i.test(out.slice(0, 3000)), out.slice(0, 160))
+      // Blank lines collapsed (ConPTY pads the screen with them). Only claude's real error lines
+      // count: a bare "error" also matches its rotating input hint ('Try "fix typecheck errors"').
+      const out = stripAnsi(d.terminals.replay(c()!.terminalId)).replace(/\s+/g, ' ').trim()
+      const bad = /already in use|invalid session|\berror:/i.exec(out.slice(0, 3000))
+      check('no session-id error from claude', !bad, bad ? out.slice(Math.max(0, bad.index - 80), bad.index + 80) : '')
     } else if (scenario === 'resume-a') {
       // Billed (1 Haiku session): a real turn, Pause mid-turn, Resume, then wait to be killed.
       const id = await js<string>(`window.orc.startMission(${JSON.stringify({ repoPath: Sandbox, name: `smoke-resume-${Date.now() % 100000}`, permissionMode: 'acceptEdits', gating: 'none', model: process.env.ORC_SMOKE_MODEL ?? 'haiku' })})`)
@@ -486,7 +489,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
     const workers = m.agents.filter((a) => a.role === 'worker')
     check('at least two workers spawned', workers.length >= 2, workers.map((w) => w.name).join(', '))
     check('every worker ran in its own worktree', workers.every((w) => w.cwd.includes('/.orc/worktrees/')) && new Set(workers.map((w) => w.cwd)).size === workers.length)
-    check('every worker reported done', workers.length > 0 && workers.every((w) => w.status === 'done'), workers.map((w) => `${w.name}=${w.status}`).join(', '))
+    // A worker the coordinator shut down (stop_agent) is exited but still reported.
+    check('every worker reported done', workers.length > 0 && workers.every((w) => !!w.doneSummary && (w.status === 'done' || w.status === 'exited')), workers.map((w) => `${w.name}=${w.status}`).join(', '))
     const files = workers.flatMap((w) => ['a.txt', 'b.txt'].filter((f) => existsSync(join(w.cwd, f))).map((f) => `${w.name}/${f}`))
     check('a.txt and b.txt were written in worker worktrees (merged and removed since)', m.mergedToMain ? m.feed.filter((f) => f.kind === 'commit').length >= 2 : ['a.txt', 'b.txt'].every((f) => files.some((x) => x.endsWith(f))), files.join(', ') || 'worktrees removed after merge')
     const by = (sid: string, ev: string): unknown[] => hooks.filter((h) => h.session_id === sid && h.hook_event_name === ev)
