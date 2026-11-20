@@ -11,6 +11,7 @@ import { runSmoke } from './smoke.ts'
 import { fakeLauncher } from './smoke-replay.ts'
 import { Spaces } from './spaces.ts'
 import { TerminalHost } from './terminals.ts'
+import { AppRunner } from './app-runner.ts'
 
 let win: BrowserWindow | null = null
 
@@ -23,6 +24,7 @@ const terminals = new TerminalHost(
   (id, data) => send('terminal:data', id, data),
   (id, code) => {
     missions.terminalExited(id, code)
+    appRunner.terminalExited(id, code)
     send('terminal:exit', id, code)
   }
 )
@@ -30,6 +32,7 @@ const missions = new Missions(terminals, (views) => {
   send('missions:changed', views)
   scheduleSave()
 })
+const appRunner = new AppRunner(terminals, (run) => send('app:changed', run))
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
 missions.liveLimitFor = (repo) => spaces.maxLive(repo)
 missions.recordsDirFor = (repo) => spaces.vaultDir(repo)
@@ -147,9 +150,23 @@ ipcMain.handle('missions:start', async (_e, req: StartMissionRequest) => {
 ipcMain.handle('missions:stop', (_e, id: string) => missions.stopMission(id))
 ipcMain.handle('missions:restart', (_e, id: string) => missions.restartMission(id))
 ipcMain.handle('missions:pause', (_e, id: string) => missions.pauseMission(id))
-ipcMain.handle('missions:remove', (_e, id: string) => missions.removeMission(id))
+ipcMain.handle('missions:remove', async (_e, id: string) => {
+  await appRunner.stopFor(id)
+  return missions.removeMission(id)
+})
+ipcMain.handle('app:run', async (_e, id: string) => {
+  const m = missions.views().find((x) => x.id === id)
+  if (!m) throw new Error('no such mission')
+  if (m.mergedToMain) throw new Error("this mission was merged to main and its worktree removed. Run the app from your own checkout.")
+  const command = spaces.runCommand(m.repoPath)
+  if (!command) throw new Error(`no run command for ${m.repoPath.split(/[\/]/).pop()}: set one in the space settings (the gear next to the space)`)
+  const cwd = await missions.ensureIntegration(id)
+  await appRunner.run(m.id, m.name, cwd, command)
+})
+ipcMain.handle('app:stop', () => appRunner.stop())
+ipcMain.handle('app:current', () => appRunner.view())
 ipcMain.handle('missions:resume', (_e, id: string) => missions.resumeMission(id))
-ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string | null; maxLive?: number; vaultDir?: string | null }) => {
+ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string | null; maxLive?: number; vaultDir?: string | null; runCommand?: string | null }) => {
   spaces.update(root, patch)
   send('spaces:changed', spaces.list())
 })
@@ -165,7 +182,11 @@ ipcMain.handle('missions:run-gate', (_e, id: string) => {
   return m ? missions.runGate(id, spaces.gateCommand(m.repoPath)) : undefined
 })
 ipcMain.handle('missions:run-verifier', (_e, id: string) => missions.runVerifier(id))
-ipcMain.handle('missions:merge-to-main', (_e, id: string) => missions.mergeToMain(id))
+ipcMain.handle('missions:merge-to-main', async (_e, id: string) => {
+  // Its worktree is removed after the merge; on Windows a running app would hold it open.
+  await appRunner.stopFor(id)
+  return missions.mergeToMain(id)
+})
 ipcMain.handle('spaces:set-gate', (_e, root: string, command: string | null) => {
   spaces.setGateCommand(root, command)
   send('spaces:changed', spaces.list())
@@ -250,6 +271,7 @@ app.on('window-all-closed', () => {
   win = null
   saveNow()
   frozen = true
+  appRunner.shutdown()
   missions.shutdown()
   control.close()
   app.quit()

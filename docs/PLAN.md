@@ -231,6 +231,9 @@ In every mode, **Merge to main is your click**.
 ## Out of scope
 
 - An editor, file explorer or previews (review is read-only; "Open in my editor" hands off to yours).
+  **Run app** (added 2026-11-20) is not a preview: it runs the space's run command (e.g. `pnpm dev`)
+  from one mission's integration worktree in a terminal, one mission at a time, and you open the
+  app in your own browser or window.
 - A browser pane, design mode, computer use.
 - Mobile app, plugins, dictation.
 - Remote, SSH or cloud execution.

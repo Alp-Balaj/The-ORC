@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, Plus, Settings2, X } from 'lucide-react'
-import { shownAgents, type Gating, type MissionView, type PermissionMode, type SpaceView } from '../../../shared/types'
+import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
+import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type SpaceView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { AgentCard, StatusDot } from './AgentCard'
 import { Button } from './ui/button'
@@ -65,6 +65,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
   const [gate, setGate] = useState(space.gateCommand ?? '')
   const [max, setMax] = useState(String(space.maxLive))
   const [vault, setVault] = useState(space.vaultDir ?? '')
+  const [run, setRun] = useState(space.runCommand ?? '')
   return (
     <motion.form
       initial={{ opacity: 0, height: 0 }}
@@ -74,9 +75,11 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       className="mx-1 mb-2 space-y-1.5 overflow-hidden rounded-lg border bg-card p-2 text-[12px]"
       onSubmit={(e) => {
         e.preventDefault()
-        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, vaultDir: vault || null }).then(onClose)
+        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, vaultDir: vault || null, runCommand: run || null }).then(onClose)
       }}
     >
+      <label className="block text-muted-foreground">Run command (Run app starts it in a mission's integration branch)</label>
+      <Input value={run} onChange={(e) => setRun(e.target.value)} placeholder="e.g. pnpm install && pnpm dev" data-testid="run-command" />
       <label className="block text-muted-foreground">Gate command (runs on each merged result)</label>
       <Input value={gate} onChange={(e) => setGate(e.target.value)} placeholder="e.g. pnpm test" />
       <label className="block text-muted-foreground">Most live agents in this space</label>
@@ -91,8 +94,9 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
   )
 }
 
-export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, onSelectMission, onSelectAgent, onReview }: {
+export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, onSelectMission, onSelectAgent, onReview }: {
   spaces: SpaceView[]
+  appRun: AppRunView | null
   missions: MissionView[]
   selectedMission: string | null
   selectedTerminal: string | null
@@ -211,6 +215,9 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
                     >
                       {expanded ? <ChevronDown className="size-3 text-muted-foreground" /> : <ChevronRight className="size-3 text-muted-foreground" />}
                       <span className={cn('truncate', m.state === 'stopped' && 'text-muted-foreground line-through')}>{m.name}</span>
+                      {appRun?.missionId === m.id && appRun.status === 'running' && (
+                        <MonitorPlay className="size-3 shrink-0 text-working" aria-label="Its app is running" data-testid="app-running-marker" />
+                      )}
                       <span className="ml-auto flex items-center gap-0.5">
                         {shownAgents(m).slice(0, 6).map((a) => <StatusDot key={a.terminalId} status={a.status} className="size-1.5" />)}
                       </span>

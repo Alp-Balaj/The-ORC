@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GitMerge, MessagesSquare, Pause, Play, RotateCcw, Square, TerminalSquare } from 'lucide-react'
-import { shownAgents, type MissionView, type SpaceView } from '../../shared/types'
+import { GitMerge, MessagesSquare, MonitorPlay, Pause, Play, RotateCcw, Square, TerminalSquare } from 'lucide-react'
+import { shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
@@ -24,7 +24,10 @@ export function App(): React.JSX.Element {
   const [missionId, setMissionId] = useState<string | null>(null)
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [showMessages, setShowMessages] = useState(true)
-  const [view, setView] = useState<'terminal' | 'merge' | { review: string }>('terminal')
+  const [view, setView] = useState<'terminal' | 'merge' | 'app' | { review: string }>('terminal')
+  // The app being built, running from one mission's integration branch (one at a time).
+  const [appRun, setAppRun] = useState<AppRunView | null>(null)
+  const [appBusy, setAppBusy] = useState(false)
   const [, tick] = useState(0)
   // A failed action (IPC rejected) shows here instead of disappearing into the console.
   const [actionError, setActionError] = useState<string | null>(null)
@@ -40,12 +43,15 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     void window.orc.listMissions().then(setMissions)
     void window.orc.listSpaces().then(setSpaces)
+    void window.orc.currentApp().then(setAppRun)
+    const offA = window.orc.onApp(setAppRun)
     const offM = window.orc.onMissions(setMissions)
     const offS = window.orc.onSpaces(setSpaces)
     const timer = setInterval(() => tick((n) => n + 1), 10_000)
     return () => {
       offM()
       offS()
+      offA()
       clearInterval(timer)
     }
   }, [])
@@ -68,6 +74,22 @@ export function App(): React.JSX.Element {
     setTerminalId(tid)
     setMissionId(tid.split(':')[0])
   }
+  const space = mission ? spaces.find((s) => s.root === mission.repoPath) : undefined
+  const missionApp = appRun && mission && appRun.missionId === mission.id ? appRun : null
+  const runApp = (): void => {
+    if (!mission) return
+    setAppBusy(true)
+    void window.orc.runApp(mission.id).then(() => setView('app')).finally(() => setAppBusy(false))
+  }
+  const stopApp = (): void => {
+    setAppBusy(true)
+    void window.orc.stopApp().finally(() => setAppBusy(false))
+  }
+  const runTitle = !space?.runCommand
+    ? 'Set a run command for this space first (the gear next to the space)'
+    : appRun?.status === 'running' && appRun.missionId !== mission?.id
+      ? `Stops ${appRun.missionName}'s app, then runs "${space.runCommand}" from this mission's integration branch`
+      : `Runs "${space.runCommand}" from this mission's integration branch`
   const needsYou = mission?.agents.filter((a) => a.status === 'needs-you').length ?? 0
 
   return (
@@ -119,6 +141,29 @@ export function App(): React.JSX.Element {
               <span className="mr-2 text-[12px] tabular-nums text-muted-foreground" title="Tokens used by every session in this mission (input + cache writes + output)">
                 {formatTokens(mission.tokens)} tokens
               </span>
+              {missionApp && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn(view === 'app' && 'border-primary/60 bg-accent')}
+                  data-testid="open-app"
+                  title="Show the app's terminal"
+                  onClick={() => setView(view === 'app' ? 'terminal' : 'app')}
+                >
+                  <span className={cn('size-1.5 rounded-full', missionApp.status === 'running' ? 'bg-working' : 'bg-exited')} />
+                  App
+                </Button>
+              )}
+              {missionApp?.status === 'running' ? (
+                <Button size="sm" variant="outline" disabled={appBusy} data-testid="stop-app" title="End the app and everything it started" onClick={stopApp}>
+                  <Square /> {appBusy ? 'Stopping…' : 'Stop app'}
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" disabled={appBusy || !!mission.mergedToMain} data-testid="run-app" title={mission.mergedToMain ? 'Merged to main: run the app from your own checkout' : runTitle} onClick={runApp}>
+                  <MonitorPlay /> {appBusy ? 'Starting…' : 'Run app'}
+                </Button>
+              )}
+              <span className="mx-1 h-5 w-px bg-border" />
               {mission.paused ? (
                 <Button size="sm" variant="outline" onClick={() => void window.orc.resumeMission(mission.id)} data-testid="resume-mission" title="Release held merges and messages">
                   <Play /> Resume
@@ -164,6 +209,7 @@ export function App(): React.JSX.Element {
       <Sidebar
         spaces={spaces}
         missions={missions}
+        appRun={appRun}
         selectedMission={mission?.id ?? null}
         selectedTerminal={agent?.terminalId ?? null}
         onSelectMission={selectMission}
@@ -176,6 +222,22 @@ export function App(): React.JSX.Element {
         {mission && <SplitPanel mission={mission} />}
         {mission && view === 'merge' ? (
           <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
+        ) : view === 'app' && missionApp ? (
+          <>
+            <div className="flex h-8 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="app-head">
+              <MonitorPlay className="size-3.5" />
+              <span className="font-medium text-foreground">App</span>
+              <span className="truncate font-mono">· {missionApp.command}</span>
+              <span className="truncate">· {missionApp.cwd}</span>
+              {missionApp.status === 'exited' && (
+                <Badge variant="exited" className="ml-auto shrink-0" data-testid="app-exited">exited{missionApp.exitCode !== null ? ` (${missionApp.exitCode})` : ''}</Badge>
+              )}
+              <Button size="sm" variant="ghost" className={cn('h-6 shrink-0 px-2 text-[11px]', missionApp.status === 'running' && 'ml-auto')} disabled={appBusy} onClick={runApp} title="Stop the app and start it again (picks up newly merged work)" data-testid="restart-app">
+                <RotateCcw /> Restart
+              </Button>
+            </div>
+            <TerminalView key={`${missionApp.terminalId}:${missionApp.startedAt}`} id={missionApp.terminalId} />
+          </>
         ) : mission && typeof view === 'object' ? (
           <ReviewScreen mission={mission} agent={view.review} onBack={() => setView('terminal')} />
         ) : agent ? (

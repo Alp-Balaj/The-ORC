@@ -10,6 +10,7 @@ interface Settings {
   gateCommand: string | null
   maxLive: number
   vaultDir: string | null
+  runCommand: string | null
 }
 
 /** The repositories the user has opened, in order, with per-space settings. Saved to a JSON
@@ -34,7 +35,8 @@ export class Spaces {
             this.settings.set(o.root, {
               gateCommand: typeof o.gateCommand === 'string' && o.gateCommand ? o.gateCommand : null,
               maxLive: typeof o.maxLive === 'number' && o.maxLive > 0 ? o.maxLive : DefaultMaxLive,
-              vaultDir: typeof o.vaultDir === 'string' && o.vaultDir ? o.vaultDir : null
+              vaultDir: typeof o.vaultDir === 'string' && o.vaultDir ? o.vaultDir : null,
+              runCommand: typeof o.runCommand === 'string' && o.runCommand ? o.runCommand : null
             })
           }
         }
@@ -43,7 +45,7 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, vaultDir: null }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, vaultDir: null, runCommand: null }
   }
 
   list(): SpaceView[] {
@@ -62,10 +64,15 @@ export class Spaces {
     return this.get(root).vaultDir
   }
 
+  runCommand(root: string): string | null {
+    return this.get(root).runCommand
+  }
+
   update(root: string, patch: Partial<Settings>): void {
     const next = { ...this.get(root), ...patch }
     next.gateCommand = next.gateCommand?.trim() || null
     next.vaultDir = next.vaultDir?.trim() || null
+    next.runCommand = next.runCommand?.trim() || null
     next.maxLive = Math.max(1, Math.min(50, Math.round(next.maxLive) || DefaultMaxLive))
     this.settings.set(root, next)
     this.save()

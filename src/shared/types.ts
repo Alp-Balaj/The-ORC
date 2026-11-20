@@ -125,6 +125,21 @@ export interface SpaceView {
   maxLive: number
   /** Optional folder for mission records (the vault, D4). Off when null. */
   vaultDir: string | null
+  /** Shell command that runs the app being built (e.g. "pnpm dev"), from a mission's
+   *  integration worktree. Null: no Run app. */
+  runCommand: string | null
+}
+
+/** The app being built, running from one mission's integration worktree. One at a time. */
+export interface AppRunView {
+  missionId: string
+  missionName: string
+  terminalId: string
+  command: string
+  cwd: string
+  status: 'running' | 'exited'
+  exitCode: number | null
+  startedAt: number
 }
 
 export type PermissionMode = 'acceptEdits' | 'auto' | 'bypassPermissions' | 'manual' | 'dontAsk'

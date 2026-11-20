@@ -232,6 +232,38 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   check('Restart brings a stopped mission back', view(m2).state === 'running' && coord2.status !== 'exited', `${view(m2).state} ${coord2.status}`)
   check('…and the Restart button is gone', (await count('[data-testid=restart-mission]')) === 0)
 
+  // Run app: one mission's app at a time, from its integration branch. A real server on a fixed
+  // port, so an old app left running would make the next fail with EADDRINUSE.
+  const appCmd = `echo "app from $(basename "$(dirname "$PWD")")"; node -e "require('http').createServer().listen(47391, () => console.log('listening on 47391'))"`
+  await js(`window.orc.updateSpace(${JSON.stringify(c.sandbox)}, { runCommand: ${JSON.stringify(appCmd)} })`)
+  const appState = (): Promise<{ missionId: string; status: string; terminalId: string } | null> => js(`window.orc.currentApp()`)
+  const waitApp = async (mid: string): Promise<string> => {
+    let out = ''
+    for (const end = Date.now() + 15000; Date.now() < end; await sleep(250)) {
+      const st = await appState()
+      out = st ? await js<string>(`window.orc.replay(${JSON.stringify(st.terminalId)})`) : ''
+      if (st?.missionId === mid && /listening on 47391|EADDRINUSE/.test(out)) break
+    }
+    return out
+  }
+  await openMission(m2)
+  await sleep(400)
+  await js(`document.querySelector('[data-testid=run-app]')?.click()`)
+  const out2 = await waitApp(m2)
+  check("Run app starts the app from the mission's integration branch", out2.includes(`app from ${view(m2).name}`) && /listening on 47391/.test(out2), out2.slice(-300))
+  check('…and shows its terminal', (await count('[data-testid=app-head]')) === 1)
+  await openMission(m1)
+  await sleep(400)
+  await js(`document.querySelector('[data-testid=run-app]')?.click()`)
+  const out1 = await waitApp(m1)
+  check('Run app in another mission ends the first app and gets its port', /listening on 47391/.test(out1) && !/EADDRINUSE/.test(out1) && (await appState())?.missionId === m1, out1.slice(-300))
+  check('…and the mission row shows its app is running', (await count(`[data-testid=mission][data-mission=${JSON.stringify(view(m1).name)}] [data-testid=app-running-marker]`)) === 1 && (await count('[data-testid=app-running-marker]')) === 1)
+  await shot('replay-app-running')
+  await js(`document.querySelector('[data-testid=stop-app]')?.click()`)
+  for (const end = Date.now() + 10000; Date.now() < end && (await appState())?.status !== 'exited'; await sleep(250));
+  check('Stop app ends it', (await appState())?.status === 'exited')
+  await js(`window.orc.updateSpace(${JSON.stringify(c.sandbox)}, { runCommand: null })`)
+
   // Stop one worker from its card: a confirmation first, then only that worker ends.
   await openMission(m1)
   await sleep(600)

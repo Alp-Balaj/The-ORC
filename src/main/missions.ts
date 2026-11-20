@@ -376,6 +376,14 @@ export class Missions implements ControlHandlers {
   }
 
   /** Runs the space's gate command on the merged result. */
+  /** The mission's integration worktree (created from the base branch if nothing merged yet).
+   *  Run app runs from here. */
+  async ensureIntegration(missionId: string): Promise<string> {
+    const mission = this.missions.get(missionId)
+    if (!mission) throw new Error('no such mission')
+    return this.git.ensureIntegration(mission.repoPath, mission.name, mission.baseBranch)
+  }
+
   async runGate(missionId: string, command: string | null): Promise<void> {
     const mission = this.missions.get(missionId)
     if (!mission || mission.merged.length === 0 || !command) return

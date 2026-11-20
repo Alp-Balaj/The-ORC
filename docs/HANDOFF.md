@@ -20,6 +20,27 @@ hardening (`harden/errors`).
     visible" check will first run on the next billed run.
   - The error boundary has never been triggered by a test.
 
+## Run app: one mission's app at a time (branch `remove-exited-sessions`, 2026-11-20)
+
+- **Why:** the owner runs several missions on one project and switches which one's app is
+  running. The pain was the port clash: the old dev server had to be found and stopped by hand.
+- **Space setting "Run command"** (`runCommand` in `spaces.json`), e.g. `pnpm install && pnpm dev`.
+  The integration worktree is a fresh checkout: no `node_modules`, no gitignored `.env`.
+- **Header:** Run app / Stop app, plus App to show its terminal (centre panel, with Restart). The
+  mission row shows a monitor icon while its app runs.
+- **`src/main/app-runner.ts`:** one app at all times. `run()` first ends the current app's whole
+  process tree (`taskkill /T /F` on Windows, process group SIGTERM elsewhere) and waits up to 10 s
+  for it to exit, so the new app gets the port; if it won't exit, the switch is refused with the
+  reason. The command runs in Git Bash / bash `-lc` (like the gate) in
+  `<repo>/.orc/worktrees/<mission>/_integration`, created from the base branch if nothing has
+  merged yet. Env: `sessionEnv()` minus `ELECTRON_*`. Merges land in that worktree in place, so a
+  dev server with hot reload picks them up while it runs.
+- The app is stopped before Merge to main (which removes the worktree) and Remove mission, and
+  on quit. It is not restored after a restart of The ORC.
+- **Tests:** `tests/app-runner.test.ts` (free, in `free.sh`); the replay runs a real HTTP server on
+  port 47391 in mission 2, then Run app in mission 1, and checks it got the port (no EADDRINUSE).
+  Passed on Windows.
+
 ## Exited workers removed from cards and tree (branch `remove-exited-sessions`, 2026-11-20)
 
 - **`shownAgents(mission)`** (`src/shared/types.ts`) decides which agents the cards, tree, status
