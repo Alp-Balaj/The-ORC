@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, Plus, Settings2, X } from 'lucide-react'
-import type { Gating, MissionView, PermissionMode, SpaceView } from '../../../shared/types'
+import { shownAgents, type Gating, type MissionView, type PermissionMode, type SpaceView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { AgentCard, StatusDot } from './AgentCard'
 import { Button } from './ui/button'
@@ -101,6 +101,9 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
   onReview: (agent: string) => void
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // Missions whose cards you closed. Clicking the open mission's row toggles it; selecting
+  // another mission opens that one.
+  const [closedMissions, setClosedMissions] = useState<Set<string>>(new Set())
   const [formFor, setFormFor] = useState<string | null>(null)
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -189,26 +192,40 @@ export function Sidebar({ spaces, missions, selectedMission, selectedTerminal, o
               </AnimatePresence>
               {open && ms.map((m) => {
                 const active = m.id === selectedMission
+                const expanded = active && !closedMissions.has(m.id)
                 return (
                   <div key={m.id} className="ml-3" data-testid="mission" data-mission={m.name}>
                     <button
-                      onClick={() => onSelectMission(m.id)}
+                      onClick={() => {
+                        setClosedMissions((c) => {
+                          const n = new Set(c)
+                          if (active && !n.has(m.id)) n.add(m.id)
+                          else n.delete(m.id)
+                          return n
+                        })
+                        if (!active) onSelectMission(m.id)
+                      }}
+                      aria-expanded={expanded}
+                      title={expanded ? 'Hide its agents' : 'Show its agents'}
                       className={cn('flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent/60', active && 'bg-accent')}
                     >
-                      {active ? <ChevronDown className="size-3 text-muted-foreground" /> : <ChevronRight className="size-3 text-muted-foreground" />}
+                      {expanded ? <ChevronDown className="size-3 text-muted-foreground" /> : <ChevronRight className="size-3 text-muted-foreground" />}
                       <span className={cn('truncate', m.state === 'stopped' && 'text-muted-foreground line-through')}>{m.name}</span>
                       <span className="ml-auto flex items-center gap-0.5">
-                        {m.agents.slice(0, 6).map((a) => <StatusDot key={a.terminalId} status={a.status} className="size-1.5" />)}
+                        {shownAgents(m).slice(0, 6).map((a) => <StatusDot key={a.terminalId} status={a.status} className="size-1.5" />)}
                       </span>
                       {m.tokens > 0 && <span className="text-[10.5px] tabular-nums text-muted-foreground">{formatTokens(m.tokens)}</span>}
                     </button>
-                    {active && (
+                    {expanded && (
                       <div className="mt-1 space-y-1.5 pb-1 pl-1 pr-0.5">
-                        {m.agents.map((a) => (
-                          <AgentCard key={a.terminalId} a={a} selected={a.terminalId === selectedTerminal} onSelect={() => onSelectAgent(a.terminalId)} onReview={() => onReview(a.name)}
-                            onStop={m.state === 'running' && a.role === 'worker' && a.status !== 'exited' ? () => window.orc.stopWorker(m.id, a.name) : undefined}
-                          />
-                        ))}
+                        <AnimatePresence initial={false}>
+                          {shownAgents(m).map((a) => (
+                            <AgentCard key={a.terminalId} a={a} selected={a.terminalId === selectedTerminal} onSelect={() => onSelectAgent(a.terminalId)} onReview={() => onReview(a.name)}
+                              onStop={m.state === 'running' && a.role === 'worker' && a.status !== 'exited' ? () => window.orc.stopWorker(m.id, a.name) : undefined}
+                              onDismiss={a.role === 'worker' && a.status === 'exited' && a.merge !== 'review' ? () => void window.orc.dismissAgent(m.id, a.name) : undefined}
+                            />
+                          ))}
+                        </AnimatePresence>
                       </div>
                     )}
                   </div>

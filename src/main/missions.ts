@@ -484,6 +484,19 @@ export class Missions implements ControlHandlers {
     }
   }
 
+  /** The X on an exited worker's card: removes it from the cards and tree. Its report, merge
+   *  state, worktree and branch are kept. Throws with the reason when refused. */
+  dismissAgent(missionId: string, name: string): void {
+    const mission = this.missions.get(missionId)
+    const a = mission?.agents.get(name)
+    if (!mission || !a || a.role !== 'worker') throw new Error(`no worker named "${name}"`)
+    if (a.status !== 'exited') throw new Error(`${name} is still running. Stop it first.`)
+    if (a.merge === 'review') throw new Error(`${name}'s diff still waits for your review. Approve it first.`)
+    if (a.dismissed) return
+    a.dismissed = true
+    this.emit()
+  }
+
   /** Ends an agent's session for good. Exited before the kill: terminalExited and SessionEnd
    *  leave it alone, restore() doesn't resume it and deliver() types nothing into it. */
   private endAgent(mission: Mission, a: Agent, by: string, text: string): void {
@@ -1051,6 +1064,7 @@ export class Missions implements ControlHandlers {
       return
     }
     const hadTurn = !!agent.tally && existsSync(agent.tally.path)
+    agent.dismissed = false
     // A turn cut off by the restart is over; questions and done stay as they were.
     // A session started fresh is "starting" until its new SessionStart, whatever it was.
     if (!hadTurn && !agent.question && agent.status !== 'done') {
@@ -1150,6 +1164,7 @@ function agentView(a: Agent): AgentView {
     startedAt: a.startedAt,
     merge: a.merge,
     conflictFiles: a.conflictFiles,
-    ...(a.shutDown ? { shutDown: true } : {})
+    ...(a.shutDown ? { shutDown: true } : {}),
+    ...(a.dismissed ? { dismissed: true } : {})
   }
 }

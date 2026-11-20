@@ -20,6 +20,7 @@ const api = {
   decideSplit: (id: string, approve: boolean, note: string | null): Promise<void> => ipcRenderer.invoke('missions:decide-split', id, approve, note),
   approveWorker: (id: string, agent: string): Promise<void> => ipcRenderer.invoke('missions:approve-worker', id, agent),
   stopWorker: (id: string, agent: string): Promise<void> => ipcRenderer.invoke('missions:stop-worker', id, agent),
+  dismissAgent: (id: string, agent: string): Promise<void> => ipcRenderer.invoke('missions:dismiss-agent', id, agent),
   sendBack: (id: string, agent: string, note: string): Promise<void> => ipcRenderer.invoke('missions:send-back', id, agent, note),
   workerDiff: (id: string, agent: string): Promise<DiffView | null> => ipcRenderer.invoke('missions:worker-diff', id, agent),
   missionDiff: (id: string): Promise<DiffView | null> => ipcRenderer.invoke('missions:diff', id),

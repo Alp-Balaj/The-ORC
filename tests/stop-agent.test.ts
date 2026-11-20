@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { Missions } from '../src/main/missions.ts'
 import type { TerminalHost } from '../src/main/terminals.ts'
+import { shownAgents } from '../src/shared/types.ts'
 
 let failed = 0
 const ok = (what: string, cond: boolean, d = ''): void => { if (!cond) failed++; console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}${d ? ` — ${d}` : ''}`) }
@@ -64,6 +65,7 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   m.terminalExited(`${id}:a`, 0)
   hook(m, `${id}:a`, { hook_event_name: 'SessionEnd' })
   ok('its exit and SessionEnd leave it exited', agent('a').status === 'exited')
+  ok('an exited worker is removed from the cards and tree while the mission runs', !shownAgents(m.views()[0]).some((x) => x.name === 'a') && shownAgents(m.views()[0]).some((x) => x.name === 'b'))
   ok('stopping it again is harmless', /already stopped/.test(m.stopAgent(c, 'a', null)) && killed.length === 1)
   w.typed.length = 0
   m.deliver((m as unknown as { missions: Map<string, { agents: Map<string, never> }> }).missions.get(id)!.agents.get('a')!, '[The ORC] hello')
@@ -158,11 +160,20 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   m.stopMission(id)
   const v = () => m.views()[0]
   ok('stop mission ended it', v().state === 'stopped' && v().agents.find((x) => x.name === 'a')!.status === 'exited')
+  const shown = () => shownAgents(v()).map((x) => x.name)
+  ok('a stopped mission keeps the workers Stop ended, not one shut down on its own', shown().includes('a') && !shown().includes('gone'), shown().join())
+  m.dismissAgent(id, 'a')
+  ok('the X removes an exited worker', !shown().includes('a') && v().agents.find((x) => x.name === 'a')!.dismissed === true)
+  ok('…and it is saved', m.snapshot().missions[0].agents.find((x) => x.name === 'a')!.dismissed === true)
   launches.length = 0
   await m.restartMission(id)
   ok('restart puts the mission back to running', v().state === 'running')
   ok('…relaunches every session Stop ended', [`${id}:coordinator`, `${id}:a`, `${id}:b`].every((t) => launches.includes(t)), launches.join())
   ok('…but not a worker that was shut down on its own', !launches.includes(`${id}:gone`) && v().agents.find((x) => x.name === 'gone')!.status === 'exited')
+  ok('a removed worker that Restart brings back shows again', shown().includes('a') && !v().agents.find((x) => x.name === 'a')!.dismissed)
+  let refused = ''
+  try { m.dismissAgent(id, 'b') } catch (e) { refused = String(e) }
+  ok('a running worker cannot be removed', /still running/.test(refused) && shown().includes('b'), refused)
   ok('the coordinator resumes its conversation', args[c].includes('--resume'))
   ok('a worker with no turn yet gets its task again', args[`${id}:a`][0] === 'Create a.txt' && !args[`${id}:a`].includes('--resume'))
   ok('a worker that had reported stays done', v().agents.find((x) => x.name === 'b')!.status === 'done')

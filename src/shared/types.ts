@@ -34,6 +34,8 @@ export interface AgentView {
   /** Shut down on its own (Stop on its card, or stop_agent), not by stopping the mission:
    *  restarting the mission leaves it down. */
   shutDown?: boolean
+  /** Removed from the cards and tree with its X. Cleared if the session is brought back. */
+  dismissed?: boolean
 }
 
 /** One line of a mission's feed. "message" is a SendMessage as the sender saw it;
@@ -135,4 +137,18 @@ export interface StartMissionRequest {
   model?: string
   /** Default: plan check. */
   gating?: Gating
+}
+
+/** Workers shown on the cards and the tree. An exited worker is removed: always once you
+ *  dismissed it or it was shut down on its own, and while the mission runs whenever it exited.
+ *  A stopped mission keeps the workers Stop ended (Restart brings them back). A worker whose
+ *  diff waits for your review stays, since its card is where you review it; one left in a
+ *  conflict stays until you dismiss it. The coordinator always stays. */
+export function shownAgents(m: MissionView): AgentView[] {
+  return m.agents.filter((a) => {
+    if (a.role !== 'worker' || a.status !== 'exited' || a.merge === 'review') return true
+    if (a.dismissed) return false
+    if (a.merge === 'conflict') return true
+    return !(a.shutDown || m.state === 'running')
+  })
 }

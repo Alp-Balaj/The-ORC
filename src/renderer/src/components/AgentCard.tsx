@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { CircleHelp, GitBranch, CheckCheck, GitMerge, Swords, Eye, Square } from 'lucide-react'
+import { CircleHelp, GitBranch, CheckCheck, GitMerge, Swords, Eye, Square, X } from 'lucide-react'
 import type { AgentView, AgentStatus } from '../../../shared/types'
 import { ago, cn, formatTokens } from '../lib/utils'
 import { Badge } from './ui/badge'
@@ -37,13 +37,15 @@ export function StatusDot({ status, className }: { status: AgentStatus; classNam
   return <span className={cn('inline-block size-2 shrink-0 rounded-full', dotClass[status], className)} />
 }
 
-export function AgentCard({ a, selected, onSelect, onReview, onStop }: {
+export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }: {
   a: AgentView
   selected: boolean
   onSelect: () => void
   onReview?: () => void
   /** Present when this worker can be stopped from its card. */
   onStop?: () => Promise<void>
+  /** Present when this exited worker can be removed from the cards and tree. */
+  onDismiss?: () => void
 }): React.JSX.Element {
   const [confirming, setConfirming] = useState(false)
   const [stopping, setStopping] = useState(false)
@@ -52,6 +54,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop }: {
       layout
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, height: 0, marginTop: 0, paddingTop: 0, paddingBottom: 0, borderWidth: 0 }}
       transition={{ duration: 0.18 }}
       data-testid="agent-card"
       data-agent={a.name}
@@ -82,6 +85,20 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop }: {
             }}
           >
             <Square className="size-3" />
+          </button>
+        )}
+        {onDismiss && (
+          <button
+            data-testid="dismiss-agent"
+            aria-label={`Remove ${a.name}`}
+            title="Remove this exited worker from the cards and tree. Its report, worktree and branch are kept."
+            className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDismiss()
+            }}
+          >
+            <X className="size-3.5" />
           </button>
         )}
       </div>

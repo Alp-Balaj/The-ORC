@@ -52,6 +52,9 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   const hook = (mid: string, agent: string, e: Record<string, unknown>): void => {
     missions.hookEvent(t(mid, agent), { transcript_path: c.transcriptFixture, ...e } as never)
   }
+  // Selects a mission and opens its cards. Clicking the row of the mission already open closes it.
+  const missionRow = (id: string): string => `document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(id).name)}] button')`
+  const openMission = (id: string): Promise<void> => js(`(() => { const b = ${missionRow(id)}; if (b && b.getAttribute('aria-expanded') !== 'true') b.click() })()`)
   const sessionName = (mid: string, agent: string): string => view(mid).agents.find((a) => a.name === agent)!.sessionName
 
   // Mission 1: coordinator → navbar, post-api; post-api → tests (a sub-worker).
@@ -64,7 +67,7 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
     { name: 'post-api', task: 'Build the post API in src/api.' }
   ])
   hook(m1, 'coordinator', { hook_event_name: 'Stop' })
-  await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m1).name)}] button')?.click()`)
+  await openMission(m1)
   await sleep(900)
   check('the split panel shows the proposal', (await js<number>(`document.querySelectorAll('[data-testid=split-panel] li').length`)) === 2)
   await shot('replay-split-proposed')
@@ -109,7 +112,7 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await sleep(800)
 
   // Select mission 1 in the UI.
-  await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m1).name)}] button')?.click()`)
+  await openMission(m1)
   await sleep(1200)
   await shot('replay-mission-1')
 
@@ -132,6 +135,14 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   check('three missions listed', (await count('[data-testid=mission]')) === 3)
   check('mission 1 shows four cards', (await count('[data-testid=agent-card]')) === 4)
   check('mission 1 tree has four nodes', (await count('[data-testid=tree-node]')) === 4)
+  await js(`${missionRow(m1)}?.click()`)
+  await sleep(500)
+  const collapsedCards = await count('[data-testid=agent-card]')
+  const headerStill = await js<string>(`document.querySelector('[data-testid=header-mission]')?.textContent ?? ''`)
+  check('clicking the open mission closes its cards, and it stays selected', collapsedCards === 0 && headerStill.includes(view(m1).name), `${collapsedCards} ${headerStill}`)
+  await js(`${missionRow(m1)}?.click()`)
+  await sleep(500)
+  check('…and clicking it again opens them', (await count('[data-testid=agent-card]')) === 4)
   const statusOf = (agent: string): Promise<string> =>
     js<string>(`document.querySelector('[data-testid=tree-node][data-agent=${JSON.stringify(agent)}]')?.dataset.status ?? ''`)
   const want: Record<string, string> = { coordinator: 'needs-you', navbar: 'working', 'post-api': 'needs-you', tests: 'done' }
@@ -180,14 +191,18 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await js(`document.querySelector('[data-testid=toggle-messages]')?.click()`)
 
   // Space b's mission, then stop mission 2 through its button.
-  await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m3).name)}] button')?.click()`)
+  await openMission(m3)
   await sleep(800)
   const headerB = await js<string>(`document.querySelector('[data-testid=header-mission]')?.textContent ?? ''`)
   check('selecting the space-b mission switches the header', headerB.includes('space-b'), headerB)
   // Merge to main screen: diff, gate, Verifier, then the button.
   await js(`document.querySelector('[data-testid=open-merge]')?.click()`)
-  await sleep(900)
-  check('the merge screen shows the combined diff', (await js<string>(`[...document.querySelectorAll('[data-testid=diff-file]')].map(e => e.textContent).join()`)).includes('doc.txt'))
+  // The diff loads from git after the screen opens: wait for it rather than a fixed sleep.
+  let diffFiles = ''
+  for (const end = Date.now() + 5000; Date.now() < end && !diffFiles.includes('doc.txt'); await sleep(250)) {
+    diffFiles = await js<string>(`[...document.querySelectorAll('[data-testid=diff-file]')].map(e => e.textContent).join()`)
+  }
+  check('the merge screen shows the combined diff', diffFiles.includes('doc.txt'), diffFiles)
   check('the merge screen shows the gate result', /passed/.test(await js<string>(`document.querySelector('[data-testid=gate-result]')?.textContent ?? ''`)))
   // Git is slow on Windows (virus scanner): wait for results instead of a fixed sleep.
   const textOf = (sel: string): Promise<string> => js<string>(`document.querySelector(${JSON.stringify(sel)})?.textContent ?? ''`)
@@ -203,7 +218,7 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   const mergeMsg = await waitText('[data-testid=merge-result]', /\S/)
   check('Merge to main fast-forwards space-b main', /Merged/.test(mergeMsg) && existsSync(join(spaceB, 'doc.txt')), mergeMsg)
   check('…and the mission is finished', !!view(m3).mergedToMain && view(m3).state === 'stopped')
-  await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m2).name)}] button')?.click()`)
+  await openMission(m2)
   await sleep(600)
   await js(`document.querySelector('[data-testid=stop-mission]')?.click()`)
   await sleep(1000)
@@ -218,7 +233,7 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   check('…and the Restart button is gone', (await count('[data-testid=restart-mission]')) === 0)
 
   // Stop one worker from its card: a confirmation first, then only that worker ends.
-  await js(`document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(view(m1).name)}] button')?.click()`)
+  await openMission(m1)
   await sleep(600)
   await js(`document.querySelector('[data-testid=agent-card][data-agent=navbar] [data-testid=stop-worker]')?.click()`)
   await sleep(400)
@@ -230,7 +245,7 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   await sleep(800)
   const navbar = view(m1).agents.find((a) => a.name === 'navbar')!
   check('Stop worker ends only that worker', navbar.status === 'exited' && navbar.shutDown === true && view(m1).state === 'running', `${navbar.status} ${view(m1).state}`)
-  check('…and its card has no Stop any more', (await count('[data-testid=agent-card][data-agent=navbar] [data-testid=stop-worker]')) === 0)
+  check('…and its card and tree node are removed', (await count('[data-testid=agent-card][data-agent=navbar]')) === 0 && (await count('[data-testid=tree-node][data-agent=navbar]')) === 0)
 
   // A failed action that nothing awaits still surfaces (the banner), and the UI survives it.
   await js(`void window.orc.addSpace('/tmp')`)
@@ -256,4 +271,16 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   const err = await waitText('[data-testid=new-mission-error]', /\S/)
   check('starting a duplicate mission name shows an error', /already exists/.test(err), err)
   await shot('replay-duplicate-name')
+
+  // A stopped mission keeps the workers Stop ended; the X on an exited card removes one.
+  await js(`document.querySelector('[data-testid=new-mission-form] button[type=button]')?.click()`)
+  await openMission(m1)
+  await sleep(400)
+  await js(`document.querySelector('[data-testid=stop-mission]')?.click()`)
+  await sleep(1000)
+  check('a stopped mission still shows its exited workers, with an X', (await count('[data-testid=agent-card][data-agent=post-api] [data-testid=dismiss-agent]')) === 1)
+  await js(`document.querySelector('[data-testid=agent-card][data-agent=post-api] [data-testid=dismiss-agent]')?.click()`)
+  await sleep(800)
+  check('the X removes the exited worker', (await count('[data-testid=agent-card][data-agent=post-api]')) === 0 && view(m1).agents.find((a) => a.name === 'post-api')!.dismissed === true)
+  await shot('replay-dismissed')
 }

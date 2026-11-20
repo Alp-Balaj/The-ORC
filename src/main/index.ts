@@ -156,6 +156,7 @@ ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string
 ipcMain.handle('missions:decide-split', (_e, id: string, approve: boolean, note: string | null) => missions.decideSplit(id, approve, note))
 ipcMain.handle('missions:approve-worker', (_e, id: string, agent: string) => missions.approveWorker(id, agent))
 ipcMain.handle('missions:stop-worker', (_e, id: string, agent: string) => missions.stopWorker(id, agent))
+ipcMain.handle('missions:dismiss-agent', (_e, id: string, agent: string) => missions.dismissAgent(id, agent))
 ipcMain.handle('missions:send-back', (_e, id: string, agent: string, note: string) => missions.sendBack(id, agent, note))
 ipcMain.handle('missions:worker-diff', (_e, id: string, agent: string) => missions.workerDiff(id, agent))
 ipcMain.handle('missions:diff', (_e, id: string) => missions.missionDiff(id))

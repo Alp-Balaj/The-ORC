@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { GitMerge, MessagesSquare, Pause, Play, RotateCcw, Square, TerminalSquare } from 'lucide-react'
-import type { MissionView, SpaceView } from '../../shared/types'
+import { shownAgents, type MissionView, type SpaceView } from '../../shared/types'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
@@ -54,7 +54,9 @@ export function App(): React.JSX.Element {
     () => missions.find((m) => m.id === missionId) ?? missions[missions.length - 1] ?? null,
     [missions, missionId]
   )
-  const agent = mission?.agents.find((a) => a.terminalId === terminalId) ?? mission?.agents.find((a) => a.role === 'coordinator') ?? null
+  // A removed (exited) worker's terminal falls back to the coordinator's.
+  const shown = useMemo(() => (mission ? shownAgents(mission) : []), [mission])
+  const agent = shown.find((a) => a.terminalId === terminalId) ?? shown.find((a) => a.role === 'coordinator') ?? null
 
   const selectMission = (id: string): void => {
     setView('terminal')
@@ -210,7 +212,7 @@ export function App(): React.JSX.Element {
         </div>
         <div className="h-[46%] min-h-[180px] border-b" data-testid="tree">
           {mission ? (
-            <MissionTree agents={mission.agents} feed={mission.feed} selected={agent?.terminalId ?? null} onSelect={selectAgent} showMessages={showMessages} />
+            <MissionTree agents={shown} feed={mission.feed} selected={agent?.terminalId ?? null} onSelect={selectAgent} showMessages={showMessages} />
           ) : (
             <div className="p-4 text-[12px] text-muted-foreground">A node appears whenever an agent spawns a worker.</div>
           )}
