@@ -1,3 +1,4 @@
+import { clipboard } from 'electron'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -182,6 +183,22 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   const term = await js<string>(`document.querySelector('[data-testid=terminal] .xterm-rows')?.textContent ?? ''`)
   check('its terminal shows its own session', term.includes('fake session') && term.includes('tests'), term.slice(0, 80))
   await shot('replay-subworker-selected')
+
+  // Copy from a terminal: select, then Ctrl+C copies instead of interrupting. The owner's
+  // clipboard is put back afterwards.
+  const savedClipboard = clipboard.readText()
+  clipboard.writeText('')
+  await js(`(() => {
+    const el = document.querySelector('[data-testid=terminal]');
+    el.orcTerm.selectAll();
+    el.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', keyCode: 67, ctrlKey: true, bubbles: true, cancelable: true }));
+  })()`)
+  await sleep(300)
+  const copied = clipboard.readText()
+  const cleared = await js<boolean>(`!document.querySelector('[data-testid=terminal]').orcTerm.hasSelection()`)
+  clipboard.writeText(savedClipboard)
+  check('Ctrl+C with text selected copies it from the terminal', copied.includes('fake session') && copied.includes('tests') && cleared, copied.slice(0, 80))
+  check('…and does not interrupt the session', view(m1).agents.find((a) => a.name === 'tests')!.status !== 'exited')
 
   // Messages toggle hides the message edges.
   await js(`document.querySelector('[data-testid=toggle-messages]')?.click()`)

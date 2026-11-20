@@ -3,7 +3,9 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 
 /** Shows one host terminal. Re-mounting with another id replays that
- *  terminal's buffered output, so switching between agents is lossless. */
+ *  terminal's buffered output, so switching between agents is lossless.
+ *  Copy: select with the mouse, then Ctrl+C (Ctrl+C with nothing selected still interrupts),
+ *  Ctrl+Shift+C, or right-click. */
 export function TerminalView({ id }: { id: string }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -16,7 +18,10 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
-    term.open(ref.current!)
+    const el = ref.current!
+    term.open(el)
+    // The replay selects text through this to test copying.
+    Object.assign(el, { orcTerm: term })
     fit.fit()
 
     let disposed = false
@@ -27,6 +32,25 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       if (tid === id) term.write(data)
     })
     const input = term.onData((data) => window.orc.write(id, data))
+    const copySelection = (): boolean => {
+      if (!term.hasSelection()) return false
+      window.orc.copyText(term.getSelection())
+      term.clearSelection()
+      return true
+    }
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'c') return true
+      // Ctrl+Shift+C never reaches the session; Ctrl+C does only when nothing is selected.
+      if (copySelection() || e.shiftKey) {
+        e.preventDefault()
+        return false
+      }
+      return true
+    })
+    const onContextMenu = (e: MouseEvent): void => {
+      if (copySelection()) e.preventDefault()
+    }
+    el.addEventListener('contextmenu', onContextMenu)
     const sync = (): void => {
       fit.fit()
       window.orc.resize(id, term.cols, term.rows)
@@ -39,7 +63,7 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(sync)
     })
-    observer.observe(ref.current!)
+    observer.observe(el)
     sync()
 
     return () => {
@@ -47,6 +71,7 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       cancelAnimationFrame(frame)
       offData()
       input.dispose()
+      el.removeEventListener('contextmenu', onContextMenu)
       observer.disconnect()
       term.dispose()
     }

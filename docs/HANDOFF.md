@@ -20,6 +20,14 @@ hardening (`harden/errors`).
     visible" check will first run on the next billed run.
   - The error boundary has never been triggered by a test.
 
+## Copy from a terminal (branch `terminal-copy`, 2026-11-20)
+
+- Select with the mouse, then Ctrl+C (with nothing selected it still interrupts the session),
+  Ctrl+Shift+C, or right-click. `TerminalView.tsx`; the clipboard write goes through preload
+  (`copyText`).
+- The replay selects all through `el.orcTerm` (a test handle on the terminal element), presses
+  Ctrl+C on xterm's textarea, reads the clipboard in main, then puts the owner's clipboard back.
+
 ## Run app: one mission's app at a time (branch `remove-exited-sessions`, 2026-11-20)
 
 - **Why:** the owner runs several missions on one project and switches which one's app is

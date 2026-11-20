@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { clipboard, contextBridge, ipcRenderer } from 'electron'
 import type { AppRunView, DiffView, MissionView, SpaceView, StartMissionRequest } from '../shared/types.ts'
 
 function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
@@ -39,6 +39,7 @@ const api = {
   onApp: (cb: (run: AppRunView | null) => void) => listen<[AppRunView | null]>('app:changed', cb),
   onMissions: (cb: (m: MissionView[]) => void) => listen<[MissionView[]]>('missions:changed', cb),
   replay: (id: string): Promise<string> => ipcRenderer.invoke('terminal:replay', id),
+  copyText: (text: string): void => clipboard.writeText(text),
   write: (id: string, data: string): void => ipcRenderer.send('terminal:write', id, data),
   resize: (id: string, cols: number, rows: number): void =>
     ipcRenderer.send('terminal:resize', id, cols, rows),

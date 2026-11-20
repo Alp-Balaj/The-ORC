@@ -1,7 +1,7 @@
 // Free: Run app keeps one app at a time and frees the old one's port before starting the next.
 // Fake terminals; the real kill (taskkill / process group) runs in the replay.
 // node --no-warnings tests/app-runner.test.ts
-import { AppRunner, appTerminalId } from '../src/main/app-runner.ts'
+import { AppRunner, appTerminalId, isPowerShellCommand, shellArgs } from '../src/main/app-runner.ts'
 import type { AppRunView } from '../src/shared/types.ts'
 import type { TerminalHost } from '../src/main/terminals.ts'
 
@@ -54,6 +54,13 @@ runner.exitWaitMs = 300
 let threw = ''
 try { await runner.run('m2', 'buttons', '/y', 'pnpm dev') } catch (e) { threw = String(e) }
 ok('an app that will not exit blocks the switch, with a reason', /ui-fixes's app has not exited/.test(threw) && runner.view()?.missionId === 'm1', threw)
+
+// A PowerShell script runs through PowerShell; bash would read it as a bash script.
+for (const c of ['./run-dev.ps1', '.\run-dev.ps1 -NoBuild', 'run-dev.ps1', "& './run dev.ps1'", 'scripts/dev.PS1']) ok(`"${c}" is a PowerShell command`, isPowerShellCommand(c))
+for (const c of ['pnpm dev', './run-dev.sh', 'pnpm install && pnpm dev', 'echo x.ps1x']) ok(`"${c}" is not`, !isPowerShellCommand(c))
+const ps = shellArgs('./run-dev.ps1 -NoBuild', 'bash', () => 'pwsh')
+ok('a .ps1 command runs with PowerShell -Command, policy bypassed for that process', ps.command === 'pwsh' && ps.args.join(' ') === '-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ./run-dev.ps1 -NoBuild', JSON.stringify(ps))
+ok('anything else runs with bash -lc', JSON.stringify(shellArgs('pnpm dev', 'bash', () => 'pwsh')) === JSON.stringify({ command: 'bash', args: ['-lc', 'pnpm dev'] }))
 
 console.log(failed ? `FAIL ${failed}` : 'PASS')
 process.exit(failed ? 1 : 0)

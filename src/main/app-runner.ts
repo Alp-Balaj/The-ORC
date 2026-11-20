@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process'
+import { isAbsolute } from 'node:path'
 import type { AppRunView } from '../shared/types.ts'
 import { sessionEnv } from './claude-launch.ts'
 import { bashPath } from './mission-git.ts'
-import type { TerminalHost } from './terminals.ts'
+import { resolveCommand, type TerminalHost } from './terminals.ts'
 
 export const appTerminalId = (missionId: string): string => `app:${missionId}`
 
@@ -16,6 +17,23 @@ export function killTree(pid: number): void {
   try {
     process.kill(-pid, 'SIGTERM')
   } catch {}
+}
+
+/** A command that starts with a PowerShell script (e.g. "./run-dev.ps1 -NoBuild"). */
+export const isPowerShellCommand = (command: string): boolean => /^\s*(&\s*)?['"]?[^\s'"]+\.ps1(['"]|\s|$)/i.test(command)
+
+/** PowerShell 7 if it is on PATH, else Windows PowerShell (elsewhere, pwsh). */
+function powerShell(env: Record<string, string>): string {
+  if (process.platform !== 'win32') return 'pwsh'
+  const pwsh = resolveCommand('pwsh', env)
+  return isAbsolute(pwsh) ? pwsh : 'powershell.exe'
+}
+
+/** How the run command is started: a PowerShell script through PowerShell (bash would read it
+ *  as a bash script), anything else through bash -lc, like the gate. Exported for tests. */
+export function shellArgs(command: string, bash: string, pwsh: () => string): { command: string; args: string[] } {
+  if (isPowerShellCommand(command)) return { command: pwsh(), args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command] }
+  return { command: bash, args: ['-lc', command] }
 }
 
 /** Runs the app being built (the space's run command) from one mission's integration
@@ -46,7 +64,8 @@ export class AppRunner {
     // An Electron app being built must not inherit The ORC's own Electron settings.
     for (const k of Object.keys(env)) if (k.startsWith('ELECTRON_')) delete env[k]
     env.FORCE_COLOR = '1'
-    this.terminals.start({ id: terminalId, command: this.shell(), args: ['-lc', command], cwd, env })
+    const how = shellArgs(command, this.shell(), () => powerShell(env))
+    this.terminals.start({ id: terminalId, command: how.command, args: how.args, cwd, env })
     this.current = { missionId, missionName, terminalId, command, cwd, status: 'running', exitCode: null, startedAt: Date.now() }
     this.changed(this.current)
   }
