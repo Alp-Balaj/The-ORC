@@ -14,6 +14,9 @@ the Verifier report and the combined diff.
 
 **To decide:** accept this in an ADR, or make Checkpointed the default.
 
+**Update 2026-11-20 (owner):** the owner made **No check** the New-mission default, for speed. The
+ADR question now covers that default. (`startMission` without a gating still falls back to plan check.)
+
 ## 2. How approvals and conflicts reach an idle coordinator
 
 `propose_split` returns "pending" at once (as planned). Your approval then has to reach the

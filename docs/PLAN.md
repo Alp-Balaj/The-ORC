@@ -152,18 +152,21 @@ The vault is **optional per Space**, and it holds **records, never state**. The 
   - append only (the vault has no history);
   - keep to the Dev Folder conventions (date header, marked AI-generated).
 
+### Hierarchy: coordinator → team leads → subagents (owner, 2026-11-20)
+For speed, the coordinator spawns **team leads** (one per independent area) with `spawn_agent`. Each lead is a full session in its own worktree, as workers were, but it **manages only**: it splits its area among Claude Code **subagents** (the built-in Agent tool) that write the code in the lead's worktree, in parallel and in the foreground. The lead calls `report_done` once they have all returned; The ORC commits and merges its worktree as before. Subagents are not sessions: no terminal, no tree node, you can't type into them. Workers don't write or run tests unless the task asks (`SpeedRules` in `claude-launch.ts`).
+
 ### Gating (D3, confirmed 2026-11-18)
 | Mode | What it means with live sessions |
 |---|---|
 | **Checkpointed** | Every worker's `report_done` stops for **your review of that worker's diff** before it merges into the integration branch |
-| **Plan check** (default) | The coordinator presents its split by calling `propose_split`, and you approve it in the UI. After that, finished workers merge into the integration branch on their own |
-| **No check** | Workers merge into the integration branch on their own, with no split approval |
+| **Plan check** | The coordinator presents its split by calling `propose_split`, and you approve it in the UI. After that, finished workers merge into the integration branch on their own |
+| **No check** (default since 2026-11-20, owner) | Workers merge into the integration branch on their own, with no split approval |
 
 In every mode, **Merge to main is your click**.
 
 **`propose_split` must not hold the coordinator until you click.** MCP calls can time out; check Claude Code's limit rather than assuming one. The tool returns "pending" straight away, and your approval reaches the coordinator later as a message.
 
-**This still needs an ADR.** Even plan check (the default) lets work merge into the integration branch without a human, which overturns kickoff §10 ("no cross-checkpoint autonomy"). Approving this plan triggers that ADR, as in v1. [[BF-10 - Prompt injection paths into the judges]] matters for the Verifier in §8.
+**This still needs an ADR.** Even plan check lets work merge into the integration branch without a human, which overturns kickoff §10 ("no cross-checkpoint autonomy"). Approving this plan triggers that ADR, as in v1. [[BF-10 - Prompt injection paths into the judges]] matters for the Verifier in §8.
 
 ---
 

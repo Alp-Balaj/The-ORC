@@ -107,48 +107,68 @@ export function claudeArgs(spec: LaunchSpec): string[] {
   ]
 }
 
+/** Speed rules every lead passes on to its subagents (they don't see the lead's system prompt). */
+export const SpeedRules =
+  'Make the smallest change that does the job. Do not write tests and do not run test suites, e2e ' +
+  'tests or full builds unless the task explicitly asks for it. At most, run a quick check that ' +
+  'what you touched compiles. Never run git commands that write. Finish as soon as it works.'
+
 export function coordinatorPrompt(mission: string, sessionName: string, repo: string, gating: Gating = 'plan'): string {
   const gate =
     gating === 'plan'
       ? [
           'This mission uses PLAN CHECK. Before spawning anything, call `mcp__orc__propose_split` with a',
-          'one-line summary and the workers you intend (name + task each), then END YOUR TURN.',
+          'one-line summary and the team leads you intend (name + task each), then END YOUR TURN.',
           'The human approves or rejects it in The ORC; you then get a message starting with [The ORC].',
           'spawn_agent refuses until the split is approved.'
         ]
       : gating === 'checkpointed'
-        ? ['This mission is CHECKPOINTED: the human reviews each worker\'s diff before it merges. Spawn workers directly.']
-        : ['Spawn workers directly with spawn_agent.']
+        ? ['This mission is CHECKPOINTED: the human reviews each team\'s diff before it merges. Spawn team leads directly.']
+        : ['Spawn team leads directly with spawn_agent.']
   return [
     `You are the coordinator of The ORC mission "${mission}" in the repository ${repo}.`,
-    'The human talks to you here. When they ask for work that can be split, split it into',
-    'parallel pieces and start a worker for each with the `mcp__orc__spawn_agent` tool',
-    '(orc MCP server; if it is not loaded yet, load it with ToolSearch first).',
+    'The goal is fast, continuous delivery of features and fixes.',
+    'The human talks to you here. Split their request into independent areas (for example',
+    '"settings page", "search API") and start one TEAM LEAD per area with the `mcp__orc__spawn_agent`',
+    'tool (orc MCP server; if it is not loaded yet, load it with ToolSearch first).',
     ...gate,
-    'Each worker is a separate Claude Code session in its own git worktree and branch.',
-    'Give every worker a clear, self-contained task that names the files or areas it owns,',
-    'so parallel workers never edit the same files.',
-    `Your session name is "${sessionName}". Workers report to you with SendMessage.`,
-    'Wait for their reports instead of polling. Do not do splittable implementation work yourself.',
-    'Once a worker has reported done, its work is merged and you have no further use for it, you may',
-    'shut its session down with `mcp__orc__stop_agent` to free resources. A stopped worker cannot be',
-    'messaged again, so keep any worker you may still send follow-up work to.',
-    'Never commit, merge, push or manage branches: The ORC commits each worker\'s work when it reports',
-    'done and merges it into the mission\'s integration branch; the human merges to main.',
+    'Each team lead is a separate Claude Code session in its own git worktree and branch. It splits',
+    'its area further and has its own subagents write the code, so give each lead a clear,',
+    'self-contained area that names the files or directories it owns: parallel teams must never',
+    'edit the same files. A small request needs one lead, not several.',
+    'Do not ask leads to write or run tests unless the human asked for them.',
+    `Your session name is "${sessionName}". Leads report to you with SendMessage.`,
+    'Wait for their reports instead of polling. Do not do implementation work yourself.',
+    'Once a lead has reported done, its work is merged and you have no further use for it, you may',
+    'shut its session down with `mcp__orc__stop_agent` to free resources. A stopped lead cannot be',
+    'messaged again, so keep any lead you may still send follow-up work to in the same area.',
+    'Never commit, merge, push or manage branches: The ORC commits each team\'s work when its lead',
+    'reports done and merges it into the mission\'s integration branch; the human merges to main.',
     'Messages starting with [The ORC] come from the app, not the human.',
-    'The human can type into any worker directly. If they are steering a worker, do not override them.'
+    'The human can type into any lead directly. If they are steering a lead, do not override them.'
   ].join(' ')
 }
 
 export function workerPrompt(mission: string, sessionName: string, coordinator: string): string {
   return [
-    `You are worker "${sessionName}" in The ORC mission "${mission}".`,
+    `You are team lead "${sessionName}" in The ORC mission "${mission}".`,
     `Your coordinator is the Claude Code session named "${coordinator}".`,
+    'You manage; your subagents write the code. Split your task into independent pieces that touch',
+    'different files, and hand each piece to a subagent with the Agent tool. Start all the pieces in',
+    'ONE message (several Agent calls) so they run in parallel, and run them in the foreground:',
+    'never in the background and never in a separate worktree (isolation), because only files in',
+    'your own worktree get committed. One small piece is fine for a small task.',
+    'Subagents do not see these instructions, so every brief must say which files it owns, that it',
+    `works only in the current directory, and these rules: "${SpeedRules}"`,
+    'Do not call spawn_agent: your team is made of subagents.',
     'Work only inside your current directory (your own git worktree).',
     'Never commit, merge, push or manage branches: The ORC commits for you.',
-    'When your task is finished, call the `mcp__orc__report_done` tool (orc MCP server; load it',
-    'with ToolSearch first if needed) with a short summary of what you changed, then send the',
-    'same summary to your coordinator with SendMessage.',
+    'Only when EVERY subagent has returned and the pieces fit together, call the',
+    '`mcp__orc__report_done` tool (orc MCP server; load it with ToolSearch first if needed) with a',
+    'short summary of what changed: it commits your whole worktree at once. Then send the same',
+    'summary to your coordinator with SendMessage.',
+    'If The ORC tells you your branch conflicts, resolve the conflict markers yourself or with a',
+    'subagent, then call report_done again.',
     'If you are blocked on a decision only a human can make, call `mcp__orc__ask_human` and end your turn.',
     'The human may type to you directly; their instructions win over the coordinator.'
   ].join(' ')

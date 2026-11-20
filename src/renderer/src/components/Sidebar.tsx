@@ -14,7 +14,7 @@ function NewMissionForm({ space, onStarted, onCancel }: {
 }): React.JSX.Element {
   const [name, setName] = useState('')
   const [mode, setMode] = useState<PermissionMode>('acceptEdits')
-  const [gating, setGating] = useState<Gating>('plan')
+  const [gating, setGating] = useState<Gating>('none')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -47,10 +47,10 @@ function NewMissionForm({ space, onStarted, onCancel }: {
         <option value="manual">Ask for everything</option>
         <option value="bypassPermissions">Bypass permissions</option>
       </NativeSelect>
-      <NativeSelect value={gating} onChange={(e) => setGating(e.target.value as Gating)} title="When finished workers merge into the mission's integration branch" data-testid="gating-select">
+      <NativeSelect value={gating} onChange={(e) => setGating(e.target.value as Gating)} title="When a finished team's work merges into the mission's integration branch" data-testid="gating-select">
+        <option value="none">No check: auto-merge (fastest)</option>
         <option value="plan">Plan check: approve the split, then auto-merge</option>
-        <option value="checkpointed">Checkpointed: review every worker's diff</option>
-        <option value="none">No check: auto-merge</option>
+        <option value="checkpointed">Checkpointed: review every team's diff</option>
       </NativeSelect>
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" className="flex-1" disabled={busy || !name.trim()}>Start mission</Button>

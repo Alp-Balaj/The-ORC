@@ -578,7 +578,10 @@ export class Missions implements ControlHandlers {
         if (!done) this.update(callerTerminal, { status: 'exited', waitingOn: null })
         break
     }
-    if ((e.hook_event_name === 'PreToolUse' || e.hook_event_name === 'UserPromptSubmit') && agent.notes.length) {
+    // A lead's subagents fire its hooks too (with agent_id set). Notes are for the lead itself, so
+    // they wait for one of its own tool calls rather than landing in a subagent's context.
+    const fromSubagent = typeof e.agent_id === 'string' && e.agent_id !== ''
+    if ((e.hook_event_name === 'PreToolUse' || e.hook_event_name === 'UserPromptSubmit') && agent.notes.length && !fromSubagent) {
       const additionalContext = agent.notes.splice(0).join('\n')
       return JSON.stringify({ hookSpecificOutput: { hookEventName: e.hook_event_name, additionalContext } })
     }

@@ -64,13 +64,14 @@ function buildMcp(caller: string, h: ControlHandlers): McpServer {
     'spawn_agent',
     {
       description:
-        'Start a worker agent: a new Claude Code session in its own git worktree and branch, ' +
-        'given `task` as its first prompt. Returns the worker session name to message it by.',
+        'Start a team lead: a new Claude Code session in its own git worktree and branch, ' +
+        'given `task` as its first prompt. It splits the task among its own subagents. ' +
+        'Returns the lead session name to message it by.',
       inputSchema: {
         name: z
           .string()
           .regex(/^[a-z0-9][a-z0-9-]{0,39}$/)
-          .describe('Short kebab-case worker name, unique in this mission, e.g. "post-api"'),
+          .describe('Short kebab-case name, unique in this mission, e.g. "post-api"'),
         task: z.string().min(1).describe('Self-contained task, including the files/areas it owns')
       }
     },

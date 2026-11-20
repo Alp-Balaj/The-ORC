@@ -1,8 +1,10 @@
 # The ORC
 
 Desktop app (Electron + React + TypeScript) for running Claude Code **missions**. You talk to one
-coordinator session per mission; it spawns worker sessions, each a real interactive `claude` in its
-own git worktree, shown in terminals you can click into and type into.
+coordinator session per mission; it spawns team-lead sessions, each a real interactive `claude` in
+its own git worktree, shown in terminals you can click into and type into. Each lead splits its area
+among Claude Code subagents that write the code (built for fast, continuous delivery: no tests
+unless asked).
 
 - **The plan is `docs/PLAN.md`.** Read it before designing anything.
 - **Where the build stands, and what's next, is `docs/HANDOFF.md`.** Read it at the start of every session.
