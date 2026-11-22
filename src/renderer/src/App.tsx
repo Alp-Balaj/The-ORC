@@ -133,7 +133,7 @@ export function App(): React.JSX.Element {
               <span className="shrink-0 text-muted-foreground/50">/</span>
               <span className="truncate font-semibold">{mission.name}</span>
             </div>
-            <div className="flex min-w-0 shrink items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="flex min-w-0 shrink-[4] items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
               <span className="shrink-0" title="Every session in this mission uses this permission mode">{modeLabel[mission.permissionMode] ?? mission.permissionMode}</span>
               {mission.model && (
                 <>
@@ -167,7 +167,7 @@ export function App(): React.JSX.Element {
             {mission.paused && <Badge variant="needs-you" className="shrink-0" data-testid="paused-badge">paused</Badge>}
             {needsYou > 0 && <Badge variant="needs-you" className="shrink-0">{needsYou} need{needsYou === 1 ? 's' : ''} you</Badge>}
             <div className="ml-auto flex shrink-0 items-center gap-2">
-              <span className="text-[12px] tabular-nums text-muted-foreground" title="Tokens used by every session in this mission (input + cache writes + output)">
+              <span className="hidden text-[12px] tabular-nums text-muted-foreground min-[1400px]:inline" title="Tokens used by every session in this mission (input + cache writes + output)">
                 {formatTokens(mission.tokens)} tokens
               </span>
               <div className="flex h-7 items-center overflow-hidden rounded-md border">
@@ -257,7 +257,7 @@ export function App(): React.JSX.Element {
       />
 
       {/* Terminal */}
-      <main className="flex min-h-0 min-w-0 flex-col bg-background">
+      <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background">
         {mission && <SplitPanel mission={mission} />}
         {mission && view === 'merge' ? (
           <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
