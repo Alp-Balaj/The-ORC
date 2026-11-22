@@ -22,15 +22,15 @@ export function SplitPanel({ mission }: { mission: MissionView }): React.JSX.Ele
       {s.summary && <p className="mt-1 pl-6 text-[12.5px] leading-relaxed text-muted-foreground">{s.summary}</p>}
       <ul className="mt-2.5 grid gap-2 pl-6 sm:grid-cols-2 min-[1440px]:grid-cols-3">
         {s.workers.map((w) => (
-          <li key={w.name} className="rounded-md border bg-card px-3 py-2">
-            <div className="text-[12.5px] font-medium">{w.name}</div>
+          <li key={w.name} className="rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-border-strong">
+            <div className="text-[12.5px] font-medium text-foreground">{w.name}</div>
             <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted-foreground" title={w.task}>{w.task}</div>
           </li>
         ))}
       </ul>
       <div className="mt-3 flex items-center gap-1.5 pl-6">
         <Input placeholder="Note for the coordinator (optional)" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md flex-1" data-testid="split-note" />
-        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => void window.orc.decideSplit(mission.id, false, note || null)} data-testid="reject-split"><X /> Reject</Button>
+        <Button size="sm" variant="ghost-destructive" onClick={() => void window.orc.decideSplit(mission.id, false, note || null)} data-testid="reject-split"><X /> Reject</Button>
         <Button size="sm" onClick={() => void window.orc.decideSplit(mission.id, true, note || null)} data-testid="approve-split"><Check /> Approve</Button>
       </div>
     </div>
@@ -53,7 +53,7 @@ function useDiff(load: () => Promise<Diff | null>, deps: unknown[]): Diff | null
 function DiffArea({ diff, empty }: { diff: Diff | null; empty: string }): React.JSX.Element {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {diff ? <DiffView diff={diff} /> : <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed text-[13px] text-muted-foreground">{empty}</div>}
+      {diff ? <DiffView diff={diff} /> : <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-strong text-[13px] text-faint">{empty}</div>}
     </div>
   )
 }
@@ -91,7 +91,7 @@ export function ReviewScreen({ mission, agent, onBack }: { mission: MissionView;
         <DiffArea diff={diff} empty="Loading diff…" />
       </div>
       {a?.merge === 'review' ? (
-        <div className="flex items-center gap-2 border-t bg-panel px-4 py-2.5">
+        <div className="flex items-center gap-2 border-t border-border bg-background px-4 py-2.5">
           {a.status === 'exited' ? (
             <span className="text-[12px] text-muted-foreground">{agent} was stopped, so it can't be sent back.</span>
           ) : (
@@ -103,7 +103,7 @@ export function ReviewScreen({ mission, agent, onBack }: { mission: MissionView;
           <Button className="ml-auto" onClick={() => void window.orc.approveWorker(mission.id, agent).then(onBack)} data-testid="approve-worker"><GitMerge /> Approve and merge into integration</Button>
         </div>
       ) : (
-        <div className="border-t bg-panel px-4 py-2.5 text-[12px] text-muted-foreground">State: {a?.merge ?? 'not reported yet'}</div>
+        <div className="border-t border-border bg-background px-4 py-2.5 text-[12px] text-faint">State: {a?.merge ?? 'not reported yet'}</div>
       )}
     </div>
   )
@@ -114,11 +114,11 @@ function StatusIcon({ state }: { state: 'pass' | 'fail' | 'warn' | 'running' | '
   if (state === 'fail') return <XCircle className="size-4 shrink-0 text-destructive" />
   if (state === 'warn') return <AlertTriangle className="size-4 shrink-0 text-needs" />
   if (state === 'running') return <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-  return <CircleDashed className="size-4 shrink-0 text-muted-foreground" />
+  return <CircleDashed className="size-4 shrink-0 text-faint" />
 }
 
 function StaleNote({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <div className="mt-1.5 flex items-center gap-1 text-[11px] text-needs/80"><AlertTriangle className="size-3" /> {children}</div>
+  return <div className="mt-1.5 flex items-center gap-1 text-[11px] text-needs"><AlertTriangle className="size-3" /> {children}</div>
 }
 
 /** Merge to main: the mission's combined diff, the gate, the Verifier, and the button. */
@@ -161,10 +161,10 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
         <DiffArea diff={diff} empty="Nothing merged yet." />
 
         <aside className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto min-[1440px]:w-[310px]">
-          <section className="rounded-lg border bg-card p-3" data-testid="gate-panel">
+          <section className="rounded-lg border border-border bg-card p-3" data-testid="gate-panel">
             <div className="flex items-center gap-2">
               <StatusIcon state={gateState} />
-              <ShieldCheck className="size-3.5 text-muted-foreground" />
+              <ShieldCheck className="size-3.5 text-faint" />
               <span className="text-[13px] font-medium">Gate</span>
               {mission.gate && (
                 <Badge className="ml-auto" variant={gateRunning ? 'idle' : mission.gate.ok ? 'working' : 'exited'} data-testid="gate-result">
@@ -179,16 +179,16 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
               <Button size="sm" variant="outline" className="shrink-0" disabled={!space?.gateCommand || mission.merged.length === 0} onClick={() => void window.orc.runGate(mission.id)} data-testid="run-gate"><Play /> Run</Button>
             </div>
             {mission.gate ? (
-              <pre className="mt-2 max-h-32 overflow-auto rounded-md border bg-background p-2 font-mono text-[11px] text-muted-foreground">{mission.gate.output || '(no output)'}</pre>
+              <pre className="mt-2 max-h-32 overflow-auto rounded-md border border-border bg-panel p-2 font-mono text-[12px] text-muted-foreground">{mission.gate.output || '(no output)'}</pre>
             ) : (
               <div className="mt-2 text-[12px] text-muted-foreground">{space?.gateCommand ? 'Not run yet.' : 'No gate configured for this space. Merging is still allowed.'}</div>
             )}
           </section>
 
-          <section className="rounded-lg border bg-card p-3" data-testid="verifier-panel">
+          <section className="rounded-lg border border-border bg-card p-3" data-testid="verifier-panel">
             <div className="flex items-center gap-2">
               <StatusIcon state={verifierState} />
-              <Bot className="size-3.5 shrink-0 text-muted-foreground max-[1439px]:hidden" />
+              <Bot className="size-3.5 shrink-0 text-faint max-[1439px]:hidden" />
               <span className="min-w-0 truncate text-[13px] font-medium">Verifier</span>
               <div className="ml-auto flex items-center gap-1.5">
                 {v && (
@@ -204,16 +204,16 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
             {v ? (
               <>
                 {stale && <StaleNote>About an older integration commit</StaleNote>}
-                {v.report && <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-background p-2 text-[12px] leading-relaxed" data-testid="verifier-report">{v.report}</pre>}
-                <div className="mt-1.5 truncate font-mono text-[10px] text-muted-foreground" title="sha256 of the pinned template / of the full prompt">template {v.templateHash.slice(0, 12)} · prompt {v.promptHash.slice(0, 12)}</div>
+                {v.report && <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-panel p-2 text-[12px] leading-relaxed text-foreground" data-testid="verifier-report">{v.report}</pre>}
+                <div className="mt-1.5 truncate font-mono text-[10px] text-faint" title="sha256 of the pinned template / of the full prompt">template {v.templateHash.slice(0, 12)} · prompt {v.promptHash.slice(0, 12)}</div>
               </>
             ) : (
               <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">A one-shot, read-only Claude run that checks the combined diff against the brief and the split. It runs on its own once every team is merged.</div>
             )}
           </section>
 
-          <section className="rounded-lg border border-primary/30 bg-card p-3">
-            <div className="flex items-center gap-2 text-[13px] font-medium"><GitMerge className="size-4 text-muted-foreground" /> Merge</div>
+          <section className="rounded-lg border border-ring/40 bg-card p-3">
+            <div className="flex items-center gap-2 text-[13px] font-medium"><GitMerge className="size-4 text-faint" /> Merge</div>
             <ul className="mt-2 space-y-1 text-[12px]">
               <li className="flex items-center gap-2"><StatusIcon state={gateState} /><span className="text-muted-foreground">Gate:</span> {gateText}</li>
               <li className="flex items-center gap-2"><StatusIcon state={verifierState} /><span className="text-muted-foreground">Verifier:</span> {v ? (v.status === 'running' ? 'running' : verdict) : 'not run'}</li>
@@ -231,7 +231,7 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
             >
               <GitMerge /> Merge to {mission.baseBranch}
             </Button>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.</p>
+            <p className="mt-2 text-[11.5px] leading-relaxed text-faint">Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.</p>
             {unmerged.length > 0 && (
               <p className="mt-1.5 text-[11.5px] leading-relaxed text-needs" data-testid="unmerged-warning">Not merged, kept as they are: {unmerged.map((a) => a.name).join(', ')}.</p>
             )}

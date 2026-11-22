@@ -130,7 +130,7 @@ function createWindow(): void {
     height: 920,
     title: 'The ORC',
     show: !smoke,
-    backgroundColor: '#0b0d10',
+    backgroundColor: '#0b0b0d',
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
       sandbox: false,

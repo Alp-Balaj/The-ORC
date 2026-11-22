@@ -9,7 +9,7 @@ import { StatusDot, statusLabel } from './AgentCard'
 type AgentNodeData = { agent: AgentView; selected: boolean }
 
 const barColor: Record<AgentView['status'], string> = {
-  starting: 'bg-muted-foreground/60',
+  starting: 'bg-faint',
   working: 'bg-working',
   idle: 'bg-muted-foreground',
   'needs-you': 'bg-needs',
@@ -34,11 +34,11 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       data-agent={a.name}
       data-status={a.status}
       className={cn(
-        'relative h-[48px] w-[136px] cursor-pointer rounded-lg border bg-card py-1.5 pl-3 pr-2 shadow-sm transition-colors hover:border-input',
-        a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10',
+        'relative h-[48px] w-[136px] cursor-pointer rounded-lg border border-border bg-card py-1.5 pl-3 pr-2 transition-colors hover:border-border-strong hover:bg-accent',
+        a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10 shadow-[0_0_0_3px] shadow-needs/15 hover:bg-needs/15',
         a.status === 'exited' && 'opacity-60',
         a.status === 'done' && !data.selected && 'opacity-70',
-        data.selected && 'border-primary/70 bg-accent'
+        data.selected && 'border-border-strong bg-selected hover:bg-selected'
       )}
     >
       <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-lg', barColor[a.status])} />
@@ -51,7 +51,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       </div>
       <div className="mt-1 flex justify-between gap-2 text-[10.5px] text-muted-foreground">
         <span className={cn('truncate', labelColor[a.status])}>{statusLabel[a.status]}</span>
-        {a.tokens > 0 && <span className="ml-auto tabular-nums">{formatTokens(a.tokens)}</span>}
+        {a.tokens > 0 && <span className="ml-auto tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
       </div>
       <Handle id="out" type="source" position={Position.Bottom} />
       <Handle id="l-src" type="source" position={Position.Left} />
@@ -116,7 +116,7 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
         seen.add(key)
         const dx = (placed.get(f.to)?.x ?? 0) - (placed.get(f.from)?.x ?? 0)
         const [sourceHandle, targetHandle] = dx > NodeW / 2 ? ['r-src', 'l-tgt'] : dx < -NodeW / 2 ? ['l-src', 'r-tgt'] : ['r-src', 'r-tgt']
-        edges.push({ id: `msg:${f.id}`, source: f.from, target: f.to, sourceHandle, targetHandle, type: 'default', className: cn('message', f.status === 'failed' && 'failed'), animated: true, label: f.status === 'failed' ? 'not sent' : undefined, labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 }, labelBgStyle: { fill: 'var(--color-panel)' } })
+        edges.push({ id: `msg:${f.id}`, source: f.from, target: f.to, sourceHandle, targetHandle, type: 'default', className: cn('message', f.status === 'failed' && 'failed'), animated: true, label: f.status === 'failed' ? 'not sent' : undefined, labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 }, labelBgStyle: { fill: 'var(--color-background)' } })
       }
     }
     return { nodes, edges }
@@ -152,7 +152,7 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
     >
-      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1f252e" />
+      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--color-border)" />
     </ReactFlow>
     </ReactFlowProvider>
   )

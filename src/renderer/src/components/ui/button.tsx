@@ -1,21 +1,24 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
 
-const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5 [&_svg]:shrink-0 cursor-pointer',
+export const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-[13px] font-medium transition-[color,background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5 [&_svg]:shrink-0 cursor-pointer',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        destructive: 'bg-destructive/15 text-destructive hover:bg-destructive/25 border border-destructive/30',
-        outline: 'border border-border bg-transparent hover:bg-accent hover:text-accent-foreground',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+        default: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[inset_0_1px_0_rgb(255_255_255/0.12)]',
+        destructive: 'bg-destructive/12 text-destructive border border-destructive/30 hover:bg-destructive/20',
+        outline: 'border border-border-strong bg-transparent text-foreground hover:bg-accent',
+        ghost: 'text-muted-foreground hover:bg-accent hover:text-foreground',
+        secondary: 'bg-secondary text-secondary-foreground border border-border hover:bg-accent',
+        'ghost-destructive': 'text-muted-foreground hover:bg-destructive/12 hover:text-destructive'
       },
       size: {
         default: 'h-8 px-3',
         sm: 'h-7 px-2.5 text-xs',
-        icon: 'size-7'
+        xs: 'h-6 px-2 text-[11px] [&_svg]:size-3',
+        icon: 'size-7',
+        'icon-sm': 'size-6'
       }
     },
     defaultVariants: { variant: 'default', size: 'default' }

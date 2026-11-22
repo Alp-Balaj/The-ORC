@@ -14,7 +14,33 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       fontFamily: 'JetBrainsMono Nerd Font, monospace',
       fontSize: 13,
       cursorBlink: true,
-      theme: { background: '#0a0c0f' }
+      theme: {
+        background: '#0b0b0d',
+        foreground: '#d8dadf',
+        cursor: '#e6e7ea',
+        cursorAccent: '#0b0b0d',
+        selectionBackground: '#6a6df055',
+        selectionInactiveBackground: '#6a6df030',
+        scrollbarSliderBackground: '#2a2c3180',
+        scrollbarSliderHoverBackground: '#3a3c42',
+        scrollbarSliderActiveBackground: '#3a3c42',
+        black: '#1c1d21',
+        red: '#eb5757',
+        green: '#4cc38a',
+        yellow: '#f5a524',
+        blue: '#6ea8fe',
+        magenta: '#b18cf7',
+        cyan: '#4cc9d8',
+        white: '#c9ccd3',
+        brightBlack: '#5f626a',
+        brightRed: '#ff7b7b',
+        brightGreen: '#6fdca6',
+        brightYellow: '#ffc053',
+        brightBlue: '#93bfff',
+        brightMagenta: '#c9acff',
+        brightCyan: '#7adfe9',
+        brightWhite: '#f0f1f3'
+      }
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
