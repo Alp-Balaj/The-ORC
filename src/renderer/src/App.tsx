@@ -90,6 +90,9 @@ export function App(): React.JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null)
   // Missions The ORC brought back on its own at launch (each one is live, billed sessions).
   const [resumed, setResumed] = useState<{ id: string; name: string }[]>([])
+  const [appRestore, setAppRestore] = useState<{ missionId: string; missionName: string } | null>(null)
+  const [appRestoreBusy, setAppRestoreBusy] = useState(false)
+  const [appRestoreError, setAppRestoreError] = useState<string | null>(null)
   // Keyboard: the quick switcher or the cheat sheet (one at a time), and whether the sidebar shows.
   const [dialog, setDialog] = useState<'palette' | 'shortcuts' | null>(null)
   const dialogFromTerminal = useRef(false)
@@ -121,6 +124,7 @@ export function App(): React.JSX.Element {
     void window.orc.listSpaces().then(setSpaces)
     void window.orc.currentApp().then(setAppRun)
     void window.orc.resumedAtLaunch().then(setResumed)
+    void window.orc.pendingAppRestore().then(setAppRestore)
     const offA = window.orc.onApp(setAppRun)
     const offM = window.orc.onMissions(setMissions)
     const offS = window.orc.onSpaces(setSpaces)
@@ -295,6 +299,36 @@ export function App(): React.JSX.Element {
             <Square /> Stop all
           </Button>
           <Button size="icon-sm" variant="ghost" className="shrink-0" onClick={() => void window.orc.dismissResumed().then(() => setResumed([]))} aria-label="Dismiss" data-testid="dismiss-resumed">
+            <X />
+          </Button>
+        </div>
+      )}
+      {appRestore && (
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', ['bottom-3', 'bottom-16', 'bottom-[116px]'][(actionError ? 1 : 0) + (resumed.length > 0 ? 1 : 0)], 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="app-restore-banner" role="status">
+          <MonitorPlay className="size-3.5 shrink-0 text-primary" />
+          <span className="min-w-0">
+            <span className="font-medium">{appRestore.missionName}</span>'s app was running before the restart
+            {appRestoreError && <span className="block break-words text-destructive">{appRestoreError}</span>}
+          </span>
+          <Button
+            size="xs"
+            variant="outline"
+            className="ml-1 shrink-0"
+            data-testid="start-app-restore"
+            disabled={appRestoreBusy}
+            onClick={() => {
+              setAppRestoreBusy(true)
+              setAppRestoreError(null)
+              window.orc
+                .startAppRestore()
+                .then(() => setAppRestore(null))
+                .catch((err: unknown) => setAppRestoreError(String(err instanceof Error ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')))
+                .finally(() => setAppRestoreBusy(false))
+            }}
+          >
+            <MonitorPlay /> {appRestoreBusy ? 'Starting…' : 'Start again'}
+          </Button>
+          <Button size="icon-sm" variant="ghost" className="shrink-0" onClick={() => void window.orc.dismissAppRestore().then(() => setAppRestore(null))} aria-label="Dismiss" data-testid="dismiss-app-restore">
             <X />
           </Button>
         </div>
