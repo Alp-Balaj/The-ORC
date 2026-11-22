@@ -12,7 +12,7 @@ export interface Placed {
   depth: number
 }
 
-export function layoutTree(nodes: TreeInput[], gapX = 184, gapY = 92): Placed[] {
+export function layoutTree(nodes: TreeInput[], gapX = 148, gapY = 92): Placed[] {
   const ids = new Set(nodes.map((n) => n.id))
   const children = new Map<string | null, string[]>()
   for (const n of nodes) {
