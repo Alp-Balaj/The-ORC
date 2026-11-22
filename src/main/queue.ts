@@ -24,6 +24,8 @@ interface QueueState extends QueueView {
 export interface QueueDeps {
   missions: { views(): MissionView[]; startMission(req: StartMissionRequest): Promise<string> }
   usageThreshold: (root: string) => number
+  /** Most items running at once for this space (>= 1). */
+  maxParallel: (root: string) => number
   usage: () => PlanUsageView | null
   emit: (queues: QueueView[]) => void
   /** Null: memory only (smoke runs). */
@@ -46,8 +48,8 @@ const nameSlug = (s: string): string =>
 
 const MaxTimer = 2 ** 31 - 1
 
-/** Per-space backlog queues: each item becomes its own mission, stacked on the previous one,
- *  started when the previous one is verified PASS. Any red flag pauses the queue (never the
+/** Per-space backlog queues: each item becomes its own mission, started up to maxParallel at a time,
+ *  each on the base branch (maxParallel 1: stacked on the previous one, started when it is verified PASS). Any red flag pauses the queue (never the
  *  running mission). */
 export class Queues {
   private queues = new Map<string, QueueState>()
@@ -256,22 +258,34 @@ export class Queues {
     if (!q.running || !this.ready || this.starting.has(q.root)) return
     const usage = this.usageFlag(q.root)
     if (usage) return this.pauseForUsage(q, usage)
-    const item = q.items.find((i) => i.status === 'running')
-    if (item) {
+    // Each running item is judged on its own: finished, red-flagged (that item pauses) or still going.
+    let flagged: string | null = null
+    let changed = false
+    for (const item of q.items.filter((i) => i.status === 'running')) {
       const m = this.views.find((v) => v.id === item.missionId)
-      if (!m) return this.pauseOn(q, item, 'mission removed')
-      if (!m.mergedToMain) {
-        const flag = this.redFlag(m, q.acks[item.id])
-        if (flag) return this.pauseOn(q, item, flag)
+      const flag = !m ? 'mission removed' : m.mergedToMain ? null : this.redFlag(m, q.acks[item.id])
+      if (flag) {
+        item.status = 'paused'
+        item.reason = flag
+        flagged ??= flag
+        changed = true
+      } else if (m && this.finished(m, q.acks[item.id])) {
+        item.status = 'done'
+        item.reason = null
+        changed = true
       }
-      if (!this.finished(m, q.acks[item.id])) return
-      item.status = 'done'
-      item.reason = null
-      this.changed()
     }
+    if (flagged) {
+      q.running = false
+      q.pausedReason = flagged
+    }
+    if (changed) this.changed()
+    if (flagged) return
+    const max = Math.max(1, Math.floor(this.deps.maxParallel(q.root)) || 1)
+    if (q.items.filter((i) => i.status === 'running').length >= max) return
     const next = q.items.find((i) => i.status === 'queued')
     if (!next) return
-    void this.startItem(q, next)
+    void this.startItem(q, next, max === 1)
   }
 
   /** Base and main branch for the next item: on top of the last finished item's mission. */
@@ -286,8 +300,9 @@ export class Queues {
     return { baseBranch, mainBranch: prev.mainBranch }
   }
 
-  private async startItem(q: QueueState, item: QueueItem): Promise<void> {
+  private async startItem(q: QueueState, item: QueueItem, stack: boolean): Promise<void> {
     this.starting.add(q.root)
+    let started = false
     try {
       const taken = new Set(this.views.map((v) => v.name))
       const base = nameSlug(item.title)
@@ -302,7 +317,7 @@ export class Queues {
             permissionMode: q.permissionMode,
             gating: 'none',
             brief,
-            ...this.stackOn(q),
+            ...(stack ? this.stackOn(q) : {}),
             queueItemId: item.id
           })
           item.status = 'running'
@@ -310,6 +325,7 @@ export class Queues {
           item.missionName = name
           item.reason = null
           this.changed()
+          started = true
           return
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
@@ -320,6 +336,8 @@ export class Queues {
       }
     } finally {
       this.starting.delete(q.root)
+      // Fill the next free slot.
+      if (started) this.evaluate(q)
     }
   }
 

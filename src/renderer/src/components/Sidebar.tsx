@@ -79,6 +79,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
   const [models, setModels] = useState(toDraft(space.models))
   const [threshold, setThreshold] = useState(String(space.usageThreshold))
   const [idleStop, setIdleStop] = useState(String(space.idleStopMinutes))
+  const [parallel, setParallel] = useState(String(space.maxParallel))
   const [notify, setNotify] = useState(space.notifications)
   const suggested = space.suggestedGate
   return (
@@ -96,7 +97,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       className="mx-1 my-1.5 space-y-2 overflow-hidden rounded-lg border bg-card p-2.5 text-[12px]"
       onSubmit={(e) => {
         e.preventDefault()
-        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null, models: fromDraft(models), usageThreshold: Number(threshold) || space.usageThreshold, notifications: notify, idleStopMinutes: idleStop.trim() === '' || !Number.isFinite(Number(idleStop)) ? space.idleStopMinutes : Number(idleStop) }).then(onClose)
+        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null, models: fromDraft(models), usageThreshold: Number(threshold) || space.usageThreshold, maxParallel: Number(parallel) || space.maxParallel, notifications: notify, idleStopMinutes: idleStop.trim() === '' || !Number.isFinite(Number(idleStop)) ? space.idleStopMinutes : Number(idleStop) }).then(onClose)
       }}
     >
       <div className="space-y-1">
@@ -125,6 +126,10 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       <div className="space-y-1">
         <label className="block text-[11px] leading-snug text-muted-foreground">Pause the queue at plan usage % (5-hour or weekly)</label>
         <Input type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} data-testid="usage-threshold" />
+      </div>
+      <div className="space-y-1">
+        <label className="block text-[11px] leading-snug text-muted-foreground">Queue: most tasks running at once (1 = one at a time, stacked)</label>
+        <Input type="number" min={1} max={10} value={parallel} onChange={(e) => setParallel(e.target.value)} data-testid="max-parallel" />
       </div>
       <div className="space-y-1">
         <label className="block text-[11px] leading-snug text-muted-foreground">Auto-stop finished leads after (min, 0 = off)</label>

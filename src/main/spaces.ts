@@ -9,6 +9,9 @@ import { suggestGate } from './gate-suggest.ts'
 export const DefaultMaxLive = 6
 export const DefaultUsageThreshold = 80
 export const DefaultIdleStopMinutes = 15
+export const DefaultMaxParallel = 2
+const clampParallel = (n: unknown): number =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.max(1, Math.min(10, Math.round(n))) : DefaultMaxParallel
 
 /** Known roles with a non-empty string (trimmed); an explicit null is kept for advisor only
  *  ("no advisor"). Anything else is dropped. */
@@ -40,6 +43,8 @@ interface Settings {
   usageThreshold: number
   /** Minutes after which a finished lead's session is stopped. 0: never. */
   idleStopMinutes: number
+  /** Most backlog-queue items running at once. 1: one at a time, each stacked on the last. */
+  maxParallel: number
   /** Desktop notifications (and the needs-you badge) for this space's missions. */
   notifications: boolean
 }
@@ -77,6 +82,7 @@ export class Spaces {
               models: cleanModels(o.models),
               usageThreshold: clampThreshold(o.usageThreshold),
               idleStopMinutes: clampIdleStop(o.idleStopMinutes),
+              maxParallel: clampParallel(o.maxParallel),
               notifications: o.notifications !== false
             })
           }
@@ -86,7 +92,7 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes, notifications: true }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes, maxParallel: DefaultMaxParallel, notifications: true }
   }
 
   /** suggestGate per root, read once. */
@@ -133,6 +139,10 @@ export class Spaces {
     return this.get(root).idleStopMinutes
   }
 
+  maxParallel(root: string): number {
+    return this.get(root).maxParallel
+  }
+
   notifications(root: string): boolean {
     return this.get(root).notifications
   }
@@ -146,6 +156,7 @@ export class Spaces {
     next.models = cleanModels(next.models)
     next.usageThreshold = clampThreshold(next.usageThreshold)
     next.idleStopMinutes = clampIdleStop(next.idleStopMinutes)
+    next.maxParallel = clampParallel(next.maxParallel)
     next.notifications = next.notifications !== false
     this.settings.set(root, next)
     this.save()

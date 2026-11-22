@@ -205,6 +205,7 @@ const spaces = new Spaces(smoke ? null : join(app.getPath('userData'), 'spaces.j
 queues = new Queues({
   missions,
   usageThreshold: (root) => spaces.usageThreshold(root),
+  maxParallel: (root) => spaces.maxParallel(root),
   usage: () => planUsage.view(),
   emit: (q) => send('queue:changed', q),
   file: smoke ? null : join(app.getPath('userData'), 'queue.json')
