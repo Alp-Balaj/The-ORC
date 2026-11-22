@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GitMerge, MessagesSquare, MonitorPlay, Pause, Play, RotateCcw, Square, TerminalSquare } from 'lucide-react'
+import { GitMerge, MessagesSquare, MonitorPlay, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
 import { shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
@@ -98,10 +98,12 @@ export function App(): React.JSX.Element {
   return (
     <div className="relative grid h-full grid-cols-[300px_minmax(0,1fr)_320px] grid-rows-[44px_minmax(0,1fr)]">
       {actionError && (
-        <div className="absolute bottom-3 left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-start gap-2 rounded-lg border border-destructive/40 bg-card px-3 py-2 text-[12px] shadow-lg" data-testid="action-error" role="alert">
-          <span className="text-destructive">Action failed:</span>
+        <div className="absolute bottom-3 left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border border-destructive/40 bg-card px-3 py-2 text-[12px] shadow-lg" data-testid="action-error" role="alert">
+          <span className="shrink-0 font-medium text-destructive">Action failed:</span>
           <span className="min-w-0 break-words">{actionError}</span>
-          <button className="ml-2 cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setActionError(null)} aria-label="Dismiss">✕</button>
+          <Button size="icon" variant="ghost" className="ml-1 size-6 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => setActionError(null)} aria-label="Dismiss">
+            <X />
+          </Button>
         </div>
       )}
       {resumed.length > 0 && (
@@ -110,103 +112,125 @@ export function App(): React.JSX.Element {
           <span className="min-w-0">
             Resumed {resumed.length} mission{resumed.length === 1 ? '' : 's'} after restart: <span className="font-medium">{resumed.map((m) => m.name).join(', ')}</span>
           </span>
-          <Button size="sm" variant="outline" className="ml-2 h-6 shrink-0 px-2 text-[11px]" data-testid="stop-resumed" title="Stop every mission listed here. Worktrees are kept, and Restart brings each one back." onClick={() => void window.orc.stopResumed().then(() => setResumed([]))}>
+          <Button size="sm" variant="outline" className="ml-1 h-6 shrink-0 px-2 text-[11px]" data-testid="stop-resumed" title="Stop every mission listed here. Worktrees are kept, and Restart brings each one back." onClick={() => void window.orc.stopResumed().then(() => setResumed([]))}>
             <Square /> Stop all
           </Button>
-          <button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => void window.orc.dismissResumed().then(() => setResumed([]))} aria-label="Dismiss" data-testid="dismiss-resumed">✕</button>
+          <Button size="icon" variant="ghost" className="size-6 shrink-0 text-muted-foreground hover:text-foreground" onClick={() => void window.orc.dismissResumed().then(() => setResumed([]))} aria-label="Dismiss" data-testid="dismiss-resumed">
+            <X />
+          </Button>
         </div>
       )}
       {/* Header */}
-      <header className="col-span-3 flex items-center gap-3 border-b bg-panel px-3" data-testid="header">
-        <div className="flex w-[276px] items-center gap-2">
+      <header className="col-span-3 flex min-w-0 items-center gap-3 border-b bg-panel px-3" data-testid="header">
+        <div className="flex w-[276px] shrink-0 items-center gap-2">
           <div className="grid h-6 w-9 place-items-center rounded-md bg-primary/15 text-[10.5px] font-black tracking-tight text-primary">ORC</div>
           <span className="font-semibold tracking-tight">The ORC</span>
         </div>
         {mission ? (
           <>
             <div className="flex min-w-0 items-center gap-1.5 text-[13px]" data-testid="header-mission">
-              <span className="text-muted-foreground">{mission.repoPath.split(/[\\/]/).pop()}</span>
-              <span className="text-muted-foreground/50">/</span>
+              <span className="shrink-0 text-muted-foreground">{mission.repoPath.split(/[\\/]/).pop()}</span>
+              <span className="shrink-0 text-muted-foreground/50">/</span>
               <span className="truncate font-semibold">{mission.name}</span>
             </div>
-            <Badge variant="outline" title="Every session in this mission uses this permission mode">{modeLabel[mission.permissionMode] ?? mission.permissionMode}</Badge>
-            {mission.model && <Badge variant="outline">{mission.model}</Badge>}
-            <Badge variant="outline" title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</Badge>
-            {mission.state === 'stopped' && <Badge variant="exited">stopped</Badge>}
-            {mission.state === 'stopped' && !mission.mergedToMain && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 px-2 text-[11px]"
-                data-testid="restart-mission"
-                title="Bring back every session Stop ended, each with its conversation (claude --resume). Workers you shut down one by one stay down."
-                onClick={() => void window.orc.restartMission(mission.id)}
-              >
-                <RotateCcw /> Restart
-              </Button>
-            )}
+            <div className="flex min-w-0 shrink items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="shrink-0" title="Every session in this mission uses this permission mode">{modeLabel[mission.permissionMode] ?? mission.permissionMode}</span>
+              {mission.model && (
+                <>
+                  <span className="hidden text-muted-foreground/40 xl:inline">·</span>
+                  <span className="hidden shrink-0 xl:inline">{mission.model}</span>
+                </>
+              )}
+              <span className="text-muted-foreground/40">·</span>
+              <span className="truncate" title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</span>
+            </div>
             {mission.state === 'stopped' && (
-              <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" data-testid="remove-mission" title="Forget this mission. Its branches and worktrees stay in git." onClick={() => void window.orc.removeMission(mission.id).then(() => setMissionId(null))}>
-                Remove
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                <Badge variant="exited">stopped</Badge>
+                {!mission.mergedToMain && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[11px]"
+                    data-testid="restart-mission"
+                    title="Bring back every session Stop ended, each with its conversation (claude --resume). Workers you shut down one by one stay down."
+                    onClick={() => void window.orc.restartMission(mission.id)}
+                  >
+                    <RotateCcw /> Restart
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" data-testid="remove-mission" title="Forget this mission. Its branches and worktrees stay in git." onClick={() => void window.orc.removeMission(mission.id).then(() => setMissionId(null))}>
+                  Remove
+                </Button>
+              </div>
             )}
-            {mission.paused && <Badge variant="needs-you" data-testid="paused-badge">paused</Badge>}
-            {needsYou > 0 && <Badge variant="needs-you">{needsYou} need{needsYou === 1 ? 's' : ''} you</Badge>}
-            <div className="ml-auto flex items-center gap-1.5">
-              <span className="mr-2 text-[12px] tabular-nums text-muted-foreground" title="Tokens used by every session in this mission (input + cache writes + output)">
+            {mission.paused && <Badge variant="needs-you" className="shrink-0" data-testid="paused-badge">paused</Badge>}
+            {needsYou > 0 && <Badge variant="needs-you" className="shrink-0">{needsYou} need{needsYou === 1 ? 's' : ''} you</Badge>}
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <span className="text-[12px] tabular-nums text-muted-foreground" title="Tokens used by every session in this mission (input + cache writes + output)">
                 {formatTokens(mission.tokens)} tokens
               </span>
-              {missionApp && (
+              <div className="flex h-7 items-center overflow-hidden rounded-md border">
+                {missionApp && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className={cn('h-full rounded-none px-2.5 text-[12px]', view === 'app' && 'bg-accent text-accent-foreground')}
+                      data-testid="open-app"
+                      title="Show the app's terminal"
+                      onClick={() => setView(view === 'app' ? 'terminal' : 'app')}
+                    >
+                      <span className={cn('size-1.5 rounded-full', missionApp.status === 'running' ? 'bg-working' : 'bg-exited')} />
+                      App
+                    </Button>
+                    <span className="h-full w-px bg-border" />
+                  </>
+                )}
+                {missionApp?.status === 'running' ? (
+                  <Button size="sm" variant="ghost" className="h-full rounded-none px-2.5 text-[12px]" disabled={appBusy} data-testid="stop-app" title="End the app and everything it started" onClick={stopApp}>
+                    <Square /> {appBusy ? 'Stopping…' : 'Stop app'}
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" className="h-full rounded-none px-2.5 text-[12px]" disabled={appBusy || !!mission.mergedToMain} data-testid="run-app" title={mission.mergedToMain ? 'Merged to main: run the app from your own checkout' : runTitle} onClick={runApp}>
+                    <MonitorPlay /> {appBusy ? 'Starting…' : 'Run app'}
+                  </Button>
+                )}
+              </div>
+              <span className="h-5 w-px bg-border" />
+              <div className="flex items-center gap-0.5">
+                {mission.paused ? (
+                  <Button size="sm" variant="ghost" className="text-[12px]" onClick={() => void window.orc.resumeMission(mission.id)} data-testid="resume-mission" title="Release held merges and messages">
+                    <Play /> Resume
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-[12px]"
+                    disabled={mission.state !== 'running'}
+                    onClick={() => void window.orc.pauseMission(mission.id)}
+                    data-testid="pause-mission"
+                    title="Interrupt every agent mid-turn (Esc) and hold new workers, merges and messages from The ORC. You can still type to any agent."
+                  >
+                    <Pause /> Pause
+                  </Button>
+                )}
                 <Button
                   size="sm"
-                  variant="outline"
-                  className={cn(view === 'app' && 'border-primary/60 bg-accent')}
-                  data-testid="open-app"
-                  title="Show the app's terminal"
-                  onClick={() => setView(view === 'app' ? 'terminal' : 'app')}
+                  variant="ghost"
+                  className="text-[12px] text-destructive hover:bg-destructive/15 hover:text-destructive"
+                  disabled={mission.state === 'stopped'}
+                  data-testid="stop-mission"
+                  onClick={() => void window.orc.stopMission(mission.id)}
+                  title="End every session in this mission. Worktrees are kept."
                 >
-                  <span className={cn('size-1.5 rounded-full', missionApp.status === 'running' ? 'bg-working' : 'bg-exited')} />
-                  App
+                  <Square /> Stop
                 </Button>
-              )}
-              {missionApp?.status === 'running' ? (
-                <Button size="sm" variant="outline" disabled={appBusy} data-testid="stop-app" title="End the app and everything it started" onClick={stopApp}>
-                  <Square /> {appBusy ? 'Stopping…' : 'Stop app'}
-                </Button>
-              ) : (
-                <Button size="sm" variant="outline" disabled={appBusy || !!mission.mergedToMain} data-testid="run-app" title={mission.mergedToMain ? 'Merged to main: run the app from your own checkout' : runTitle} onClick={runApp}>
-                  <MonitorPlay /> {appBusy ? 'Starting…' : 'Run app'}
-                </Button>
-              )}
-              <span className="mx-1 h-5 w-px bg-border" />
-              {mission.paused ? (
-                <Button size="sm" variant="outline" onClick={() => void window.orc.resumeMission(mission.id)} data-testid="resume-mission" title="Release held merges and messages">
-                  <Play /> Resume
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={mission.state !== 'running'}
-                  onClick={() => void window.orc.pauseMission(mission.id)}
-                  data-testid="pause-mission"
-                  title="Interrupt every agent mid-turn (Esc) and hold new workers, merges and messages from The ORC. You can still type to any agent."
-                >
-                  <Pause /> Pause
-                </Button>
-              )}
+              </div>
               <Button
                 size="sm"
-                variant="destructive"
-                disabled={mission.state === 'stopped'}
-                data-testid="stop-mission"
-                onClick={() => void window.orc.stopMission(mission.id)}
-                title="End every session in this mission. Worktrees are kept."
-              >
-                <Square /> Stop
-              </Button>
-              <Button
-                size="sm"
+                className="ml-1 text-[12px]"
                 disabled={mission.merged.length === 0 && !mission.mergedToMain}
                 onClick={() => setView('merge')}
                 data-testid="open-merge"
@@ -217,7 +241,7 @@ export function App(): React.JSX.Element {
             </div>
           </>
         ) : (
-          <span className="text-muted-foreground">No mission open</span>
+          <span className="ml-auto text-[12px] text-muted-foreground">No mission open</span>
         )}
       </header>
 
@@ -239,11 +263,11 @@ export function App(): React.JSX.Element {
           <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
         ) : view === 'app' && missionApp ? (
           <>
-            <div className="flex h-8 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="app-head">
-              <MonitorPlay className="size-3.5" />
-              <span className="font-medium text-foreground">App</span>
-              <span className="truncate font-mono">· {missionApp.command}</span>
-              <span className="truncate">· {missionApp.cwd}</span>
+            <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="app-head">
+              <MonitorPlay className="size-3.5 shrink-0" />
+              <span className="shrink-0 font-medium text-foreground">App</span>
+              <span className="min-w-0 truncate font-mono text-[11px]">{missionApp.command}</span>
+              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70">{missionApp.cwd}</span>
               {missionApp.status === 'exited' && (
                 <Badge variant="exited" className="ml-auto shrink-0" data-testid="app-exited">exited{missionApp.exitCode !== null ? ` (${missionApp.exitCode})` : ''}</Badge>
               )}
@@ -257,17 +281,28 @@ export function App(): React.JSX.Element {
           <ReviewScreen mission={mission} agent={view.review} onBack={() => setView('terminal')} />
         ) : agent ? (
           <>
-            <div className="flex h-8 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="terminal-head" data-agent={agent.name}>
-              <TerminalSquare className="size-3.5" />
-              <span className="font-medium text-foreground">{agent.sessionName}</span>
-              <span className="truncate">· {agent.cwd}</span>
+            <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="terminal-head" data-agent={agent.name}>
+              <TerminalSquare className="size-3.5 shrink-0" />
+              <span className="shrink-0 font-medium text-foreground">{agent.sessionName}</span>
+              <span className="min-w-0 truncate font-mono text-[11px]">{agent.cwd}</span>
             </div>
             <TerminalView key={agent.terminalId} id={agent.terminalId} />
           </>
         ) : (
-          <div className="m-auto max-w-sm text-center text-muted-foreground">
-            <TerminalSquare className="mx-auto mb-3 size-8 opacity-40" />
-            <p className="leading-relaxed">Open a repository, then start a mission with <span className="text-foreground">+</span>. Its coordinator opens here: a real Claude Code session you talk to.</p>
+          <div className="m-auto flex w-full max-w-[380px] flex-col items-center px-4 text-center">
+            <div className="mb-4 grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
+              <TerminalSquare className="size-5" />
+            </div>
+            <h2 className="text-[15px] font-semibold text-foreground">No mission open</h2>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">Each mission runs a coordinator, a real Claude Code session you talk to, and the team leads it spawns.</p>
+            <ol className="mt-5 w-full space-y-2.5 rounded-lg border bg-panel/50 p-3 text-left text-[12.5px]">
+              {['Add a repository in the sidebar', 'Start a mission with +', 'Talk to its coordinator here'].map((step, i) => (
+                <li key={step} className="flex items-center gap-2.5">
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full border bg-card text-[11px] font-medium tabular-nums text-muted-foreground">{i + 1}</span>
+                  <span className="text-foreground/90">{step}</span>
+                </li>
+              ))}
+            </ol>
           </div>
         )}
       </main>
