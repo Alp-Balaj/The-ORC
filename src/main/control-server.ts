@@ -31,6 +31,12 @@ export interface ControlHandlers {
   hookEvent(caller: string, event: HookEvent): string | null
 }
 
+/** The server's full handler set: the mission layer's, plus what index.ts answers itself. */
+export interface ServerHandlers extends ControlHandlers {
+  /** Full-text search over the caller's mission records and its repo's docs/. */
+  searchHistory(caller: string, query: string, limit: number | null): string
+}
+
 const MaxBody = 1024 * 1024
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -58,7 +64,7 @@ function text(t: string): { content: { type: 'text'; text: string }[] } {
   return { content: [{ type: 'text', text: t }] }
 }
 
-function buildMcp(caller: string, h: ControlHandlers): McpServer {
+function buildMcp(caller: string, h: ServerHandlers): McpServer {
   const server = new McpServer({ name: 'orc', version: '0.0.1' })
   server.registerTool(
     'spawn_agent',
@@ -131,14 +137,31 @@ function buildMcp(caller: string, h: ControlHandlers): McpServer {
     },
     async ({ summary, workers }) => text(h.proposeSplit(caller, summary, workers))
   )
+  server.registerTool(
+    'search_history',
+    {
+      description:
+        'Search what has already happened in this repo: past ORC mission records (briefs, team reports, ' +
+        'Verifier reports, merges) and the repo\'s docs/ (PLAN, HANDOFF, ADRs, decisions). Local full-text ' +
+        '(BM25) search; returns short ranked snippets with source file, section heading, mission and date. ' +
+        'Use it BEFORE reading past mission records or docs in full: a search costs a few hundred tokens, ' +
+        'reading the records costs tens of thousands. Read a file only when a snippet is not enough. ' +
+        'Code is not indexed: use CodeGraph/grep for code.',
+      inputSchema: {
+        query: z.string().min(1).describe('Keywords, e.g. "stop_agent merge conflict"'),
+        limit: z.number().int().min(1).max(25).optional().describe('Max snippets (default set by The ORC)')
+      }
+    },
+    async ({ query, limit }) => text(h.searchHistory(caller, query, limit ?? null))
+  )
   return server
 }
 
 export class ControlServer {
   private server: Server | null = null
-  private readonly handlers: ControlHandlers
+  private readonly handlers: ServerHandlers
 
-  constructor(handlers: ControlHandlers) {
+  constructor(handlers: ServerHandlers) {
     this.handlers = handlers
   }
 
