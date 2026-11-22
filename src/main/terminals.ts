@@ -39,7 +39,9 @@ type ExitListener = (id: TerminalId, exitCode: number) => void
  *  switches to a terminal late can replay what it missed. */
 export class TerminalHost {
   private readonly terminals = new Map<TerminalId, pty.IPty>()
-  private readonly scrollback = new Map<TerminalId, string>()
+  /** Output chunks, newest last, with their total length: appending is O(1) per chunk instead of
+   *  copying the whole (up to 512 KB) buffer on every pty read. */
+  private readonly scrollback = new Map<TerminalId, { chunks: string[]; size: number }>()
   private static readonly MaxScrollback = 512 * 1024
 
   private readonly onData: DataListener
@@ -62,14 +64,24 @@ export class TerminalHost {
       env
     })
     this.terminals.set(spec.id, term)
-    this.scrollback.set(spec.id, '')
+    const buf = { chunks: [] as string[], size: 0 }
+    this.scrollback.set(spec.id, buf)
     term.onData((data) => {
-      const prev = this.scrollback.get(spec.id) ?? ''
-      const next = prev + data
-      this.scrollback.set(
-        spec.id,
-        next.length > TerminalHost.MaxScrollback ? next.slice(-TerminalHost.MaxScrollback) : next
-      )
+      buf.chunks.push(data)
+      buf.size += data.length
+      // Drop the oldest output until the buffer is back within the cap (cutting into a chunk
+      // when needed), keeping the same tail a plain slice(-cap) would keep.
+      while (buf.size > TerminalHost.MaxScrollback) {
+        const over = buf.size - TerminalHost.MaxScrollback
+        const first = buf.chunks[0]
+        if (first.length <= over) {
+          buf.chunks.shift()
+          buf.size -= first.length
+        } else {
+          buf.chunks[0] = first.slice(over)
+          buf.size -= over
+        }
+      }
       this.onData(spec.id, data)
       for (const tap of this.taps) tap(spec.id, data)
     })
@@ -94,7 +106,7 @@ export class TerminalHost {
   }
 
   replay(id: TerminalId): string {
-    return this.scrollback.get(id) ?? ''
+    return this.scrollback.get(id)?.chunks.join('') ?? ''
   }
 
   /** PIDs of every live terminal's process, so a test can prove none survive. */

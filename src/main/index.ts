@@ -1,8 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification } from 'electron'
 import { join } from 'node:path'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import type { PermissionMode, StartMissionRequest } from '../shared/types.ts'
+import type { MissionView, PermissionMode, StartMissionRequest } from '../shared/types.ts'
 import type { SpacePatch } from '../preload/index.ts'
 import { ControlServer } from './control-server.ts'
 import { HistoryIndex } from './history-index.ts'
@@ -12,6 +12,7 @@ import { startStatusPoller } from './agent-status.ts'
 import { runSmoke } from './smoke.ts'
 import { fakeLauncher } from './smoke-replay.ts'
 import { Spaces } from './spaces.ts'
+import { Notifier } from './notifications.ts'
 import { TerminalHost } from './terminals.ts'
 import { AppRunner } from './app-runner.ts'
 import { Queues } from './queue.ts'
@@ -24,20 +25,73 @@ function send(channel: string, ...args: unknown[]): void {
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(channel, ...args)
 }
 
+/** Pty output reaches the window in batches: one message per terminal every ~16ms instead of one
+ *  per chunk. An exit flushes first, so the window always sees a session's output before its exit. */
+const pendingData = new Map<string, string>()
+let dataTimer: ReturnType<typeof setTimeout> | null = null
+function flushData(): void {
+  if (dataTimer) clearTimeout(dataTimer)
+  dataTimer = null
+  for (const [id, data] of pendingData) send('terminal:data', id, data)
+  pendingData.clear()
+}
+function queueData(id: string, data: string): void {
+  pendingData.set(id, (pendingData.get(id) ?? '') + data)
+  dataTimer ??= setTimeout(flushData, 16)
+}
+
 const terminals = new TerminalHost(
-  (id, data) => send('terminal:data', id, data),
+  (id, data) => queueData(id, data),
   (id, code) => {
     missions.terminalExited(id, code)
     appRunner.terminalExited(id, code)
+    flushData()
     send('terminal:exit', id, code)
   }
 )
 /** Created after spaces (below); missions can change before that. */
 let queues: Queues | null = null
-const missions = new Missions(terminals, (views) => {
+/** Desktop notifications: no-ops in smoke runs, which must never pop real ones. */
+const notifier = new Notifier({
+  show: ({ title, body, urgent }, onClick) => {
+    if (process.env.ORC_SMOKE_OUT || !Notification.isSupported()) return
+    const n = new Notification({ title, body, urgency: urgent ? 'critical' : 'normal' })
+    n.on('click', onClick)
+    n.show()
+  },
+  setBadge: (count) => {
+    if (!process.env.ORC_SMOKE_OUT) app.setBadgeCount(count)
+  },
+  flash: (on) => {
+    if (!process.env.ORC_SMOKE_OUT && win && !win.isDestroyed()) win.flashFrame(on)
+  },
+  isFocused: () => !!win && !win.isDestroyed() && win.isFocused(),
+  select: (missionId, terminalId) => {
+    if (!win || win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    send('notify:select', missionId, terminalId)
+  },
+  enabled: (repo) => spaces.notifications(repo)
+})
+/** Mission state is pushed only while the window is on screen. Pushes made while it is hidden
+ *  are skipped and sent once when it is shown again (smoke runs are hidden by design: always send). */
+let missionsDirty = false
+function sendMissions(views: MissionView[]): void {
+  const shown = !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()
+  if (!shown && !process.env.ORC_SMOKE_OUT) {
+    missionsDirty = true
+    return
+  }
+  missionsDirty = false
   send('missions:changed', views)
+}
+const missions = new Missions(terminals, (views) => {
+  sendMissions(views)
   scheduleSave()
   queues?.onMissions(views)
+  notifier.onMissions(views)
 })
 const appRunner = new AppRunner(terminals, (run) => send('app:changed', run))
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
@@ -185,6 +239,13 @@ function createWindow(): void {
       offscreen: !!smoke
     }
   })
+  win.on('focus', () => notifier.onFocus())
+  // Catch the renderer up on mission pushes it missed while hidden or minimized.
+  const catchUp = (): void => {
+    if (missionsDirty && win && !win.isDestroyed()) sendMissions(missions.views())
+  }
+  win.on('show', catchUp)
+  win.on('restore', catchUp)
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else win.loadFile(join(import.meta.dirname, '../renderer/index.html'))
 }
@@ -294,6 +355,7 @@ ipcMain.on('terminal:write', (_e, id: string, data: string) => {
   missions.noteHumanInput(id, data)
   terminals.write(id, data)
 })
+ipcMain.on('ui:selection', (_e, missionId: string | null, terminalId: string | null) => notifier.setSelection(missionId, terminalId))
 ipcMain.on('theme:set-native', (_e, pref: 'light' | 'dark' | 'system') => {
   nativeTheme.themeSource = pref
   for (const w of BrowserWindow.getAllWindows()) w.setBackgroundColor(windowBackground())

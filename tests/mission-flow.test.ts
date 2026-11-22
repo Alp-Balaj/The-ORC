@@ -24,6 +24,7 @@ function world() {
   const typed: { id: string; data: string }[] = []
   const host = { start: (o: { args: string[] }) => { launchedArgs.push(o.args) }, kill: () => {}, killAll: () => {}, pid: () => null, isRunning: () => true, write: (id: string, data: string) => typed.push({ id, data }) } as unknown as TerminalHost
   const m = new Missions(host, () => {})
+  m.useMergeAgent = false // these tests cover the worker hand-back path
   m.verify = async () => ({ ok: true, report: 'VERDICT: PASS\nMATCHES THE BRIEF: yes', promptHash: 'h' })
   return { m, typed }
 }

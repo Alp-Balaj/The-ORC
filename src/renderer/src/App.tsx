@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
 import { ModelRoles, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { roleLabel } from './components/ModelFields'
@@ -24,6 +24,19 @@ const modeLabel: Record<string, string> = {
   manual: 'ask for everything',
   bypassPermissions: 'bypass permissions',
   dontAsk: "don't ask"
+}
+
+/** Pushes arrive as fresh objects every time. Keep each mission whose content is unchanged as the
+ *  same object (and the list as the same array when nothing changed), so memoized children skip
+ *  re-rendering for pushes that only touched other missions. */
+function sameMissions(prev: MissionView[], next: MissionView[]): MissionView[] {
+  const before = new Map(prev.map((m) => [m.id, m]))
+  const out = next.map((m) => {
+    const old = before.get(m.id)
+    return old && JSON.stringify(old) === JSON.stringify(m) ? old : m
+  })
+  const changed = out.length !== prev.length || out.some((m, i) => m !== prev[i])
+  return changed ? out : prev
 }
 
 // The tree/feed column: draggable from its left edge, kept between 300px and 45% of the window.
@@ -127,14 +140,39 @@ export function App(): React.JSX.Element {
     void window.orc.resumedAtLaunch().then(setResumed)
     void window.orc.pendingAppRestore().then(setAppRestore)
     const offA = window.orc.onApp(setAppRun)
-    const offM = window.orc.onMissions(setMissions)
+    const offM = window.orc.onMissions((next) => setMissions((prev) => sameMissions(prev, next)))
     const offS = window.orc.onSpaces(setSpaces)
-    const timer = setInterval(() => tick((n) => n + 1), 10_000)
+    const offN = window.orc.onNotifySelect((_m, tid) => {
+      setView('terminal')
+      setTerminalId(tid)
+      setMissionId(tid.split(':')[0])
+    })
     return () => {
       offM()
       offS()
+      offN()
       offA()
-      clearInterval(timer)
+    }
+  }, [])
+
+  // Re-renders every 10s so "x ago" labels stay current. Hidden windows need no refresh: the
+  // clock stops with the window and catches up as soon as it is shown again.
+  useEffect(() => {
+    let timer: number | undefined
+    const sync = (): void => {
+      if (document.hidden) {
+        window.clearInterval(timer)
+        timer = undefined
+        return
+      }
+      tick((n) => n + 1)
+      timer ??= window.setInterval(() => tick((n) => n + 1), 10_000)
+    }
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      document.removeEventListener('visibilitychange', sync)
+      window.clearInterval(timer)
     }
   }, [])
 
@@ -146,16 +184,21 @@ export function App(): React.JSX.Element {
   const shown = useMemo(() => (mission ? shownAgents(mission) : []), [mission])
   const agent = shown.find((a) => a.terminalId === terminalId) ?? shown.find((a) => a.role === 'coordinator') ?? null
 
-  const selectMission = (id: string): void => {
+  useEffect(() => {
+    window.orc.setSelection(mission?.id ?? null, agent?.terminalId ?? null)
+  }, [mission?.id, agent?.terminalId])
+
+  // Stable (they only call setters), so the memoized tree skips renders on unrelated updates.
+  const selectMission = useCallback((id: string): void => {
     setView('terminal')
     setMissionId(id)
     setTerminalId(`${id}:coordinator`)
-  }
-  const selectAgent = (tid: string): void => {
+  }, [])
+  const selectAgent = useCallback((tid: string): void => {
     setView('terminal')
     setTerminalId(tid)
     setMissionId(tid.split(':')[0])
-  }
+  }, [])
   const space = mission ? spaces.find((s) => s.root === mission.repoPath) : undefined
   const missionApp = appRun && mission && appRun.missionId === mission.id ? appRun : null
   const runApp = (): void => {

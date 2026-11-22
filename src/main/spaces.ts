@@ -40,6 +40,8 @@ interface Settings {
   usageThreshold: number
   /** Minutes after which a finished lead's session is stopped. 0: never. */
   idleStopMinutes: number
+  /** Desktop notifications (and the needs-you badge) for this space's missions. */
+  notifications: boolean
 }
 
 /** The repositories the user has opened, in order, with per-space settings. Saved to a JSON
@@ -74,7 +76,8 @@ export class Spaces {
               runCommand: typeof o.runCommand === 'string' && o.runCommand ? o.runCommand : null,
               models: cleanModels(o.models),
               usageThreshold: clampThreshold(o.usageThreshold),
-              idleStopMinutes: clampIdleStop(o.idleStopMinutes)
+              idleStopMinutes: clampIdleStop(o.idleStopMinutes),
+              notifications: o.notifications !== false
             })
           }
         }
@@ -83,7 +86,7 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes, notifications: true }
   }
 
   /** suggestGate per root, read once. */
@@ -130,6 +133,10 @@ export class Spaces {
     return this.get(root).idleStopMinutes
   }
 
+  notifications(root: string): boolean {
+    return this.get(root).notifications
+  }
+
   update(root: string, patch: Partial<Settings>): void {
     const next = { ...this.get(root), ...patch }
     next.gateCommand = next.gateCommand?.trim() || null
@@ -139,6 +146,7 @@ export class Spaces {
     next.models = cleanModels(next.models)
     next.usageThreshold = clampThreshold(next.usageThreshold)
     next.idleStopMinutes = clampIdleStop(next.idleStopMinutes)
+    next.notifications = next.notifications !== false
     this.settings.set(root, next)
     this.save()
   }

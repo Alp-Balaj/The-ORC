@@ -184,16 +184,16 @@ export function claudeArgs(spec: LaunchSpec): string[] {
 
 /** Speed rules every lead passes on to its subagents (they don't see the lead's system prompt). */
 export const SpeedRules =
-  'Make the smallest change that does the job. Do not write tests and do not run test suites, e2e ' +
-  'tests or full builds unless the task explicitly asks for it. At most, run a quick check that ' +
-  'what you touched compiles. Never run git commands that write. Finish as soon as it works.'
+  'Make the smallest change that does the job. Do not write or run tests, e2e tests or full builds ' +
+  'unless the task explicitly asks. At most, check that what you touched compiles. Never run git ' +
+  'commands that write. Finish as soon as it works.'
 
 export function coordinatorPrompt(mission: string, sessionName: string, repo: string, gating: Gating = 'none', pastRecords: string[] = []): string {
   const past = pastRecords.length
     ? [
-        'Records of earlier missions in this repository (newest first) say what was built before and',
-        'why. Before splitting the work, call `mcp__orc__search_history` with a query about the request',
-        'to find related earlier missions; Read a record file only when its snippets are not enough:',
+        'Earlier missions in this repository (newest first) record what was built and why. Before',
+        'splitting the work, call `mcp__orc__search_history` with a query about the request; Read a',
+        'record file only when its snippets are not enough:',
         pastRecords.map((p) => `"${p}"`).join(', ') + '.'
       ]
     : []
@@ -252,8 +252,8 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
     `works only in the current directory, and these rules: "${SpeedRules}"`,
     'Do not call spawn_agent: your team is made of subagents.',
     'Work only inside your current directory (your own git worktree).',
-    'Before reading past mission records or project history docs, call `mcp__orc__search_history`',
-    'with a query first, and read a full file only when its snippets are not enough.',
+    'Before reading past mission records or history docs, call `mcp__orc__search_history` with a',
+    'query first; read a full file only when its snippets are not enough.',
     'Never commit, merge, push or manage branches: The ORC commits for you.',
     'Only when EVERY subagent has returned and the pieces fit together, call the',
     '`mcp__orc__report_done` tool (orc MCP server; load it with ToolSearch first if needed) with a',
@@ -263,5 +263,25 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
     'subagent, then call report_done again.',
     'If you are blocked on a decision only a human can make, call `mcp__orc__ask_human` and end your turn.',
     'The human may type to you directly; their instructions win over the coordinator.'
+  ].join(' ')
+}
+
+/** The merger: a short-lived session whose cwd is the mission's integration worktree, with a
+ *  merge in progress. It edits the conflicted files; The ORC stages and commits. */
+export function mergerPrompt(mission: string, sessionName: string, coordinator: string, worker: string, files: string[]): string {
+  return [
+    `You are the merge agent "${sessionName}" in The ORC mission "${mission}".`,
+    `Your coordinator is the Claude Code session named "${coordinator}".`,
+    `The branch of worker "${worker}" is being merged into the integration branch, and your current`,
+    `directory (the integration worktree) holds that merge half-done: these files have conflict`,
+    `markers (<<<<<<<, =======, >>>>>>>): ${files.join(', ')}.`,
+    'Edit each file so it has no markers and BOTH sides\' intent survives (read both sides and the',
+    'surrounding code; if it is a real clash, pick what keeps the code correct and consistent).',
+    'Touch no other file unless a resolution needs it to compile. Work only in the current directory.',
+    'Run no git commands that write (no add, commit, merge, checkout, reset): The ORC stages and commits.',
+    'Do not call spawn_agent. When no markers remain, call the `mcp__orc__report_done` tool (orc MCP',
+    'server; load it with ToolSearch first if needed) with a one-line summary of how you resolved it.',
+    'If you cannot resolve it safely, call report_done with a summary that starts with "CANNOT RESOLVE:"',
+    'and the reason; The ORC then sends it back to the worker. Do not wait for replies; be quick.'
   ].join(' ')
 }

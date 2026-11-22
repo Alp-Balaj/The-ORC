@@ -79,6 +79,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
   const [models, setModels] = useState(toDraft(space.models))
   const [threshold, setThreshold] = useState(String(space.usageThreshold))
   const [idleStop, setIdleStop] = useState(String(space.idleStopMinutes))
+  const [notify, setNotify] = useState(space.notifications)
   const suggested = space.suggestedGate
   return (
     <motion.form
@@ -95,7 +96,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       className="mx-1 my-1.5 space-y-2 overflow-hidden rounded-lg border bg-card p-2.5 text-[12px]"
       onSubmit={(e) => {
         e.preventDefault()
-        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null, models: fromDraft(models), usageThreshold: Number(threshold) || space.usageThreshold, idleStopMinutes: idleStop.trim() === '' || !Number.isFinite(Number(idleStop)) ? space.idleStopMinutes : Number(idleStop) }).then(onClose)
+        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null, models: fromDraft(models), usageThreshold: Number(threshold) || space.usageThreshold, notifications: notify, idleStopMinutes: idleStop.trim() === '' || !Number.isFinite(Number(idleStop)) ? space.idleStopMinutes : Number(idleStop) }).then(onClose)
       }}
     >
       <div className="space-y-1">
@@ -129,6 +130,10 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
         <label className="block text-[11px] leading-snug text-muted-foreground">Auto-stop finished leads after (min, 0 = off)</label>
         <Input type="number" min={0} max={1440} value={idleStop} onChange={(e) => setIdleStop(e.target.value)} data-testid="idle-stop-minutes" />
       </div>
+      <label className="flex items-center gap-2 text-[11px] leading-snug text-muted-foreground">
+        <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="accent-primary" data-testid="notifications-enabled" />
+        Desktop notifications when an agent needs you, finishes or exits
+      </label>
       <ModelFields draft={models} onChange={setModels} label="Models for this space's missions" />
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" className="h-7 flex-1">Save</Button>

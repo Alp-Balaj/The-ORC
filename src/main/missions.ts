@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
-import { claudeArgs, coordinatorPrompt, ownerStatusLine, sessionEnv, workerPrompt } from './claude-launch.ts'
+import { claudeArgs, coordinatorPrompt, ownerStatusLine, mergerPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
 import * as gitOps from './git-worktrees.ts'
 import type { TerminalHost } from './terminals.ts'
@@ -34,6 +34,8 @@ interface Agent extends AgentView {
   lastHumanAt: number | null
   /** An ask_human question waiting for the human's answer (their next prompt to it). */
   pendingQuestion: string | null
+  /** Set on a merge agent: the worker whose conflicted merge it resolves. */
+  mergerFor?: string
 }
 
 export interface SavedState {
@@ -136,13 +138,15 @@ export class Missions implements ControlHandlers {
   private controlPort = 0
   private feedSeq = 0
   private emitTimer: ReturnType<typeof setTimeout> | null = null
+  /** The last views sent to the renderer, serialized: an identical update is not sent again. */
+  private lastViews = ''
   /** Most agents one mission may have, coordinator included (M4 makes this per space). */
   maxAgentsPerMission = 8
   /** How a session is started. Tests swap in a fake command. */
   launcher: Launcher = (args) => ({ command: 'claude', args })
   /** Git operations. Tests swap in fakes. */
   git: Pick<typeof gitOps, 'addWorktree' | 'branchesUnder' | 'currentBranch' | 'repoRoot'> &
-    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'mergeToMain' | 'cleanupMission' | 'branchDiff' | 'prepareConflict'> = { ...gitOps, ...missionGit }
+    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'mergeToMain' | 'cleanupMission' | 'branchDiff' | 'prepareConflict' | 'concludeMerge' | 'abortMerge'> = { ...gitOps, ...missionGit }
 
   private readonly terminals: TerminalHost
   private readonly changed: (missions: MissionView[]) => void
@@ -376,6 +380,10 @@ export class Missions implements ControlHandlers {
     if (!a) return
     const mission = this.missions.get(a.missionId)!
     this.feed(mission, { kind: 'done', from: a.name, to: a.parent, text: oneLine(summary) })
+    if (a.mergerFor) {
+      this.gitWork = this.gitWork.then(() => this.finishMerger(mission, a, summary)).catch((err) => this.orcNote(mission, `merge error: ${String(err)}`))
+      return
+    }
     if (a.role === 'worker') this.record(mission, `Report from ${a.name}`, summary)
     // The app commits for the agent (agents never commit). Runs after the tool replies.
     if (a.role === 'worker') this.gitWork = this.gitWork.then(() => this.afterDone(mission, a, summary)).catch((err) => this.orcNote(mission, `git error after ${a.name}'s report: ${String(err)}`))
@@ -832,6 +840,10 @@ export class Missions implements ControlHandlers {
       activity: failedToStart ? `claude exited before starting (code ${exitCode}): see its terminal` : a.activity,
       inTurn: false
     })
+    if (a.mergerFor && !a.shutDown) {
+      const mission = this.missions.get(a.missionId)!
+      this.gitWork = this.gitWork.then(() => this.mergerFailed(mission, a, 'exited before finishing')).catch((err) => this.orcNote(mission, `merge error: ${String(err)}`))
+    }
     if (failedToStart) this.orcNote(this.missions.get(a.missionId)!, `${a.name}: claude exited before starting (code ${exitCode}). Its terminal shows the reason.`)
   }
 
@@ -892,42 +904,144 @@ export class Missions implements ControlHandlers {
     return r.stdout !== '0'
   }
 
+  /** Conflicted merges per mission that a merge agent is resolving in the integration worktree.
+   *  Other merges wait in `queue` (the worktree holds one merge at a time). Not persisted: after
+   *  a restart the half-done merge is aborted by the next mergeIntoIntegration. */
+  private mergers = new Map<string, { worker: string; agent: string; files: string[]; attempts: number; queue: string[] }>()
+  /** Off: a conflict goes straight back to the worker (unit tests of that path). */
+  useMergeAgent = true
+
   private async mergeWorker(mission: Mission, a: Agent): Promise<void> {
+    const busy = this.mergers.get(mission.id)
+    if (busy) {
+      if (!busy.queue.includes(a.name)) busy.queue.push(a.name)
+      this.feed(mission, { kind: 'orc', from: 'orc', to: a.name, text: `merge waits: a conflict in ${busy.files.join(', ')} is being resolved first` })
+      return
+    }
     await this.git.ensureIntegration(mission.repoPath, mission.name, mission.baseBranch)
-    const r = await this.git.mergeIntoIntegration(mission.repoPath, mission.name, a.branch!, `Merge ${a.name} into ${missionGit.integrationBranch(mission.name)}`)
-    if (r.kind === 'conflict' && a.shutDown) {
+    const integration = missionGit.integrationBranch(mission.name)
+    const keep = this.useMergeAgent && !a.shutDown && mission.state === 'running'
+    const r = await this.git.mergeIntoIntegration(mission.repoPath, mission.name, a.branch!, `Merge ${a.name} into ${integration}`, { keepConflict: keep })
+    if (r.kind === 'conflict') {
+      if (keep && this.startMerger(mission, a, r.files)) return
+      if (keep) await this.git.abortMerge(mission.repoPath, mission.name)
+      await this.conflictFallback(mission, a, r.files)
+      return
+    }
+    await this.mergedInto(mission, a, r.kind === 'merged' ? r.commit : null)
+  }
+
+  /** The old behavior: the worker resolves it in its own worktree, or the human is told. */
+  private async conflictFallback(mission: Mission, a: Agent, files: string[]): Promise<void> {
+    const integration = missionGit.integrationBranch(mission.name)
+    const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
+    a.merge = 'conflict'
+    a.conflictFiles = files
+    if (a.shutDown) {
       // Its session is gone, so nobody can resolve it in its worktree: leave the worktree alone
       // (the merge was aborted) and hand the conflict to the coordinator and the human.
-      a.merge = 'conflict'
-      a.conflictFiles = r.files
-      this.feed(mission, { kind: 'conflict', from: a.name, to: 'you', text: `conflicts with ${missionGit.integrationBranch(mission.name)} in ${r.files.join(', ')}; ${a.name} is stopped, so it was not merged`, status: 'failed' })
-      const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
-      if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${r.files.join(', ')}, and ${a.name} was stopped, so it was not merged. Tell the human; a new worker can redo that part.`)
+      this.feed(mission, { kind: 'conflict', from: a.name, to: 'you', text: `conflicts with ${integration} in ${files.join(', ')}; ${a.name} is stopped, so it was not merged`, status: 'failed' })
+      if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${files.join(', ')}, and ${a.name} was stopped, so it was not merged. Tell the human; a new worker can redo that part.`)
       this.emit()
       return
     }
-    if (r.kind === 'conflict') {
-      a.merge = 'conflict'
-      a.conflictFiles = r.files
-      this.feed(mission, { kind: 'conflict', from: a.name, to: 'coordinator', text: `conflicts with ${missionGit.integrationBranch(mission.name)} in ${r.files.join(', ')}`, status: 'failed' })
-      // Leave the conflict in the worker's own worktree for it to resolve; its next
-      // report_done commits the resolution and the merge is retried.
-      await this.git.prepareConflict(mission.repoPath, a.cwd, missionGit.integrationBranch(mission.name))
+    this.feed(mission, { kind: 'conflict', from: a.name, to: 'coordinator', text: `conflicts with ${integration} in ${files.join(', ')}`, status: 'failed' })
+    // Leave the conflict in the worker's own worktree for it to resolve; its next
+    // report_done commits the resolution and the merge is retried.
+    await this.git.prepareConflict(mission.repoPath, a.cwd, integration)
+    this.deliver(a, `[The ORC] Your branch conflicts with work already merged (${files.join(', ')}). The conflict markers are now in your worktree. Edit the files to resolve them so both changes survive. Run no git commands (The ORC stages and commits), then call report_done again.`)
+    if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${files.join(', ')}. ${a.name} has been asked to resolve it; step in if it needs direction.`)
+    // Its work is not done any more: it has a conflict to resolve. Without this, "done" is
+    // sticky and a permission prompt during the resolution never shows as needs-you.
+    a.status = 'working'
+    a.activity = 'resolving a conflict'
+    this.emit()
+  }
+
+  /** Starts a merge agent in the integration worktree, which holds the conflicted merge.
+   *  Returns false when it could not start (the caller falls back). */
+  private startMerger(mission: Mission, a: Agent, files: string[]): boolean {
+    try {
+      let name = slug(`merge-${a.name}`)
+      for (let i = 2; mission.agents.has(name); i++) name = slug(`merge-${a.name}-${i}`)
+      const sessionName = `${mission.name}/${name}`
       const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
-      this.deliver(a, `[The ORC] Your branch conflicts with work already merged (${r.files.join(', ')}). The conflict markers are now in your worktree. Edit the files to resolve them so both changes survive. Run no git commands (The ORC stages and commits), then call report_done again.`)
-      if (coord) this.deliver(coord, `[The ORC] ${a.name}'s work conflicts with already-merged work in ${r.files.join(', ')}. ${a.name} has been asked to resolve it; step in if it needs direction.`)
-      // Its work is not done any more: it has a conflict to resolve. Without this, "done" is
-      // sticky and a permission prompt during the resolution never shows as needs-you.
-      a.status = 'working'
-      a.activity = 'resolving a conflict'
+      const task = `Resolve the merge conflict from merging ${a.name} into ${missionGit.integrationBranch(mission.name)}: ${files.join(', ')}`
+      this.mergers.set(mission.id, { worker: a.name, agent: name, files, attempts: 0, queue: [] })
+      this.launch(mission, {
+        name,
+        sessionName,
+        role: 'worker',
+        parent: coord?.name ?? null,
+        task,
+        cwd: missionGit.integrationPath(mission.repoPath, mission.name),
+        branch: null,
+        systemPrompt: mergerPrompt(mission.name, sessionName, coord?.sessionName ?? `${mission.name}/coordinator`, a.name, files),
+        firstPrompt: task
+      })
+      mission.agents.get(name)!.mergerFor = a.name
+      a.merge = 'conflict'
+      a.conflictFiles = files
+      this.feed(mission, { kind: 'conflict', from: 'orc', to: name, text: `resolving conflict in ${files.join(', ')} (${a.name} into ${missionGit.integrationBranch(mission.name)})` })
       this.emit()
-      return
+      return true
+    } catch (err) {
+      this.mergers.delete(mission.id)
+      this.orcNote(mission, `could not start a merge agent: ${String((err as Error).message ?? err)}`)
+      return false
     }
+  }
+
+  /** A merge agent reported done (or `cannot resolve`): conclude the merge or fall back. */
+  private async finishMerger(mission: Mission, m: Agent, summary: string): Promise<void> {
+    const st = this.mergers.get(mission.id)
+    if (!st || st.agent !== m.name) return
+    const w = mission.agents.get(st.worker)!
+    if (/^\s*cannot resolve/i.test(summary)) return this.mergerFailed(mission, m, `reported it cannot resolve: ${oneLine(summary, 160)}`)
+    const integration = missionGit.integrationBranch(mission.name)
+    const r = await this.git.concludeMerge(mission.repoPath, mission.name, st.files, `Merge ${w.name} into ${integration}\n\nConflict resolved by ${m.name}: ${oneLine(summary, 200)}`)
+    if (r.kind === 'markers') {
+      if (++st.attempts < 3) {
+        this.deliver(m, `[The ORC] Conflict markers are still in ${r.files.join(', ')}. Resolve them, then call report_done again.`)
+        m.status = 'working'
+        this.emit()
+        return
+      }
+      return this.mergerFailed(mission, m, `left conflict markers in ${r.files.join(', ')}`)
+    }
+    this.mergers.delete(mission.id)
+    this.endAgent(mission, m, 'orc', 'conflict resolved')
+    this.feed(mission, { kind: 'conflict', from: m.name, to: w.name, text: `conflict resolved in ${st.files.join(', ')}`, status: 'ok' })
+    await this.mergedInto(mission, w, r.commit)
+    await this.drainMerges(mission, st.queue)
+  }
+
+  /** The merge agent failed: undo the half-done merge and use the old hand-back. */
+  private async mergerFailed(mission: Mission, m: Agent, why: string): Promise<void> {
+    const st = this.mergers.get(mission.id)
+    if (!st || st.agent !== m.name) return
+    this.mergers.delete(mission.id)
+    await this.git.abortMerge(mission.repoPath, mission.name)
+    if (mission.state === 'stopped') return
+    if (!m.shutDown) this.endAgent(mission, m, 'orc', `merge agent failed: ${oneLine(why, 120)}`)
+    this.feed(mission, { kind: 'conflict', from: m.name, to: 'you', text: `merge agent ${why}; falling back to ${st.worker}`, status: 'failed' })
+    await this.conflictFallback(mission, mission.agents.get(st.worker)!, st.files)
+    await this.drainMerges(mission, st.queue)
+  }
+
+  private async drainMerges(mission: Mission, queue: string[]): Promise<void> {
+    for (const n of queue) {
+      const w = mission.agents.get(n)
+      if (w?.branch && w.merge !== 'merged') await this.mergeWorker(mission, w)
+    }
+  }
+
+  private async mergedInto(mission: Mission, a: Agent, commit: string | null): Promise<void> {
     a.merge = 'merged'
     a.conflictFiles = []
     if (!mission.merged.includes(a.name)) mission.merged.push(a.name)
-    if (r.kind === 'merged') {
-      mission.integrationCommit = r.commit
+    if (commit) {
+      mission.integrationCommit = commit
       this.feed(mission, { kind: 'merge', from: a.name, to: null, text: `merged into ${missionGit.integrationBranch(mission.name)}`, status: 'ok' })
       const gate = this.gateCommandFor(mission.repoPath)
       if (gate) await this.runGate(mission.id, gate)
@@ -1311,12 +1425,17 @@ export class Missions implements ControlHandlers {
     this.emit()
   }
 
-  /** Coalesces bursts of hook events into one renderer update. */
+  /** Coalesces bursts of hook events into one renderer update, and skips the update when the
+   *  views are the same as the last one sent. */
   private emit(): void {
     if (this.emitTimer) return
     this.emitTimer = setTimeout(() => {
       this.emitTimer = null
-      this.changed(this.views())
+      const views = this.views()
+      const json = JSON.stringify(views)
+      if (json === this.lastViews) return
+      this.lastViews = json
+      this.changed(views)
     }, 30)
   }
 }

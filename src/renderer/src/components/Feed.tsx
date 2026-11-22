@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowRight, Bot, CheckCheck, CircleHelp, GitCommitHorizontal, GitFork, GitMerge, GitPullRequestArrow, Inbox, Keyboard, ListChecks, OctagonX, Send, ShieldCheck, Swords, TriangleAlert } from 'lucide-react'
 import type { FeedEntry } from '../../../shared/types'
@@ -70,7 +71,7 @@ const shortTime = (t: number): string => new Date(t).toLocaleTimeString([], { ho
 const GROUP_MS = 2 * 60_000
 const GAP_MS = 10 * 60_000
 
-export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
+function FeedView({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
   const items = [...feed].reverse().slice(0, 80)
   if (items.length === 0) {
     return <div className="px-3 py-4 text-[12px] text-faint">Spawns, messages and reports appear here.</div>
@@ -148,3 +149,6 @@ export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
     </ul>
   )
 }
+
+/** Memoized: unchanged feeds (see sameMissions in App.tsx) skip the 80-row rebuild. */
+export const Feed = memo(FeedView)
