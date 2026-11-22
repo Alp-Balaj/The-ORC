@@ -127,9 +127,11 @@ if (smoke) {
 const windowBackground = (): string => (nativeTheme.shouldUseDarkColors ? '#0b0b0d' : '#f7f7f8')
 
 function createWindow(): void {
+  // ORC_SMOKE_SIZE=1280x800 sets a smoke window's size.
+  const size = smoke ? /^(\d+)x(\d+)$/.exec(process.env.ORC_SMOKE_SIZE ?? '') : null
   win = new BrowserWindow({
-    width: 1500,
-    height: 920,
+    width: size ? +size[1] : 1500,
+    height: size ? +size[2] : 920,
     title: 'The ORC',
     show: !smoke,
     backgroundColor: windowBackground(),

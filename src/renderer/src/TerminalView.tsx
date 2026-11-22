@@ -134,8 +134,12 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       if (copySelection()) e.preventDefault()
     }
     el.addEventListener('contextmenu', onContextMenu)
+    // Tell the pty only when the grid changed: a drag resizes the panel on every frame.
+    let sent = ''
     const sync = (): void => {
       fit.fit()
+      if (`${term.cols}x${term.rows}` === sent) return
+      sent = `${term.cols}x${term.rows}`
       window.orc.resize(id, term.cols, term.rows)
     }
     // Fit on the next frame, not inside the observer callback: fitting resizes the observed

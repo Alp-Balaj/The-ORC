@@ -24,6 +24,56 @@ const modeLabel: Record<string, string> = {
   dontAsk: "don't ask"
 }
 
+// The tree/feed column: draggable from its left edge, kept between 300px and 45% of the window.
+const SideDefault = 420
+const SideKey = 'orc.sideWidth'
+const clampSide = (w: number): number => Math.round(Math.max(300, Math.min(w, window.innerWidth * 0.45)))
+function useSideWidth(): { width: number; handle: React.JSX.Element } {
+  const [width, setWidth] = useState(() => {
+    let w = SideDefault
+    try { w = Number(localStorage.getItem(SideKey)) || SideDefault } catch { /* storage unavailable */ }
+    return clampSide(w)
+  })
+  const drag = useRef<{ x: number; w: number } | null>(null)
+  const [active, setActive] = useState(false)
+  const save = (w: number): void => {
+    try { localStorage.setItem(SideKey, String(w)) } catch { /* storage unavailable */ }
+  }
+  useEffect(() => {
+    const onResize = (): void => setWidth((w) => clampSide(w))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const handle = (
+    <div
+      className={cn('absolute inset-y-0 -left-[3px] z-20 w-[6px] cursor-col-resize transition-colors hover:bg-primary/40', active && 'bg-primary/60')}
+      data-testid="side-resize"
+      role="separator"
+      aria-orientation="vertical"
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={(e) => {
+        e.preventDefault()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        drag.current = { x: e.clientX, w: width }
+        setActive(true)
+      }}
+      onPointerMove={(e) => {
+        if (drag.current) setWidth(clampSide(drag.current.w + drag.current.x - e.clientX))
+      }}
+      onPointerUp={(e) => {
+        if (!drag.current) return
+        drag.current = null
+        setActive(false)
+        e.currentTarget.releasePointerCapture(e.pointerId)
+        save(width)
+      }}
+      onPointerCancel={() => { drag.current = null; setActive(false) }}
+      onDoubleClick={() => { const w = clampSide(SideDefault); setWidth(w); save(w) }}
+    />
+  )
+  return { width, handle }
+}
+
 export function App(): React.JSX.Element {
   const [spaces, setSpaces] = useState<SpaceView[]>([])
   const [missions, setMissions] = useState<MissionView[]>([])
@@ -220,10 +270,11 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
+  const side = useSideWidth()
   const needsYou = mission?.agents.filter((a) => a.status === 'needs-you').length ?? 0
 
   return (
-    <div className={cn('relative grid h-full grid-rows-[44px_minmax(0,1fr)]', sidebarOpen ? 'grid-cols-[300px_minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_320px]')}>
+    <div className="relative grid h-full grid-rows-[44px_minmax(0,1fr)]" style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr) ${side.width}px` }}>
       {actionError && (
         <div className="absolute bottom-3 left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border border-destructive/40 bg-card px-3 py-2 text-[12px] shadow-lg" data-testid="action-error" role="alert">
           <span className="shrink-0 font-medium text-destructive">Action failed:</span>
@@ -444,7 +495,8 @@ export function App(): React.JSX.Element {
       </main>
 
       {/* Tree + feed */}
-      <aside className="flex min-h-0 flex-col border-l bg-background">
+      <aside className="relative flex min-h-0 flex-col border-l bg-background">
+        {side.handle}
         <div className="flex h-8 items-center justify-between border-b px-3">
           <span className="text-[11px] font-medium uppercase tracking-wide text-faint">Mission tree</span>
           <Button
