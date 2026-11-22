@@ -21,9 +21,27 @@ const barClass: Record<AgentStatus, string> = {
   done: 'border-l-done',
   exited: 'border-l-exited'
 }
-// Bottom-left source: the elbow down into a stacked column starts here.
-const stackHandle = { left: 6, opacity: 0 }
-const hidden = { opacity: 0 }
+// Handles are invisible anchor points; every edge names the one it uses.
+const hidden: React.CSSProperties = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 0, pointerEvents: 'none' }
+// The trunk down into a stacked column leaves the parent's bottom here (see stackSizes.trunk).
+const trunkHandle: React.CSSProperties = { ...hidden, left: stackSizes.trunk }
+
+/** Tree handles (in, out, stack) and message handles on both sides (msg-l, msg-r). */
+function Handles({ card }: { card: boolean }): React.JSX.Element {
+  return (
+    <>
+      {card
+        ? <Handle id="in" type="target" position={Position.Top} style={hidden} />
+        : <Handle id="in" type="target" position={Position.Left} style={hidden} />}
+      {card && <Handle id="out" type="source" position={Position.Bottom} style={hidden} />}
+      <Handle id="stack" type="source" position={Position.Bottom} style={trunkHandle} />
+      <Handle id="msg-l" type="source" position={Position.Left} style={hidden} />
+      <Handle id="msg-l" type="target" position={Position.Left} style={hidden} />
+      <Handle id="msg-r" type="source" position={Position.Right} style={hidden} />
+      <Handle id="msg-r" type="target" position={Position.Right} style={hidden} />
+    </>
+  )
+}
 
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element {
   const a = data.agent
@@ -42,11 +60,10 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         style={{ width: '100%', height: '100%' }}
         className={cn(base, 'flex items-center gap-1.5 rounded-md border-l-[3px] px-2', barClass[a.status])}
       >
-        <Handle type="target" position={Position.Left} style={hidden} />
+        <Handles card={false} />
         <StatusDot status={a.status} className={cn(far && 'size-3')} />
         <span className={cn('min-w-0 flex-1 truncate font-medium', far ? 'text-[15px]' : 'text-[11.5px]')}>{a.name}</span>
         {!far && a.tokens > 0 && <span className="text-[10.5px] tabular-nums text-muted-foreground">{formatTokens(a.tokens)}</span>}
-        <Handle type="source" position={Position.Bottom} style={stackHandle} />
       </div>
     )
   }
@@ -58,7 +75,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       style={{ width: stackSizes.cardW, height: stackSizes.cardH }}
       className={cn(base, 'rounded-lg px-2.5 py-1.5', far && 'flex items-center')}
     >
-      <Handle type="target" position={Position.Top} />
+      <Handles card />
       <div className="flex min-w-0 items-center gap-1.5">
         <StatusDot status={a.status} className={cn(far && 'size-3.5')} />
         <span className={cn('truncate font-medium', far ? 'text-[17px]' : 'text-[12px]')}>{a.name}</span>
@@ -69,8 +86,6 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
           {a.tokens > 0 && <span className="tabular-nums">{formatTokens(a.tokens)}</span>}
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} />
-      <Handle type="source" position={Position.Bottom} id="stack" style={stackHandle} />
     </div>
   )
 }
@@ -85,21 +100,25 @@ function ChipNode({ data }: NodeProps<Node<ChipNodeData>>): React.JSX.Element {
       style={{ width: '100%', height: '100%' }}
       className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-card/60 px-2 text-muted-foreground transition-colors hover:border-input hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]')}
     >
-      <Handle type="target" position={Position.Left} style={hidden} />
+      <Handles card={false} />
       <span className="inline-block size-2 shrink-0 rounded-full bg-done/70" />
       {data.expanded ? `hide ${data.count} done` : `+${data.count} done`}
-      <Handle type="source" position={Position.Bottom} style={stackHandle} />
     </div>
   )
 }
 
 const nodeTypes = { agent: AgentNode, chip: ChipNode }
 
-/** Down from the parent's bottom-left, then right into the stacked row: a file-tree elbow. */
+/** Down from the parent's trunk, then right into the stacked row: a file-tree elbow. */
 function ElbowEdge({ sourceX, sourceY, targetX, targetY, style, markerEnd }: EdgeProps): React.JSX.Element {
   return <BaseEdge path={`M ${sourceX},${sourceY} V ${targetY} H ${targetX}`} style={style} markerEnd={markerEnd} />
 }
-const edgeTypes = { elbow: ElbowEdge }
+/** Card to card: down from the bottom centre, across halfway, down into the top centre. */
+function StepEdge({ sourceX, sourceY, targetX, targetY, style, markerEnd }: EdgeProps): React.JSX.Element {
+  const my = (sourceY + targetY) / 2
+  return <BaseEdge path={`M ${sourceX},${sourceY} V ${my} H ${targetX} V ${targetY}`} style={style} markerEnd={markerEnd} />
+}
+const edgeTypes = { elbow: ElbowEdge, step: StepEdge }
 const FitPad = 12
 const FitMinZoom = 0.6
 
@@ -210,8 +229,8 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
     }
     const isRow = (id: string): boolean => (placed.get(id)?.depth ?? 0) >= 2
     const tree = (source: string, target: string, animated: boolean): Edge => (isRow(target)
-      ? { id: `tree:${source}>${target}`, source, target, sourceHandle: isRow(source) ? undefined : 'stack', type: 'elbow', animated }
-      : { id: `tree:${source}>${target}`, source, target, type: 'smoothstep', animated })
+      ? { id: `tree:${source}>${target}`, source, target, sourceHandle: 'stack', targetHandle: 'in', type: 'elbow', animated }
+      : { id: `tree:${source}>${target}`, source, target, sourceHandle: 'out', targetHandle: 'in', type: 'step', animated })
     const edges: Edge[] = shown.filter((a) => a.parent && placed.has(a.parent)).map((a) => tree(a.parent!, a.name, a.status === 'working'))
     for (const lead of foldedBy.keys()) if (placed.has(lead)) edges.push(tree(lead, `chip:${lead}`, false))
     if (showMessages) {
@@ -224,7 +243,30 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
         const key = `${from}>${to}`
         if (from === to || seen.has(key)) continue
         seen.add(key)
-        edges.push({ id: `msg:${f.id}`, source: from, target: to, type: 'straight', className: cn('message', f.status === 'failed' && 'failed'), animated: true, label: f.status === 'failed' ? 'not sent' : undefined, labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 }, labelBgStyle: { fill: 'var(--color-panel)' } })
+        // Side handles keep message curves off the tree lines, which run through tops and
+        // bottoms (and rows' left sides). Same column: loop out on the right. Same level: the
+        // facing sides, through the gap. Across levels: both ends on the side where the lower
+        // node sticks out, so the curve goes around the tree, not through it. Rows use right.
+        const a = placed.get(from)
+        const b = placed.get(to)
+        if (!a || !b) continue
+        const dx = b.x + b.w / 2 - (a.x + a.w / 2)
+        const lowerSticksLeft = b.y > a.y ? dx < 0 : dx > 0
+        let sourceHandle = 'msg-r'
+        let targetHandle = 'msg-r'
+        if (Math.abs(dx) < stackSizes.cardW / 2) { /* same column */ }
+        else if (Math.abs(b.y - a.y) < stackSizes.rowH) { sourceHandle = dx > 0 ? 'msg-r' : 'msg-l'; targetHandle = dx > 0 ? 'msg-l' : 'msg-r' }
+        else if (lowerSticksLeft) { sourceHandle = 'msg-l'; targetHandle = 'msg-l' }
+        if (isRow(to)) targetHandle = 'msg-r'
+        const failed = f.status === 'failed'
+        edges.push({
+          id: `msg:${f.id}`, source: from, target: to, sourceHandle, targetHandle, type: 'default', zIndex: 1,
+          className: cn('message', failed && 'failed'), style: { opacity: 0.55 }, animated: true,
+          label: failed ? 'not sent' : undefined,
+          labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 },
+          labelBgStyle: { fill: 'var(--color-panel)', fillOpacity: 0.95 },
+          labelBgPadding: [3, 1], labelBgBorderRadius: 3
+        })
       }
     }
     return { nodes, edges, shape: nodes.map((n) => `${n.id}@${n.position.x},${n.position.y}`).join(',') }

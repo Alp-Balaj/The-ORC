@@ -388,13 +388,20 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           // UI: click a worker card, press Enter in its terminal, expect "last instruction: you".
           const w = workers()[0]
           if (w) {
+            // Done workers may be folded into a lead's "+N done" chip: shown + folded = agents.
+            const shape = await js<{ nodes: number; folded: number }>(`(() => {
+              const vis = (n) => getComputedStyle(n).visibility === 'visible' && n.getBoundingClientRect().width > 0;
+              const folded = [...document.querySelectorAll('[data-testid=tree-chip]')].reduce((s, e) => s + (/^\\+(\\d+)/.exec(e.textContent.trim())?.[1] | 0), 0);
+              return { nodes: [...document.querySelectorAll('[data-testid=tree-node]')].filter(vis).length, folded } })()`)
+            check('every tree node is actually visible (shown + folded into chips)', shape.nodes + shape.folded === (view()?.agents.length ?? -1), `${JSON.stringify(shape)} of ${view()?.agents.length}`)
+            // Open any folded chips so the worker's node can be clicked.
+            await js(`[...document.querySelectorAll('[data-testid=tree-chip]')].filter((e) => e.textContent.trim().startsWith('+')).forEach((e) => e.click())`)
+            await sleep(600)
             // The tree node first (the plan's core interaction), then the card.
             await js(`document.querySelector('[data-testid=tree-node][data-agent=${JSON.stringify(w.name)}]')?.click()`)
             await sleep(1200)
             const viaTree = await js<string>(`document.querySelector('[data-testid=terminal-head]')?.textContent ?? ''`)
             check('clicking a tree node shows that agent\'s terminal', viaTree.includes(w.sessionName), viaTree)
-            const vis = await js<number>(`[...document.querySelectorAll('.react-flow__node')].filter((n) => getComputedStyle(n).visibility === 'visible' && n.getBoundingClientRect().width > 0).length`)
-            check('every tree node is actually visible', vis === (view()?.agents.length ?? -1), `${vis} visible of ${view()?.agents.length}`)
             await js(`document.querySelector('[data-testid=agent-card][data-agent=coordinator]')?.click()`)
             await sleep(600)
             await js(`document.querySelector('[data-testid=agent-card][data-agent=${JSON.stringify(w.name)}]')?.click()`)
