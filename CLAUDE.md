@@ -12,6 +12,7 @@ unless asked).
 ## Commands
 
     pnpm install        # also rebuilds node-pty for Electron (postinstall)
+    scripts/orc-app.sh [update]  # the owner's daily ORC: a stable copy of main (see the script)
     pnpm dev            # opens the app window (tell the user first: it appears on their desktop)
                         # automated runs use smoke mode instead (hidden, offscreen): see docs/HANDOFF.md
     pnpm typecheck
@@ -35,3 +36,20 @@ unless asked).
 - **Every session in a mission uses the same permission mode.** A mismatch makes Claude Code hold
   cross-session messages for approval, and background sessions then let them expire.
 - Work on a branch, never `main`. Ask before pushing.
+
+## Working on The ORC from inside an ORC mission
+
+The owner builds The ORC with The ORC. If your system prompt says you are a coordinator or team lead
+in an ORC mission, then:
+- **The ORC you are running in is the owner's live app.** Never quit, kill or restart Electron or
+  `claude` processes you didn't start, and never touch `~/.config/the-orc` (its state).
+- **Don't run `pnpm dev` or `electron .` with a window:** the owner's ORC holds the app's
+  single-instance lock, so a second copy exits at once. The owner sees your work with Run app,
+  which starts a separate copy with its own data folder.
+- **To see UI you changed**, use the hidden replay. It's free: fake sessions in orc-sandbox, with
+  screenshots written to the out dir. First run `pnpm install && pnpm build` in your worktree,
+  then `ORC_SMOKE_OUT=<dir> node_modules/.bin/electron .`. Read the PNGs it writes. Only do this
+  when the brief asks you to check visually.
+- **UI work starts with Mobbin research:** look at how comparable apps handle the screen or
+  pattern (`mcp__claude_ai_Mobbin__*` tools, pre-approved in `.claude/settings.json`), then design.
+- **Never run the billed tests** (`tests/e2e.sh`, `tests/resume.sh`, the probe).
