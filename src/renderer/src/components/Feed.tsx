@@ -143,7 +143,7 @@ export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
     )
   })
   return (
-    <ul className="px-2 py-1.5">
+    <ul className="pl-2 pr-3 py-1.5">
       <AnimatePresence initial={false}>{rows}</AnimatePresence>
     </ul>
   )

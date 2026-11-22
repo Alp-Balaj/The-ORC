@@ -34,7 +34,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       data-agent={a.name}
       data-status={a.status}
       className={cn(
-        'relative h-[50px] w-[160px] cursor-pointer rounded-lg border bg-card py-1.5 pl-3.5 pr-2.5 shadow-sm transition-colors hover:border-input',
+        'relative h-[48px] w-[136px] cursor-pointer rounded-lg border bg-card py-1.5 pl-3 pr-2 shadow-sm transition-colors hover:border-input',
         a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10',
         a.status === 'exited' && 'opacity-60',
         a.status === 'done' && !data.selected && 'opacity-70',
@@ -42,7 +42,9 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       )}
     >
       <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-lg', barColor[a.status])} />
-      <Handle type="target" position={Position.Top} />
+      <Handle id="in" type="target" position={Position.Top} />
+      <Handle id="l-tgt" type="target" position={Position.Left} />
+      <Handle id="r-tgt" type="target" position={Position.Right} />
       <div className="flex items-center gap-1.5">
         <StatusDot status={a.status} />
         <span className="min-w-0 truncate text-[12px] font-medium">{a.name}</span>
@@ -51,7 +53,9 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         <span className={cn('truncate', labelColor[a.status])}>{statusLabel[a.status]}</span>
         {a.tokens > 0 && <span className="ml-auto tabular-nums">{formatTokens(a.tokens)}</span>}
       </div>
-      <Handle type="source" position={Position.Bottom} />
+      <Handle id="out" type="source" position={Position.Bottom} />
+      <Handle id="l-src" type="source" position={Position.Left} />
+      <Handle id="r-src" type="source" position={Position.Right} />
     </div>
   )
 }
@@ -63,15 +67,15 @@ function edgeStroke(status: AgentView['status']): React.CSSProperties | undefine
   if (status === 'needs-you') return { stroke: 'var(--color-needs)' }
   return undefined
 }
-const NodeW = 160
-const NodeH = 50
+const NodeW = 136
+const NodeH = 48
 
 /** Refits the view whenever the set of nodes (or the panel) changes, so a new worker is
  *  never off-screen. */
 function AutoFit({ shape }: { shape: string }): null {
   const { fitView } = useReactFlow()
   useEffect(() => {
-    const t = setTimeout(() => void fitView({ padding: 0.2, maxZoom: 1, duration: 200 }), 30)
+    const t = setTimeout(() => void fitView({ padding: 0.12, maxZoom: 1, duration: 200 }), 30)
     return () => clearTimeout(t)
   }, [shape, fitView])
   return null
@@ -101,7 +105,7 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
     }))
     const edges: Edge[] = agents
       .filter((a) => a.parent && placed.has(a.parent))
-      .map((a) => ({ id: `tree:${a.parent}>${a.name}`, source: a.parent!, target: a.name, type: 'smoothstep', animated: a.status === 'working', style: edgeStroke(a.status) }))
+      .map((a) => ({ id: `tree:${a.parent}>${a.name}`, source: a.parent!, target: a.name, sourceHandle: 'out', targetHandle: 'in', type: 'smoothstep', animated: a.status === 'working', style: edgeStroke(a.status) }))
     if (showMessages) {
       const names = new Set(agents.map((a) => a.name))
       const seen = new Set<string>()
@@ -110,7 +114,9 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
         const key = `${f.from}>${f.to}`
         if (seen.has(key)) continue
         seen.add(key)
-        edges.push({ id: `msg:${f.id}`, source: f.from, target: f.to, type: 'straight', className: cn('message', f.status === 'failed' && 'failed'), animated: true, label: f.status === 'failed' ? 'not sent' : undefined, labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 }, labelBgStyle: { fill: 'var(--color-panel)' } })
+        const dx = (placed.get(f.to)?.x ?? 0) - (placed.get(f.from)?.x ?? 0)
+        const [sourceHandle, targetHandle] = dx > NodeW / 2 ? ['r-src', 'l-tgt'] : dx < -NodeW / 2 ? ['l-src', 'r-tgt'] : ['r-src', 'r-tgt']
+        edges.push({ id: `msg:${f.id}`, source: f.from, target: f.to, sourceHandle, targetHandle, type: 'default', className: cn('message', f.status === 'failed' && 'failed'), animated: true, label: f.status === 'failed' ? 'not sent' : undefined, labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 }, labelBgStyle: { fill: 'var(--color-panel)' } })
       }
     }
     return { nodes, edges }
@@ -138,8 +144,8 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
       nodeTypes={nodeTypes}
       onNodeClick={(_e, n) => onSelect((n.data as AgentNodeData).agent.terminalId)}
       fitView
-      fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
-      minZoom={0.3}
+      fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
+      minZoom={0.5}
       maxZoom={1.5}
       nodesDraggable={false}
       nodesConnectable={false}
