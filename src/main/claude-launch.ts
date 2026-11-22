@@ -266,14 +266,14 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
   ].join(' ')
 }
 
-/** The merger: a short-lived session whose cwd is the mission's integration worktree, with a
+/** The merger: a short-lived session whose cwd is its own temporary merge worktree, with a
  *  merge in progress. It edits the conflicted files; The ORC stages and commits. */
 export function mergerPrompt(mission: string, sessionName: string, coordinator: string, worker: string, files: string[]): string {
   return [
     `You are the merge agent "${sessionName}" in The ORC mission "${mission}".`,
     `Your coordinator is the Claude Code session named "${coordinator}".`,
     `The branch of worker "${worker}" is being merged into the integration branch, and your current`,
-    `directory (the integration worktree) holds that merge half-done: these files have conflict`,
+    `directory (a temporary merge worktree) holds that merge half-done: these files have conflict`,
     `markers (<<<<<<<, =======, >>>>>>>): ${files.join(', ')}.`,
     'Edit each file so it has no markers and BOTH sides\' intent survives (read both sides and the',
     'surrounding code; if it is a real clash, pick what keeps the code correct and consistent).',

@@ -50,6 +50,17 @@ export interface SavedState {
     agents: (AgentView & { transcriptPath: string | null; pid: number | null; notes: string[]; pendingQuestion?: string | null })[] })[]
 }
 
+interface MergerState {
+  worker: string
+  agent: string
+  files: string[]
+  attempts: number
+  /** Workers whose conflict overlaps `files`: retried once this merge lands or fails. */
+  queue: string[]
+  /** How many times this worker's merge raced another landing and restarted. */
+  tries: number
+}
+
 interface Mission {
   id: string
   name: string
@@ -146,7 +157,7 @@ export class Missions implements ControlHandlers {
   launcher: Launcher = (args) => ({ command: 'claude', args })
   /** Git operations. Tests swap in fakes. */
   git: Pick<typeof gitOps, 'addWorktree' | 'branchesUnder' | 'currentBranch' | 'repoRoot'> &
-    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'mergeToMain' | 'cleanupMission' | 'branchDiff' | 'prepareConflict' | 'concludeMerge' | 'abortMerge'> = { ...gitOps, ...missionGit }
+    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'mergeToMain' | 'cleanupMission' | 'branchDiff' | 'prepareConflict' | 'startConflictMerge' | 'landMerge' | 'concludeMerge' | 'discardMerge'> = { ...gitOps, ...missionGit }
 
   private readonly terminals: TerminalHost
   private readonly changed: (missions: MissionView[]) => void
@@ -904,27 +915,45 @@ export class Missions implements ControlHandlers {
     return r.stdout !== '0'
   }
 
-  /** Conflicted merges per mission that a merge agent is resolving in the integration worktree.
-   *  Other merges wait in `queue` (the worktree holds one merge at a time). Not persisted: after
-   *  a restart the half-done merge is aborted by the next mergeIntoIntegration. */
-  private mergers = new Map<string, { worker: string; agent: string; files: string[]; attempts: number; queue: string[] }>()
+  /** Conflicted merges per mission (by worker) that a merge agent is resolving, each in its own
+   *  merge worktree, so several run in parallel and none holds the integration worktree. A merge
+   *  whose conflicting files overlap an active one waits in that one's `queue` and is retried
+   *  once it lands. Not persisted: a restart leaves stale merge worktrees, replaced the next
+   *  time that worker conflicts. */
+  private mergers = new Map<string, Map<string, MergerState>>()
   /** Off: a conflict goes straight back to the worker (unit tests of that path). */
   useMergeAgent = true
 
-  private async mergeWorker(mission: Mission, a: Agent): Promise<void> {
-    const busy = this.mergers.get(mission.id)
-    if (busy) {
-      if (!busy.queue.includes(a.name)) busy.queue.push(a.name)
-      this.feed(mission, { kind: 'orc', from: 'orc', to: a.name, text: `merge waits: a conflict in ${busy.files.join(', ')} is being resolved first` })
-      return
-    }
+  private mergerFor(missionId: string, agentName: string): MergerState | undefined {
+    for (const st of this.mergers.get(missionId)?.values() ?? []) if (st.agent === agentName) return st
+    return undefined
+  }
+
+  private dropMerger(missionId: string, worker: string): void {
+    const m = this.mergers.get(missionId)
+    m?.delete(worker)
+    if (m?.size === 0) this.mergers.delete(missionId)
+  }
+
+  private async mergeWorker(mission: Mission, a: Agent, tries = 0): Promise<void> {
+    const active = this.mergers.get(mission.id)
+    if (active?.has(a.name)) return
+    for (const st of active?.values() ?? []) if (st.queue.includes(a.name)) return
     await this.git.ensureIntegration(mission.repoPath, mission.name, mission.baseBranch)
     const integration = missionGit.integrationBranch(mission.name)
-    const keep = this.useMergeAgent && !a.shutDown && mission.state === 'running'
-    const r = await this.git.mergeIntoIntegration(mission.repoPath, mission.name, a.branch!, `Merge ${a.name} into ${integration}`, { keepConflict: keep })
+    // After repeated races with other landing merges, stop retrying and hand it back.
+    const keep = this.useMergeAgent && !a.shutDown && mission.state === 'running' && tries < 3
+    const r = await this.git.mergeIntoIntegration(mission.repoPath, mission.name, a.branch!, `Merge ${a.name} into ${integration}`)
     if (r.kind === 'conflict') {
-      if (keep && this.startMerger(mission, a, r.files)) return
-      if (keep) await this.git.abortMerge(mission.repoPath, mission.name)
+      if (keep) {
+        const blocker = [...(this.mergers.get(mission.id)?.values() ?? [])].find((st) => st.files.some((f) => r.files.includes(f)))
+        if (blocker) {
+          blocker.queue.push(a.name)
+          this.feed(mission, { kind: 'orc', from: 'orc', to: a.name, text: `merge waits: a conflict in ${blocker.files.join(', ')} is being resolved first` })
+          return
+        }
+        if (await this.startMerger(mission, a, r.files, tries)) return
+      }
       await this.conflictFallback(mission, a, r.files)
       return
     }
@@ -958,35 +987,54 @@ export class Missions implements ControlHandlers {
     this.emit()
   }
 
-  /** Starts a merge agent in the integration worktree, which holds the conflicted merge.
-   *  Returns false when it could not start (the caller falls back). */
-  private startMerger(mission: Mission, a: Agent, files: string[]): boolean {
+  /** Starts a merge agent in the worker's own merge worktree, which holds the conflicted merge.
+   *  Returns true when the merge is handled (agent started, or it merged cleanly after all);
+   *  false when it could not start (the caller falls back). */
+  private async startMerger(mission: Mission, a: Agent, files: string[], tries: number): Promise<boolean> {
+    let name = slug(`merge-${a.name}`)
+    for (let i = 2; mission.agents.has(name); i++) name = slug(`merge-${a.name}-${i}`)
+    const st: MergerState = { worker: a.name, agent: name, files, attempts: 0, queue: [], tries }
+    if (!this.mergers.has(mission.id)) this.mergers.set(mission.id, new Map())
+    this.mergers.get(mission.id)!.set(a.name, st)
+    const integration = missionGit.integrationBranch(mission.name)
     try {
-      let name = slug(`merge-${a.name}`)
-      for (let i = 2; mission.agents.has(name); i++) name = slug(`merge-${a.name}-${i}`)
+      const cm = await this.git.startConflictMerge(mission.repoPath, mission.name, a.name, a.branch!, `Merge ${a.name} into ${integration}`)
+      if (cm.kind === 'clean') {
+        // Another merge landed in between and the conflict is gone: just land it.
+        this.dropMerger(mission.id, a.name)
+        const done = await this.git.landMerge(mission.repoPath, mission.name, a.name, `Merge ${a.name} into ${integration}`)
+        if (done.kind === 'merged') await this.mergedInto(mission, a, done.commit)
+        else {
+          await this.git.discardMerge(mission.repoPath, mission.name, a.name)
+          await this.mergeWorker(mission, a, tries + 1)
+        }
+        await this.drainMerges(mission, st.queue)
+        return true
+      }
+      st.files = cm.files
       const sessionName = `${mission.name}/${name}`
       const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
-      const task = `Resolve the merge conflict from merging ${a.name} into ${missionGit.integrationBranch(mission.name)}: ${files.join(', ')}`
-      this.mergers.set(mission.id, { worker: a.name, agent: name, files, attempts: 0, queue: [] })
+      const task = `Resolve the merge conflict from merging ${a.name} into ${integration}: ${cm.files.join(', ')}`
       this.launch(mission, {
         name,
         sessionName,
         role: 'worker',
         parent: coord?.name ?? null,
         task,
-        cwd: missionGit.integrationPath(mission.repoPath, mission.name),
+        cwd: cm.path,
         branch: null,
-        systemPrompt: mergerPrompt(mission.name, sessionName, coord?.sessionName ?? `${mission.name}/coordinator`, a.name, files),
+        systemPrompt: mergerPrompt(mission.name, sessionName, coord?.sessionName ?? `${mission.name}/coordinator`, a.name, cm.files),
         firstPrompt: task
       })
       mission.agents.get(name)!.mergerFor = a.name
       a.merge = 'conflict'
-      a.conflictFiles = files
-      this.feed(mission, { kind: 'conflict', from: 'orc', to: name, text: `resolving conflict in ${files.join(', ')} (${a.name} into ${missionGit.integrationBranch(mission.name)})` })
+      a.conflictFiles = cm.files
+      this.feed(mission, { kind: 'conflict', from: 'orc', to: name, text: `resolving conflict in ${cm.files.join(', ')} (${a.name} into ${integration})` })
       this.emit()
       return true
     } catch (err) {
-      this.mergers.delete(mission.id)
+      this.dropMerger(mission.id, a.name)
+      await this.git.discardMerge(mission.repoPath, mission.name, a.name).catch(() => {})
       this.orcNote(mission, `could not start a merge agent: ${String((err as Error).message ?? err)}`)
       return false
     }
@@ -994,12 +1042,12 @@ export class Missions implements ControlHandlers {
 
   /** A merge agent reported done (or `cannot resolve`): conclude the merge or fall back. */
   private async finishMerger(mission: Mission, m: Agent, summary: string): Promise<void> {
-    const st = this.mergers.get(mission.id)
-    if (!st || st.agent !== m.name) return
+    const st = this.mergerFor(mission.id, m.name)
+    if (!st) return
     const w = mission.agents.get(st.worker)!
     if (/^\s*cannot resolve/i.test(summary)) return this.mergerFailed(mission, m, `reported it cannot resolve: ${oneLine(summary, 160)}`)
     const integration = missionGit.integrationBranch(mission.name)
-    const r = await this.git.concludeMerge(mission.repoPath, mission.name, st.files, `Merge ${w.name} into ${integration}\n\nConflict resolved by ${m.name}: ${oneLine(summary, 200)}`)
+    const r = await this.git.concludeMerge(mission.repoPath, mission.name, w.name, st.files, `Merge ${w.name} into ${integration}\n\nConflict resolved by ${m.name}: ${oneLine(summary, 200)}`)
     if (r.kind === 'markers') {
       if (++st.attempts < 3) {
         this.deliver(m, `[The ORC] Conflict markers are still in ${r.files.join(', ')}. Resolve them, then call report_done again.`)
@@ -1009,19 +1057,25 @@ export class Missions implements ControlHandlers {
       }
       return this.mergerFailed(mission, m, `left conflict markers in ${r.files.join(', ')}`)
     }
-    this.mergers.delete(mission.id)
-    this.endAgent(mission, m, 'orc', 'conflict resolved')
-    this.feed(mission, { kind: 'conflict', from: m.name, to: w.name, text: `conflict resolved in ${st.files.join(', ')}`, status: 'ok' })
-    await this.mergedInto(mission, w, r.commit)
+    this.dropMerger(mission.id, st.worker)
+    this.endAgent(mission, m, 'orc', r.kind === 'moved' ? 'integration moved; redoing the merge' : 'conflict resolved')
+    if (r.kind === 'moved') {
+      // Another merge landed on the same code meanwhile: start over against the new tip.
+      await this.git.discardMerge(mission.repoPath, mission.name, w.name)
+      await this.mergeWorker(mission, w, st.tries + 1)
+    } else {
+      this.feed(mission, { kind: 'conflict', from: m.name, to: w.name, text: `conflict resolved in ${st.files.join(', ')}`, status: 'ok' })
+      await this.mergedInto(mission, w, r.commit)
+    }
     await this.drainMerges(mission, st.queue)
   }
 
-  /** The merge agent failed: undo the half-done merge and use the old hand-back. */
+  /** The merge agent failed: drop its merge worktree and use the old hand-back. */
   private async mergerFailed(mission: Mission, m: Agent, why: string): Promise<void> {
-    const st = this.mergers.get(mission.id)
-    if (!st || st.agent !== m.name) return
-    this.mergers.delete(mission.id)
-    await this.git.abortMerge(mission.repoPath, mission.name)
+    const st = this.mergerFor(mission.id, m.name)
+    if (!st) return
+    this.dropMerger(mission.id, st.worker)
+    await this.git.discardMerge(mission.repoPath, mission.name, st.worker)
     if (mission.state === 'stopped') return
     if (!m.shutDown) this.endAgent(mission, m, 'orc', `merge agent failed: ${oneLine(why, 120)}`)
     this.feed(mission, { kind: 'conflict', from: m.name, to: 'you', text: `merge agent ${why}; falling back to ${st.worker}`, status: 'failed' })
