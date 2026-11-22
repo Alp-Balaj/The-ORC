@@ -2,8 +2,10 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import type { StartMissionRequest } from '../shared/types.ts'
+import type { PermissionMode, StartMissionRequest } from '../shared/types.ts'
+import type { SpacePatch } from '../preload/index.ts'
 import { ControlServer } from './control-server.ts'
+import { HistoryIndex } from './history-index.ts'
 import { renameOver } from './rename-over.ts'
 import { Missions } from './missions.ts'
 import { startStatusPoller } from './agent-status.ts'
@@ -12,6 +14,8 @@ import { fakeLauncher } from './smoke-replay.ts'
 import { Spaces } from './spaces.ts'
 import { TerminalHost } from './terminals.ts'
 import { AppRunner } from './app-runner.ts'
+import { Queues } from './queue.ts'
+import { PlanUsage } from './plan-usage.ts'
 
 let win: BrowserWindow | null = null
 
@@ -28,14 +32,23 @@ const terminals = new TerminalHost(
     send('terminal:exit', id, code)
   }
 )
+/** Created after spaces (below); missions can change before that. */
+let queues: Queues | null = null
 const missions = new Missions(terminals, (views) => {
   send('missions:changed', views)
   scheduleSave()
+  queues?.onMissions(views)
 })
 const appRunner = new AppRunner(terminals, (run) => send('app:changed', run))
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
 missions.liveLimitFor = (repo) => spaces.maxLive(repo)
 missions.recordsDirFor = (repo) => spaces.recordsPath(repo)
+missions.spaceModelsFor = (repo) => spaces.models(repo)
+const planUsage = new PlanUsage((u) => {
+  send('usage:changed', u)
+  queues?.onUsage()
+})
+missions.statusLine = (s) => planUsage.update(s)
 // Smoke runs that must survive a restart (the crash test) use fake sessions from the start.
 if (process.env.ORC_SMOKE_OUT && process.env.ORC_SMOKE_FAKE) {
   missions.launcher = fakeLauncher
@@ -85,6 +98,7 @@ function isOrphan(pid: number, sessionId: string): boolean {
     return false
   }
 }
+let historyIndex: HistoryIndex | null = null
 const control = new ControlServer({
   agentForToken: (t) => missions.agentForToken(t),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
@@ -92,6 +106,12 @@ const control = new ControlServer({
   askHuman: (c, q) => missions.askHuman(c, q),
   stopAgent: (c, n, r) => missions.stopAgent(c, n, r),
   proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
+  searchHistory: (c, query, limit) => {
+    const m = missions.views().find((v) => v.agents.some((a) => a.terminalId === c))
+    if (!m) return 'search_history: unknown caller (no mission found for this session).'
+    historyIndex ??= new HistoryIndex(join(smoke ?? app.getPath('userData'), 'history-index.sqlite'))
+    return historyIndex.search({ recordsDir: spaces.recordsPath(m.repoPath), repoRoot: m.repoPath, query, limit: limit ?? undefined })
+  },
   hookEvent: (c, e) => {
     // Raw payloads, so status bugs can be diagnosed from a file.
     try {
@@ -117,6 +137,15 @@ app.on('second-instance', () => {
 // Test runs never touch the owner's saved spaces.
 // Mission records default to <userData>/records (smoke runs: their own out dir).
 const spaces = new Spaces(smoke ? null : join(app.getPath('userData'), 'spaces.json'), join(smoke ?? app.getPath('userData'), 'records'))
+// The backlog queue (smoke runs: memory only).
+queues = new Queues({
+  missions,
+  usageThreshold: (root) => spaces.usageThreshold(root),
+  usage: () => planUsage.view(),
+  emit: (q) => send('queue:changed', q),
+  file: smoke ? null : join(app.getPath('userData'), 'queue.json')
+})
+const queue = queues
 if (smoke) {
   // A hidden window stops producing frames after a while; screenshots then never arrive.
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
@@ -185,7 +214,7 @@ ipcMain.handle('app:run', async (_e, id: string) => {
 ipcMain.handle('app:stop', () => appRunner.stop())
 ipcMain.handle('app:current', () => appRunner.view())
 ipcMain.handle('missions:resume', (_e, id: string) => missions.resumeMission(id))
-ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null }) => {
+ipcMain.handle('spaces:update', (_e, root: string, patch: SpacePatch) => {
   spaces.update(root, patch)
   send('spaces:changed', spaces.list())
 })
@@ -211,6 +240,18 @@ ipcMain.handle('spaces:set-gate', (_e, root: string, command: string | null) => 
   send('spaces:changed', spaces.list())
 })
 ipcMain.handle('spaces:list', () => spaces.list())
+ipcMain.handle('queue:list', () => queue.list())
+ipcMain.handle('queue:add', async (_e, root: string, title: string, details: string) => {
+  const space = await spaces.add(root)
+  send('spaces:changed', spaces.list())
+  queue.add(space, title, details)
+})
+ipcMain.handle('queue:update', (_e, root: string, id: string, patch: { title?: string; details?: string }) => queue.update(root, id, patch))
+ipcMain.handle('queue:remove', (_e, root: string, id: string) => queue.remove(root, id))
+ipcMain.handle('queue:reorder', (_e, root: string, ids: string[]) => queue.reorder(root, ids))
+ipcMain.handle('queue:start', (_e, root: string, permissionMode: PermissionMode) => queue.start(root, permissionMode))
+ipcMain.handle('queue:pause', (_e, root: string) => queue.pause(root))
+ipcMain.handle('usage:get', () => planUsage.view())
 ipcMain.handle('spaces:add', async (_e, path: string) => {
   const root = await spaces.add(path)
   send('spaces:changed', spaces.list())
@@ -258,6 +299,7 @@ app.whenReady().then(async () => {
       console.error('could not restore missions', err)
     }
   }
+  queue.onMissions(missions.views())
   startStatusPoller(() => missions.liveSessionIds(), (s) => missions.reconcile(s))
   setInterval(() => void missions.refreshTokens(), 5000).unref()
   createWindow()

@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import type { Gating, PermissionMode } from '../shared/types.ts'
 
 /** Git write commands no ORC session may run: The ORC commits and merges. */
@@ -22,6 +25,7 @@ const OrcTools = [
   'mcp__orc__ask_human',
   'mcp__orc__propose_split',
   'mcp__orc__stop_agent',
+  'mcp__orc__search_history',
   'SendMessage',
   'ListAgents'
 ]
@@ -65,6 +69,14 @@ export interface LaunchSpec {
   controlPort: number
   permissionMode: PermissionMode
   model?: string | null
+  /** Model for Agent-tool subagents (CLAUDE_CODE_SUBAGENT_MODEL, via the settings `env` key). */
+  subagentModel?: string | null
+  /** Model for the server-side advisor tool, as an alias ("fable", "opus") or a full id. */
+  advisorModel?: string | null
+  /** Status line that posts Claude Code's status JSON (rate limits etc.) to the app. Default on. */
+  statusLine?: boolean
+  /** The owner's own status line command (ownerStatusLine), chained before the app's text. */
+  ownStatusLine?: string | null
   systemPrompt: string
   firstPrompt?: string
   /** Folders outside the session's cwd it may read without a prompt (mission records). */
@@ -78,10 +90,58 @@ export function readRule(dir: string): string {
   return `Read(/${posix.startsWith('/') ? posix : `/${posix}`}/**)`
 }
 
+/** The owner's own `statusLine` command from user, project and local settings (later wins),
+ *  read-only; null when none is set, it isn't a command, or it is our own. */
+export function ownerStatusLine(cwd: string, home = os.homedir()): string | null {
+  let found: unknown = undefined
+  for (const file of [
+    path.join(home, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.local.json')
+  ]) {
+    try {
+      const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
+      if (parsed && typeof parsed === 'object' && 'statusLine' in parsed) found = (parsed as { statusLine: unknown }).statusLine
+    } catch {
+      // missing or invalid: skip
+    }
+  }
+  if (!found || typeof found !== 'object') return null
+  const { type, command } = found as { type?: unknown; command?: unknown }
+  if (type !== 'command' || typeof command !== 'string' || !command.trim()) return null
+  return command.includes('OrcStatusLine') ? null : command
+}
+
 function hookCommand(port: number, token: string): string {
   return (
     // stdout carries the app's reply (additionalContext notes); empty for most events.
     `curl -sf -m 2 -X POST -H 'Authorization: Bearer ${token}' ` +
+    `-H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`
+  )
+}
+
+/** Posts the status-line stdin JSON to /hook, wrapped as an OrcStatusLine event; curl's stdout
+ *  (the app's reply, often empty) becomes the status line text. */
+function statusLineCommand(port: number, token: string, own?: string | null): string {
+  if (own) {
+    // Chain: the owner's own status line runs with the same stdin while the POST runs in the
+    // background (bounded by -m 1); the app's text, if any, is appended after ` · `.
+    const quoted = own.replace(/'/g, `'\\''`)
+    return (
+      `in=$(cat); t=$(mktemp 2>/dev/null) || t=/dev/null; ` +
+      `{ printf '{"hook_event_name":"OrcStatusLine","status":%s}' "$in" | ` +
+      `curl -s -m 1 -X POST -H 'Authorization: Bearer ${token}' ` +
+      `-H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook ` +
+      `>"$t" 2>/dev/null; } & p=$!; ` +
+      `o=$(printf '%s' "$in" | sh -c '${quoted}'); ` +
+      `wait $p 2>/dev/null; r=$(cat "$t" 2>/dev/null); [ "$t" = /dev/null ] || rm -f "$t"; ` +
+      `if [ -z "$r" ]; then printf '%s' "$o"; elif [ -z "$o" ]; then printf '%s' "$r"; ` +
+      `else printf '%s · %s' "$o" "$r"; fi`
+    )
+  }
+  return (
+    `{ printf '{"hook_event_name":"OrcStatusLine","status":'; cat; printf '}'; } | ` +
+    `curl -s -m 2 -X POST -H 'Authorization: Bearer ${token}' ` +
     `-H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`
   )
 }
@@ -92,7 +152,12 @@ export function claudeArgs(spec: LaunchSpec): string[] {
     permissions: { allow: [...OrcTools, ...(spec.readDirs ?? []).map(readRule)], deny: DeniedGitWrites },
     hooks: Object.fromEntries(
       HookEvents.map((event) => [event, [{ matcher: '*', hooks: [hook] }]])
-    )
+    ),
+    ...(spec.subagentModel ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: spec.subagentModel } } : {}),
+    ...(spec.advisorModel ? { advisorModel: spec.advisorModel } : {}),
+    ...(spec.statusLine !== false
+      ? { statusLine: { type: 'command', command: statusLineCommand(spec.controlPort, spec.token, spec.ownStatusLine) } }
+      : {})
   }
   const mcp = {
     mcpServers: {
@@ -126,7 +191,8 @@ export function coordinatorPrompt(mission: string, sessionName: string, repo: st
   const past = pastRecords.length
     ? [
         'Records of earlier missions in this repository (newest first) say what was built before and',
-        'why. Read the ones that look related to the request before splitting the work:',
+        'why. Before splitting the work, call `mcp__orc__search_history` with a query about the request',
+        'to find related earlier missions; Read a record file only when its snippets are not enough:',
         pastRecords.map((p) => `"${p}"`).join(', ') + '.'
       ]
     : []
@@ -179,6 +245,8 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
     `works only in the current directory, and these rules: "${SpeedRules}"`,
     'Do not call spawn_agent: your team is made of subagents.',
     'Work only inside your current directory (your own git worktree).',
+    'Before reading past mission records or project history docs, call `mcp__orc__search_history`',
+    'with a query first, and read a full file only when its snippets are not enough.',
     'Never commit, merge, push or manage branches: The ORC commits for you.',
     'Only when EVERY subagent has returned and the pieces fit together, call the',
     '`mcp__orc__report_done` tool (orc MCP server; load it with ToolSearch first if needed) with a',

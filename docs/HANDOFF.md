@@ -27,6 +27,14 @@ this file; they write `docs/history/<mission>-<lead>.md` instead.
 - **Terminal copy** (Ctrl+C with a selection, Ctrl+Shift+C, right-click) and **keyboard shortcuts**
   (single source: `lib/shortcuts.ts`; F1 cheat sheet).
 - **Windows 11** supported (Git Bash for gates/tests, `resolveCommand()` for ConPTY).
+- **Backlog queue (per space):** each task runs as its own stacked mission; red flags or the
+  plan-usage budget pause it (`queue.ts`, `QueuePanel.tsx`).
+- **Models per role:** coordinator/lead/subagent/advisor/verifier, defaults sonnet/sonnet/haiku/fable/
+  sonnet (Fable advisor), overridable per space and per mission (`RoleModels`).
+- **Plan-usage pause:** a status line reports 5h/week usage; the queue pauses at `usageThreshold`
+  (default 80) and resumes after the reset (`plan-usage.ts`); chains the owner's own status line.
+- **History search:** `mcp__orc__search_history` (BM25 over mission records and `docs/**/*.md`,
+  SQLite FTS5, `history-index.ts`).
 
 ## Next / open
 
@@ -38,6 +46,8 @@ this file; they write `docs/history/<mission>-<lead>.md` instead.
 - Not checked live: leads fanning out to parallel subagents; the records `Read` rule working
   without a prompt; the e2e folded-chip check. Before the next billed e2e: `smoke.ts` "worker done
   again" will time out if the coordinator already ran `stop_agent` on that worker.
+- Not checked live (loop-and-models): whether `advisorModel` from `--settings` turns the advisor
+  on, whether the status-line POST arrives, whether `rate_limits` shows on the owner's plan.
 
 ## Facts established (don't re-derive)
 

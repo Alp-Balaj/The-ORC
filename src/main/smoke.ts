@@ -506,7 +506,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
     for (const w of workers) {
       check(`${w.name}: hooks fired (SessionStart, PreToolUse, Stop)`, ['SessionStart', 'PreToolUse', 'Stop'].every((e) => by(w.sessionId, e).length > 0))
       const banner = stripAnsi(d.terminals.replay(w.terminalId)).slice(0, 4000)
-      check(`${w.name}: runs on the mission's model`, !m.model || banner.toLowerCase().includes(m.model.toLowerCase()), m.model ?? 'default')
+      const lead = m.models.lead
+      check(`${w.name}: runs on the mission's lead model`, !lead || banner.toLowerCase().includes(lead.toLowerCase()), lead ?? 'default')
     }
     const sends = hooks.filter((h) => h.hook_event_name === 'PreToolUse' && h.tool_name === 'SendMessage' && h.agent !== `${m.id}:coordinator`)
     const undelivered = workers.filter((w) => /Not sent/.test(stripAnsi(d.terminals.replay(w.terminalId))))

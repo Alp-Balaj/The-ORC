@@ -98,7 +98,13 @@ export interface MissionView {
   repoPath: string
   baseBranch: string
   permissionMode: PermissionMode
-  model: string | null
+  /** Resolved model per role for this mission (defaults < space < mission). */
+  models: RoleModels
+  /** The branch Merge to main fast-forwards. Equals baseBranch, except for a stacked (queued)
+   *  mission, whose baseBranch is the previous queued mission's integration branch. */
+  mainBranch: string
+  /** Set when this mission was started by a space's backlog queue. */
+  queueItemId: string | null
   state: 'running' | 'stopped'
   createdAt: number
   agents: AgentView[]
@@ -131,6 +137,58 @@ export interface SpaceView {
   /** Shell command that runs the app being built (e.g. "pnpm dev"), from a mission's
    *  integration worktree. Null: no Run app. */
   runCommand: string | null
+  /** Per-role model overrides for this space (missing role: DefaultRoleModels). */
+  models: Partial<RoleModels>
+  /** Plan usage % (5-hour or weekly) at which this space's queue pauses. Default 80. */
+  usageThreshold: number
+}
+
+/** Who a model setting applies to. lead = team leads; subagent = the leads' Agent-tool
+ *  subagents (CLAUDE_CODE_SUBAGENT_MODEL); advisor = Claude Code's server-side advisor
+ *  (`advisorModel` setting) for every session; verifier = the Verifier's claude -p. */
+export type ModelRole = 'coordinator' | 'lead' | 'subagent' | 'advisor' | 'verifier'
+/** null: Claude Code's own default (for advisor: no advisor). */
+export type RoleModels = Record<ModelRole, string | null>
+export const ModelRoles: ModelRole[] = ['coordinator', 'lead', 'subagent', 'advisor', 'verifier']
+/** Owner's defaults (2026-11-22), chosen to save subscription usage. */
+export const DefaultRoleModels: RoleModels = { coordinator: 'sonnet', lead: 'sonnet', subagent: 'haiku', advisor: 'fable', verifier: 'sonnet' }
+
+/** One backlog task. Each becomes its own mission, stacked on the previous one. */
+export interface QueueItem {
+  id: string
+  title: string
+  details: string
+  /** queued: waiting · running: its mission is underway · done: verified, queue moved on ·
+   *  paused: a red flag stopped the queue on this item (see reason). */
+  status: 'queued' | 'running' | 'done' | 'paused'
+  missionId: string | null
+  missionName: string | null
+  reason: string | null
+  createdAt: number
+}
+
+/** A space's backlog queue. `running` = the owner started it and it isn't paused. */
+export interface QueueView {
+  root: string
+  running: boolean
+  /** Why the queue is paused (null when running, or never started). */
+  pausedReason: string | null
+  /** Paused by the plan-usage budget: resumes on its own when the 5-hour window resets. */
+  pausedByUsage: boolean
+  permissionMode: PermissionMode
+  items: QueueItem[]
+}
+
+/** The owner's plan usage, from Claude Code's status-line input (`rate_limits`). */
+export interface PlanUsageWindow {
+  usedPercentage: number
+  /** Epoch ms. */
+  resetsAt: number | null
+}
+export interface PlanUsageView {
+  fiveHour: PlanUsageWindow | null
+  sevenDay: PlanUsageWindow | null
+  at: number
 }
 
 /** The app being built, running from one mission's integration worktree. One at a time. */
@@ -151,10 +209,19 @@ export interface StartMissionRequest {
   repoPath: string
   name: string
   permissionMode: PermissionMode
-  /** Passed as --model to every session in the mission (e.g. "haiku"). Default: Claude Code's own. */
+  /** Legacy/tests: this model for every role, and no advisor. Wins over `models`. */
   model?: string
+  /** Per-role overrides for this mission, over the space's and the defaults. */
+  models?: Partial<RoleModels>
   /** Default: no check. */
   gating?: Gating
+  /** Branch to base the mission on (stacked queue missions). Default: the checkout's branch. */
+  baseBranch?: string
+  /** Branch Merge to main targets. Default: baseBranch. */
+  mainBranch?: string
+  /** Typed into the coordinator as its first prompt, and kept as the mission's brief. */
+  brief?: string
+  queueItemId?: string
 }
 
 /** Workers shown on the cards and the tree. An exited worker is removed: always once you
