@@ -98,29 +98,34 @@ export type MergeResult =
   | { kind: 'up-to-date' }
   | { kind: 'conflict'; files: string[] }
 
-/** Merges a worker branch into the integration worktree. A conflict is aborted cleanly and
- *  reported with the conflicting files, unless `keepConflict`: then the markers and the merge
- *  in progress are left in the integration worktree for a merger agent, and the merge is
- *  concluded later with concludeMerge (or undone with abortMerge). */
-export async function mergeIntoIntegration(repo: string, mission: string, branch: string, message: string, opts: { keepConflict?: boolean } = {}): Promise<MergeResult> {
+/** Merges a worker branch into the integration worktree in one short serialized step. A
+ *  conflict is always aborted cleanly and reported with the conflicting files: resolving it
+ *  happens in a separate merge worktree (startConflictMerge), never here, so a conflict never
+ *  holds this lock. */
+export async function mergeIntoIntegration(repo: string, mission: string, branch: string, message: string, _opts: { keepConflict?: boolean } = {}): Promise<MergeResult> {
   return serialized(repo, async () => {
     const wt = integrationPath(repo, mission)
-    // A merge left half-done (a crash while a merger worked) would make every later merge fail.
+    // A merge left half-done (a crash) would make every later merge fail.
     if ((await git(wt, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFail: true })).code === 0) await git(wt, ['merge', '--abort'], { allowFail: true })
     const already = await git(wt, ['merge-base', '--is-ancestor', branch, 'HEAD'], { allowFail: true })
     if (already.code === 0) return { kind: 'up-to-date' as const }
     const r = await git(wt, [...(await identityArgs(wt)), 'merge', '--no-ff', '--no-verify', '-m', message, branch], { allowFail: true })
     if (r.code === 0) return { kind: 'merged' as const, commit: (await git(wt, ['rev-parse', 'HEAD'])).stdout }
     const files = (await git(wt, ['diff', '--name-only', '--diff-filter=U'], { allowFail: true })).stdout.split('\n').filter(Boolean)
-    if (files.length === 0 || !opts.keepConflict) await git(wt, ['merge', '--abort'], { allowFail: true })
+    await git(wt, ['merge', '--abort'], { allowFail: true })
     if (files.length === 0) throw new GitError(`merge of ${branch} failed: ${r.stderr}`, r.stderr, r.code)
     return { kind: 'conflict' as const, files }
   })
 }
 
-/** Which of `files` (in the integration worktree) still contain conflict markers. */
-export function markersLeft(repo: string, mission: string, files: string[]): string[] {
-  const wt = integrationPath(repo, mission)
+/** A conflicting worker's own merge worktree and branch: the merge agent resolves there while
+ *  the integration worktree stays free for other merges. Worker names are [a-z0-9-], so
+ *  "_merge-" can never collide with one. */
+export const mergeBranchName = (mission: string, worker: string): string => `orc-merge/${mission}/${worker}`
+export const mergePath = (repo: string, mission: string, worker: string): string => join(repo, '.orc', 'worktrees', mission, `_merge-${worker}`)
+
+/** Which of `files` (relative to the worktree `wt`) still contain conflict markers. */
+export function markersLeft(wt: string, files: string[]): string[] {
   return files.filter((f) => {
     try {
       return /^(<{7}( |$)|>{7}( |$))/m.test(readFileSync(join(wt, f), 'utf8'))
@@ -130,27 +135,73 @@ export function markersLeft(repo: string, mission: string, files: string[]): str
   })
 }
 
-export type ConcludeResult = { kind: 'merged'; commit: string } | { kind: 'markers'; files: string[] }
-
-/** Concludes a merge left in the integration worktree by mergeIntoIntegration(keepConflict):
- *  stages the merger's edits and commits (the app owns git). Refuses while markers remain. */
-export async function concludeMerge(repo: string, mission: string, files: string[], message: string): Promise<ConcludeResult> {
-  return serialized(repo, async () => {
-    const wt = integrationPath(repo, mission)
-    const left = markersLeft(repo, mission, files)
-    if (left.length) return { kind: 'markers' as const, files: left }
-    await git(wt, ['add', '-u'])
-    await git(wt, ['add', '--', ...files], { allowFail: true })
-    await git(wt, [...(await identityArgs(wt)), 'commit', '--no-verify', '-m', message])
-    return { kind: 'merged' as const, commit: (await git(wt, ['rev-parse', 'HEAD'])).stdout }
-  })
+async function removeMergeWorktree(repo: string, mission: string, worker: string): Promise<void> {
+  await git(repo, ['worktree', 'remove', '--force', mergePath(repo, mission, worker)], { allowFail: true })
+  await git(repo, ['worktree', 'prune'], { allowFail: true })
+  await git(repo, ['branch', '-D', mergeBranchName(mission, worker)], { allowFail: true })
 }
 
-/** Gives up on a merge left in the integration worktree. */
-export async function abortMerge(repo: string, mission: string): Promise<void> {
-  return serialized(repo, async () => {
-    await git(integrationPath(repo, mission), ['merge', '--abort'], { allowFail: true })
+export type ConflictMerge = { kind: 'conflict'; files: string[]; path: string } | { kind: 'clean'; path: string }
+
+/** Creates the worker's merge worktree on a temporary branch at the integration tip and merges
+ *  the worker's branch there, leaving the conflict markers for a merge agent. The lock is held
+ *  only to create the worktree; the merge itself runs in that private worktree. */
+export async function startConflictMerge(repo: string, mission: string, worker: string, branch: string, message: string): Promise<ConflictMerge> {
+  const path = mergePath(repo, mission, worker)
+  await serialized(repo, async () => {
+    await removeMergeWorktree(repo, mission, worker)
+    await git(repo, ['worktree', 'add', '-q', '-b', mergeBranchName(mission, worker), path, integrationBranch(mission)])
+    await shareCodegraph(repo, path)
   })
+  const r = await git(path, [...(await identityArgs(path)), 'merge', '--no-ff', '--no-verify', '-m', message, branch], { allowFail: true })
+  if (r.code === 0) return { kind: 'clean', path }
+  const files = (await git(path, ['diff', '--name-only', '--diff-filter=U'], { allowFail: true })).stdout.split('\n').filter(Boolean)
+  if (files.length === 0) {
+    await discardMerge(repo, mission, worker)
+    throw new GitError(`merge of ${branch} failed: ${r.stderr}`, r.stderr, r.code)
+  }
+  return { kind: 'conflict', files, path }
+}
+
+export type ConcludeResult = { kind: 'merged'; commit: string } | { kind: 'markers'; files: string[] } | { kind: 'moved' }
+
+/** Moves the integration branch to the finished merge branch: the only step that holds the
+ *  lock. A fast-forward when nothing else landed meanwhile, else a merge commit; if even that
+ *  conflicts, `moved` (the caller starts over against the new tip). */
+export async function landMerge(repo: string, mission: string, worker: string, message: string): Promise<ConcludeResult> {
+  const r = await serialized(repo, async (): Promise<ConcludeResult> => {
+    const wt = integrationPath(repo, mission)
+    const mb = mergeBranchName(mission, worker)
+    if ((await git(wt, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFail: true })).code === 0) await git(wt, ['merge', '--abort'], { allowFail: true })
+    const ff = await git(wt, ['merge-base', '--is-ancestor', 'HEAD', mb], { allowFail: true })
+    const m = ff.code === 0
+      ? await git(wt, ['merge', '--ff-only', '-q', mb], { allowFail: true })
+      : await git(wt, [...(await identityArgs(wt)), 'merge', '--no-ff', '--no-verify', '-m', message, mb], { allowFail: true })
+    if (m.code !== 0) {
+      await git(wt, ['merge', '--abort'], { allowFail: true })
+      return { kind: 'moved' }
+    }
+    return { kind: 'merged', commit: (await git(wt, ['rev-parse', 'HEAD'])).stdout }
+  })
+  if (r.kind === 'merged') await serialized(repo, () => removeMergeWorktree(repo, mission, worker))
+  return r
+}
+
+/** Concludes the merge a merge agent resolved in the worker's merge worktree: stages its edits,
+ *  commits (the app owns git) and lands it on integration. Refuses while markers remain. */
+export async function concludeMerge(repo: string, mission: string, worker: string, files: string[], message: string): Promise<ConcludeResult> {
+  const wt = mergePath(repo, mission, worker)
+  const left = markersLeft(wt, files)
+  if (left.length) return { kind: 'markers', files: left }
+  await git(wt, ['add', '-u'])
+  await git(wt, ['add', '--', ...files], { allowFail: true })
+  await git(wt, [...(await identityArgs(wt)), 'commit', '--no-verify', '-m', message])
+  return landMerge(repo, mission, worker, message)
+}
+
+/** Gives up on a worker's merge worktree and branch. */
+export async function discardMerge(repo: string, mission: string, worker: string): Promise<void> {
+  return serialized(repo, () => removeMergeWorktree(repo, mission, worker))
 }
 
 export interface GateResult {
@@ -245,6 +296,11 @@ export async function cleanupMission(repo: string, mission: string, merged: { pa
       await git(repo, ['branch', '-D', w.branch], { allowFail: true })
     }
     await git(repo, ['worktree', 'remove', '--force', integrationPath(repo, mission)], { allowFail: true })
+    const leftover = (await git(repo, ['for-each-ref', '--format=%(refname:short)', `refs/heads/orc-merge/${mission}/`], { allowFail: true })).stdout.split('\n').filter(Boolean)
+    for (const b of leftover) {
+      await git(repo, ['worktree', 'remove', '--force', mergePath(repo, mission, b.slice(`orc-merge/${mission}/`.length))], { allowFail: true })
+      await git(repo, ['branch', '-D', b], { allowFail: true })
+    }
     await git(repo, ['worktree', 'prune'], { allowFail: true })
     await git(repo, ['branch', '-D', integrationBranch(mission)], { allowFail: true })
   })
