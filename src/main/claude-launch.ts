@@ -265,3 +265,23 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
     'The human may type to you directly; their instructions win over the coordinator.'
   ].join(' ')
 }
+
+/** The merger: a short-lived session whose cwd is the mission's integration worktree, with a
+ *  merge in progress. It edits the conflicted files; The ORC stages and commits. */
+export function mergerPrompt(mission: string, sessionName: string, coordinator: string, worker: string, files: string[]): string {
+  return [
+    `You are the merge agent "${sessionName}" in The ORC mission "${mission}".`,
+    `Your coordinator is the Claude Code session named "${coordinator}".`,
+    `The branch of worker "${worker}" is being merged into the integration branch, and your current`,
+    `directory (the integration worktree) holds that merge half-done: these files have conflict`,
+    `markers (<<<<<<<, =======, >>>>>>>): ${files.join(', ')}.`,
+    'Edit each file so it has no markers and BOTH sides\' intent survives (read both sides and the',
+    'surrounding code; if it is a real clash, pick what keeps the code correct and consistent).',
+    'Touch no other file unless a resolution needs it to compile. Work only in the current directory.',
+    'Run no git commands that write (no add, commit, merge, checkout, reset): The ORC stages and commits.',
+    'Do not call spawn_agent. When no markers remain, call the `mcp__orc__report_done` tool (orc MCP',
+    'server; load it with ToolSearch first if needed) with a one-line summary of how you resolved it.',
+    'If you cannot resolve it safely, call report_done with a summary that starts with "CANNOT RESOLVE:"',
+    'and the reason; The ORC then sends it back to the worker. Do not wait for replies; be quick.'
+  ].join(' ')
+}
