@@ -3,7 +3,6 @@ import { motion } from 'motion/react'
 import { CircleHelp, GitBranch, CheckCheck, GitMerge, Swords, Eye, Square, X } from 'lucide-react'
 import type { AgentView, AgentStatus } from '../../../shared/types'
 import { ago, cn, formatTokens } from '../lib/utils'
-import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 
 /** What stopping this worker means for its work, in one line. */
@@ -27,10 +26,29 @@ export const statusLabel: Record<AgentStatus, string> = {
 const dotClass: Record<AgentStatus, string> = {
   starting: 'bg-muted-foreground/60',
   working: 'bg-working shadow-[0_0_8px_var(--color-working)] animate-orc-pulse',
-  idle: 'bg-muted-foreground',
+  idle: 'bg-muted-foreground/50',
   'needs-you': 'bg-needs shadow-[0_0_8px_var(--color-needs)]',
-  done: 'bg-done',
+  done: 'bg-done/70',
   exited: 'bg-exited'
+}
+
+const labelClass: Record<AgentStatus, string> = {
+  starting: 'text-muted-foreground',
+  working: 'text-working',
+  idle: 'text-muted-foreground',
+  'needs-you': 'rounded bg-needs px-1.5 font-semibold leading-4 text-background',
+  done: 'text-done',
+  exited: 'text-exited-foreground'
+}
+
+/** Card surface per status (when not selected): needs-you is loudest, done and exited recede. */
+const cardClass: Record<AgentStatus, string> = {
+  starting: 'bg-card/50',
+  working: 'bg-card',
+  idle: 'bg-card/50',
+  'needs-you': 'border-needs/50 bg-needs/[0.07] hover:border-needs/70',
+  done: 'border-transparent bg-transparent hover:bg-card/40',
+  exited: 'border-transparent bg-transparent hover:bg-card/40'
 }
 
 export function StatusDot({ status, className }: { status: AgentStatus; className?: string }): React.JSX.Element {
@@ -61,15 +79,17 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
       data-status={a.status}
       onClick={onSelect}
       className={cn(
-        'group cursor-pointer rounded-lg border bg-card px-2.5 py-2 transition-colors hover:border-input',
-        selected && 'border-primary/60 bg-accent',
-        a.status === 'needs-you' && !selected && 'border-needs/40'
+        'group relative cursor-pointer rounded-lg border px-2.5 py-2 transition-colors hover:border-input',
+        selected ? 'border-primary/60 bg-accent' : cardClass[a.status]
       )}
     >
-      <div className="flex items-center gap-2">
+      {a.status === 'needs-you' && !selected && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-needs" />}
+      {/* Dimming sits on this wrapper: motion owns the root's inline opacity. */}
+      <div className={cn('min-w-0 transition-opacity', !selected && (a.status === 'done' || a.status === 'exited') && 'opacity-70 group-hover:opacity-100')}>
+      <div className="flex min-w-0 items-center gap-2">
         <StatusDot status={a.status} />
-        <span className="truncate font-medium text-foreground">{a.name}</span>
-        <Badge variant={a.status} className="ml-auto">{statusLabel[a.status]}</Badge>
+        <span className={cn('min-w-0 truncate text-[13px] font-medium', a.status === 'idle' || a.status === 'starting' ? 'text-foreground/80' : 'text-foreground')}>{a.name}</span>
+        <span className={cn('ml-auto shrink-0 text-[11px]', labelClass[a.status])}>{statusLabel[a.status]}</span>
         {onStop && !confirming && (
           <button
             data-testid="stop-worker"
@@ -137,31 +157,32 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
           </div>
         </div>
       )}
-      <div className="mt-1 truncate font-mono text-[11.5px] text-muted-foreground" title={a.activity}>{a.activity}</div>
-      <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+      <div className="mt-1 truncate pl-4 font-mono text-[11.5px] text-muted-foreground" title={a.activity}>{a.activity}</div>
+      <div className="mt-0.5 flex min-w-0 items-center gap-1.5 pl-4 text-[11px] text-muted-foreground/80">
         {a.branch && a.role === 'worker' && (
-          <span className="flex min-w-0 items-center gap-1 truncate" title={a.branch}>
+          <span className="flex min-w-0 items-center gap-1" title={a.branch}>
             <GitBranch className="size-3 shrink-0" />
             <span className="truncate">{a.branch.split('/').slice(-1)[0]}</span>
           </span>
         )}
-        {a.tokens > 0 && <span className="ml-auto shrink-0 tabular-nums" title={`${a.tokens} tokens · context ${a.contextTokens}`}>{formatTokens(a.tokens)} tok</span>}
+        {a.branch && a.role === 'worker' && a.tokens > 0 && <span aria-hidden className="shrink-0">·</span>}
+        {a.tokens > 0 && <span className="shrink-0 tabular-nums" title={`${a.tokens} tokens · context ${a.contextTokens}`}>{formatTokens(a.tokens)} tok</span>}
       </div>
       {a.lastInstructionBy && (
-        <div className="mt-0.5 text-[11px] text-muted-foreground" data-testid="last-instruction">
+        <div className="mt-0.5 truncate pl-4 text-[11px] text-muted-foreground/80" data-testid="last-instruction">
           last instruction: <span className={a.lastInstructionBy === 'you' ? 'text-foreground' : ''}>{a.lastInstructionBy}</span>, {ago(a.lastInstructionAt)}
         </div>
       )}
       {a.merge === 'merged' && (
-        <div className="mt-1 flex items-center gap-1 text-[11px] text-working" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3" /> merged into integration</div>
+        <div className="mt-1 flex items-center gap-1 pl-4 text-[11px] text-working" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3" /> merged into integration</div>
       )}
       {a.merge === 'conflict' && (
-        <div className="mt-1 flex items-center gap-1 text-[11px] text-destructive" data-testid="merge-state" data-merge="conflict" title={a.conflictFiles.join(', ')}><Swords className="size-3" /> conflict: {a.conflictFiles.join(', ')}</div>
+        <div className="mt-1 flex min-w-0 items-center gap-1 pl-4 text-[11px] text-destructive" data-testid="merge-state" data-merge="conflict" title={a.conflictFiles.join(', ')}><Swords className="size-3 shrink-0" /> <span className="truncate">conflict: {a.conflictFiles.join(', ')}</span></div>
       )}
       {a.merge === 'review' && (
         <button
           data-testid="review-worker"
-          className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-md border border-needs/40 bg-needs/10 py-1 text-[12px] text-needs hover:bg-needs/20"
+          className="mt-1.5 ml-4 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-center gap-1 rounded-md border border-needs/40 bg-needs/10 py-1 text-[12px] text-needs hover:bg-needs/20"
           onClick={(e) => {
             e.stopPropagation()
             onReview?.()
@@ -171,17 +192,18 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
         </button>
       )}
       {a.question && (
-        <div className="mt-1.5 flex gap-1.5 rounded-md bg-needs/10 px-2 py-1 text-[12px] text-needs">
-          <CircleHelp className="mt-0.5 size-3.5 shrink-0" />
-          <span>{a.question}</span>
+        <div className="mt-1.5 ml-4 flex min-w-0 gap-1.5 rounded-md bg-needs/10 px-2 py-1 text-[12px] leading-snug text-foreground/90">
+          <CircleHelp className="mt-px size-3.5 shrink-0 text-needs" />
+          <span className="min-w-0 break-words">{a.question}</span>
         </div>
       )}
       {a.doneSummary && (
-        <div className="mt-1.5 flex gap-1.5 text-[11.5px] text-done/90">
-          <CheckCheck className="mt-0.5 size-3.5 shrink-0" />
+        <div className="mt-1.5 flex min-w-0 gap-1.5 pl-4 text-[11.5px] text-muted-foreground">
+          <CheckCheck className="mt-0.5 size-3.5 shrink-0 text-done" />
           <span className="line-clamp-2">{a.doneSummary}</span>
         </div>
       )}
+      </div>
     </motion.div>
   )
 }
