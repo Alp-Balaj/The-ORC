@@ -26,6 +26,7 @@ const OrcTools = [
   'mcp__orc__propose_split',
   'mcp__orc__stop_agent',
   'mcp__orc__search_history',
+  'mcp__orc__add_to_queue',
   'SendMessage',
   'ListAgents'
 ]
@@ -228,6 +229,12 @@ export function coordinatorPrompt(mission: string, sessionName: string, repo: st
     'reports done and merges it into the mission\'s integration branch; the human merges to main.',
     'Messages starting with [The ORC] come from the app, not the human.',
     'The human can type into any lead directly. If they are steering a lead, do not override them.',
+    'When the human asks for planning or a grilling session, interview them with the grill-me method',
+    '(if a project skill `grill-me` exists in .claude/skills, use it): one question at a time, each with',
+    'your recommended answer; when the codebase can answer a question, check it yourself instead of asking.',
+    "When the plan is agreed, offer to put the agreed tasks into the space's backlog queue with",
+    '`mcp__orc__add_to_queue` (one task per independent piece: a one-line title plus details), and call',
+    'it only after the human says yes.',
     ...past
   ].join(' ')
 }

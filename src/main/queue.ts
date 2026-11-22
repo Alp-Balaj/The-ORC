@@ -116,6 +116,18 @@ export class Queues {
     this.evaluate(q)
   }
 
+  /** Appends several tasks at once (one save, one evaluation). */
+  addMany(root: string, tasks: { title: string; details?: string }[]): void {
+    const q = this.get(root)
+    for (const task of tasks) {
+      const t = task.title.trim()
+      if (!t) throw new Error('a task needs a title')
+      q.items.push({ id: randomUUID(), title: t, details: (task.details ?? '').trim(), status: 'queued', missionId: null, missionName: null, reason: null, createdAt: Date.now() })
+    }
+    this.changed()
+    this.evaluate(q)
+  }
+
   update(root: string, id: string, patch: { title?: string; details?: string }): void {
     const item = this.queues.get(root)?.items.find((i) => i.id === id)
     if (!item) throw new Error('no such queue item')

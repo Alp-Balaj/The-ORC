@@ -41,6 +41,7 @@ const missions = new Missions(terminals, (views) => {
 })
 const appRunner = new AppRunner(terminals, (run) => send('app:changed', run))
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
+missions.idleStopMinutesFor = (repo) => spaces.idleStopMinutes(repo)
 missions.liveLimitFor = (repo) => spaces.maxLive(repo)
 missions.recordsDirFor = (repo) => spaces.recordsPath(repo)
 missions.spaceModelsFor = (repo) => spaces.models(repo)
@@ -111,6 +112,15 @@ const control = new ControlServer({
     if (!m) return 'search_history: unknown caller (no mission found for this session).'
     historyIndex ??= new HistoryIndex(join(smoke ?? app.getPath('userData'), 'history-index.sqlite'))
     return historyIndex.search({ recordsDir: spaces.recordsPath(m.repoPath), repoRoot: m.repoPath, query, limit: limit ?? undefined })
+  },
+  addToQueue: (c, tasks) => {
+    const info = missions.callerInfo(c)
+    if (!info) return 'add_to_queue: unknown caller (no mission found for this session).'
+    if (info.role !== 'coordinator') return 'add_to_queue: refused. Only the mission coordinator can add tasks to the queue; tell your coordinator instead.'
+    if (!queues) return 'add_to_queue: the queue is not ready yet; try again in a moment.'
+    queues.addMany(info.repoPath, tasks)
+    const titles = tasks.map((t) => `"${t.title.trim()}"`).join(', ')
+    return `Added ${tasks.length} task${tasks.length === 1 ? '' : 's'} to the queue of ${info.repoPath}: ${titles}. The human starts the queue from the sidebar (or it continues if running).`
   },
   hookEvent: (c, e) => {
     // Raw payloads, so status bugs can be diagnosed from a file.
@@ -278,6 +288,23 @@ ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
   terminals.resize(id, cols, rows)
 )
 
+/** Brings back the app the owner ran with Run app before The ORC quit, if its mission is still
+ *  there, not merged to main, and the space still has a run command. */
+async function restoreAppRun(): Promise<void> {
+  appRunner.file = smoke ? join(smoke, 'app-run.json') : join(app.getPath('userData'), 'app-run.json')
+  const saved = appRunner.saved()
+  if (!saved) return
+  try {
+    const m = missions.views().find((x) => x.id === saved.missionId)
+    const command = m && !m.mergedToMain ? spaces.runCommand(m.repoPath) : null
+    if (!m || !command) return await appRunner.stop() // forgets the saved run
+    const cwd = await missions.ensureIntegration(m.id)
+    await appRunner.run(m.id, m.name, cwd, command)
+  } catch (err) {
+    console.error('could not restore the running app', err)
+  }
+}
+
 app.whenReady().then(async () => {
   missions.setControlPort(await control.listen())
   // Recovery before anything else: reattach the missions that were running.
@@ -300,6 +327,7 @@ app.whenReady().then(async () => {
     }
   }
   queue.onMissions(missions.views())
+  await restoreAppRun()
   startStatusPoller(() => missions.liveSessionIds(), (s) => missions.reconcile(s))
   setInterval(() => void missions.refreshTokens(), 5000).unref()
   createWindow()

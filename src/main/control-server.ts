@@ -35,6 +35,8 @@ export interface ControlHandlers {
 export interface ServerHandlers extends ControlHandlers {
   /** Full-text search over the caller's mission records and its repo's docs/. */
   searchHistory(caller: string, query: string, limit: number | null): string
+  /** Coordinator only: appends tasks to the caller's space backlog queue. */
+  addToQueue(caller: string, tasks: { title: string; details?: string }[]): Promise<string> | string
 }
 
 const MaxBody = 1024 * 1024
@@ -153,6 +155,26 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
       }
     },
     async ({ query, limit }) => text(h.searchHistory(caller, query, limit ?? null))
+  )
+  server.registerTool(
+    'add_to_queue',
+    {
+      description:
+        "Coordinator only. Append tasks to this space's backlog queue in The ORC; each becomes its own " +
+        'mission, run back to back after this one.',
+      inputSchema: {
+        tasks: z
+          .array(
+            z.object({
+              title: z.string().trim().min(1).max(200).describe('One line: the task'),
+              details: z.string().optional().describe('Optional: the brief for its mission')
+            })
+          )
+          .min(1)
+          .max(20)
+      }
+    },
+    async ({ tasks }) => text(await h.addToQueue(caller, tasks))
   )
   return server
 }
