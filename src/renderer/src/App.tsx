@@ -129,10 +129,16 @@ export function App(): React.JSX.Element {
     const offA = window.orc.onApp(setAppRun)
     const offM = window.orc.onMissions(setMissions)
     const offS = window.orc.onSpaces(setSpaces)
+    const offN = window.orc.onNotifySelect((_m, tid) => {
+      setView('terminal')
+      setTerminalId(tid)
+      setMissionId(tid.split(':')[0])
+    })
     const timer = setInterval(() => tick((n) => n + 1), 10_000)
     return () => {
       offM()
       offS()
+      offN()
       offA()
       clearInterval(timer)
     }
@@ -145,6 +151,10 @@ export function App(): React.JSX.Element {
   // A removed (exited) worker's terminal falls back to the coordinator's.
   const shown = useMemo(() => (mission ? shownAgents(mission) : []), [mission])
   const agent = shown.find((a) => a.terminalId === terminalId) ?? shown.find((a) => a.role === 'coordinator') ?? null
+
+  useEffect(() => {
+    window.orc.setSelection(mission?.id ?? null, agent?.terminalId ?? null)
+  }, [mission?.id, agent?.terminalId])
 
   const selectMission = (id: string): void => {
     setView('terminal')
