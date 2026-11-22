@@ -68,7 +68,7 @@ function splitPath(p: string): [string, string] {
   return i < 0 ? ['', p] : [p.slice(0, i + 1), p.slice(i + 1)]
 }
 
-const gutter = 'w-10 shrink-0 select-none pr-2 text-right tabular-nums text-muted-foreground/60'
+const gutter = 'w-8 shrink-0 select-none pr-1.5 text-right tabular-nums text-muted-foreground/60'
 
 /** Read-only diff: a file list and the unified patch, one file at a time or all. */
 export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
@@ -79,7 +79,7 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border" data-testid="diff">
-      <div className="flex w-44 shrink-0 xl:w-52 flex-col overflow-y-auto border-r bg-panel pb-1">
+      <div className="hidden min-[1600px]:flex w-52 shrink-0 flex-col overflow-y-auto border-r bg-panel pb-1">
         <div className="flex items-center px-3 pt-2.5 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Files <span className="ml-auto tabular-nums normal-case">{diff.files.length}</span>
         </div>
@@ -109,11 +109,24 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
           )
         })}
       </div>
-      <div className="min-w-0 flex-1 overflow-auto bg-background">
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+      <div className="border-b bg-panel px-2 py-1.5 text-[12px] min-[1600px]:hidden">
+        <select
+          className="max-w-full truncate rounded-md border border-input bg-background px-2 py-1 font-mono text-[12px]"
+          value={file ?? ''}
+          onChange={(e) => setFile(e.target.value || null)}
+        >
+          <option value="">All files ({diff.files.length})</option>
+          {diff.files.map((f) => (
+            <option key={f.path} value={f.path}>{`${f.path}  +${f.added} −${f.removed}`}</option>
+          ))}
+        </select>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto">
         {shown.length === 0 ? (
           <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">No changes.</div>
         ) : (
-          <div className="flex w-max min-w-full flex-col gap-3 p-3 font-mono text-[12px] leading-[1.5]">
+          <div className="flex w-max min-w-full flex-col gap-3 p-2 min-[1600px]:p-3 font-mono text-[12px] leading-[1.5]">
             {shown.map((s) => {
               const st = stats.get(s.path) ?? stats.get(s.newPath)
               const [dir, name] = splitPath(s.newPath)
@@ -152,6 +165,7 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
             })}
           </div>
         )}
+      </div>
       </div>
     </div>
   )

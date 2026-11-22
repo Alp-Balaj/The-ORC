@@ -20,7 +20,7 @@ export function SplitPanel({ mission }: { mission: MissionView }): React.JSX.Ele
         <span className="font-normal text-muted-foreground">· {s.workers.length} worker{s.workers.length === 1 ? '' : 's'}</span>
       </div>
       {s.summary && <p className="mt-1 pl-6 text-[12.5px] leading-relaxed text-muted-foreground">{s.summary}</p>}
-      <ul className="mt-2.5 grid gap-2 pl-6 sm:grid-cols-2 xl:grid-cols-3">
+      <ul className="mt-2.5 grid gap-2 pl-6 sm:grid-cols-2 min-[1440px]:grid-cols-3">
         {s.workers.map((w) => (
           <li key={w.name} className="rounded-md border bg-card px-3 py-2">
             <div className="text-[12.5px] font-medium">{w.name}</div>
@@ -160,7 +160,7 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
       <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4">
         <DiffArea diff={diff} empty="Nothing merged yet." />
 
-        <aside className="flex w-[280px] shrink-0 flex-col gap-3 overflow-y-auto xl:w-[310px]">
+        <aside className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto min-[1440px]:w-[310px]">
           <section className="rounded-lg border bg-card p-3" data-testid="gate-panel">
             <div className="flex items-center gap-2">
               <StatusIcon state={gateState} />
