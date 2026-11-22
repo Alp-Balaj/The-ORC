@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import type { Gating, PermissionMode } from '../shared/types.ts'
 
 /** Git write commands no ORC session may run: The ORC commits and merges. */
@@ -72,6 +75,8 @@ export interface LaunchSpec {
   advisorModel?: string | null
   /** Status line that posts Claude Code's status JSON (rate limits etc.) to the app. Default on. */
   statusLine?: boolean
+  /** The owner's own status line command (ownerStatusLine), chained before the app's text. */
+  ownStatusLine?: string | null
   systemPrompt: string
   firstPrompt?: string
   /** Folders outside the session's cwd it may read without a prompt (mission records). */
@@ -85,6 +90,28 @@ export function readRule(dir: string): string {
   return `Read(/${posix.startsWith('/') ? posix : `/${posix}`}/**)`
 }
 
+/** The owner's own `statusLine` command from user, project and local settings (later wins),
+ *  read-only; null when none is set, it isn't a command, or it is our own. */
+export function ownerStatusLine(cwd: string, home = os.homedir()): string | null {
+  let found: unknown = undefined
+  for (const file of [
+    path.join(home, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.local.json')
+  ]) {
+    try {
+      const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
+      if (parsed && typeof parsed === 'object' && 'statusLine' in parsed) found = (parsed as { statusLine: unknown }).statusLine
+    } catch {
+      // missing or invalid: skip
+    }
+  }
+  if (!found || typeof found !== 'object') return null
+  const { type, command } = found as { type?: unknown; command?: unknown }
+  if (type !== 'command' || typeof command !== 'string' || !command.trim()) return null
+  return command.includes('OrcStatusLine') ? null : command
+}
+
 function hookCommand(port: number, token: string): string {
   return (
     // stdout carries the app's reply (additionalContext notes); empty for most events.
@@ -95,7 +122,23 @@ function hookCommand(port: number, token: string): string {
 
 /** Posts the status-line stdin JSON to /hook, wrapped as an OrcStatusLine event; curl's stdout
  *  (the app's reply, often empty) becomes the status line text. */
-function statusLineCommand(port: number, token: string): string {
+function statusLineCommand(port: number, token: string, own?: string | null): string {
+  if (own) {
+    // Chain: the owner's own status line runs with the same stdin while the POST runs in the
+    // background (bounded by -m 1); the app's text, if any, is appended after ` · `.
+    const quoted = own.replace(/'/g, `'\\''`)
+    return (
+      `in=$(cat); t=$(mktemp 2>/dev/null) || t=/dev/null; ` +
+      `{ printf '{"hook_event_name":"OrcStatusLine","status":%s}' "$in" | ` +
+      `curl -s -m 1 -X POST -H 'Authorization: Bearer ${token}' ` +
+      `-H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook ` +
+      `>"$t" 2>/dev/null; } & p=$!; ` +
+      `o=$(printf '%s' "$in" | sh -c '${quoted}'); ` +
+      `wait $p 2>/dev/null; r=$(cat "$t" 2>/dev/null); [ "$t" = /dev/null ] || rm -f "$t"; ` +
+      `if [ -z "$r" ]; then printf '%s' "$o"; elif [ -z "$o" ]; then printf '%s' "$r"; ` +
+      `else printf '%s · %s' "$o" "$r"; fi`
+    )
+  }
   return (
     `{ printf '{"hook_event_name":"OrcStatusLine","status":'; cat; printf '}'; } | ` +
     `curl -s -m 2 -X POST -H 'Authorization: Bearer ${token}' ` +
@@ -113,7 +156,7 @@ export function claudeArgs(spec: LaunchSpec): string[] {
     ...(spec.subagentModel ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: spec.subagentModel } } : {}),
     ...(spec.advisorModel ? { advisorModel: spec.advisorModel } : {}),
     ...(spec.statusLine !== false
-      ? { statusLine: { type: 'command', command: statusLineCommand(spec.controlPort, spec.token) } }
+      ? { statusLine: { type: 'command', command: statusLineCommand(spec.controlPort, spec.token, spec.ownStatusLine) } }
       : {})
   }
   const mcp = {

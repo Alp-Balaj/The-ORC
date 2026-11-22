@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
-import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
+import { claudeArgs, coordinatorPrompt, ownerStatusLine, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
 import * as gitOps from './git-worktrees.ts'
 import type { TerminalHost } from './terminals.ts'
@@ -1058,6 +1058,7 @@ export class Missions implements ControlHandlers {
         model: agent.role === 'coordinator' ? mission.models.coordinator : mission.models.lead,
         subagentModel: mission.models.subagent,
         advisorModel: mission.models.advisor,
+        ownStatusLine: ownerStatusLine(agent.cwd),
         systemPrompt: o.systemPrompt,
         firstPrompt: o.firstPrompt,
         // The coordinator reads earlier missions' records, which live outside the repo.

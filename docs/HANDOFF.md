@@ -57,7 +57,11 @@ _Updated 2026-11-22._
     on its own once the 5-hour window resets, if the weekly window is under the threshold. The
     resume time survives a restart.
   - **UI:** the sidebar footer shows the usage, with a bar.
-  - **Side effect:** this replaces the owner's own status line inside ORC sessions.
+  - **Chained with the owner's own:** `ownerStatusLine(cwd)` reads (read-only) `statusLine.command` from
+    `~/.claude/settings.json`, then the project's `.claude/settings.json` and `settings.local.json` (later
+    wins). The ORC's command runs it with the same stdin and prints its output, plus ` · <ORC text>` when
+    the app returns some. The POST runs in the background with `curl -m 1`, errors ignored, so a slow or
+    dead app delays the line by 1 s at most and never blanks it.
 - **History search hooks:** `mcp__orc__search_history` is in `OrcTools`. The coordinator and lead
   prompts say to search history before reading records or docs in full.
 - **Not verified live:** no billed run. Unknown:
