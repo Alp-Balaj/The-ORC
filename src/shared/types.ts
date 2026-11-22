@@ -143,6 +143,8 @@ export interface SpaceView {
   usageThreshold: number
   /** Minutes a finished, merged lead may sit idle before The ORC stops it. 0 = off. Default 15. */
   idleStopMinutes: number
+  /** Most backlog-queue items running at once (1-10). 1 = one at a time, stacked. Default 2. */
+  maxParallel: number
   /** Desktop notifications and the needs-you badge for this space's missions. Default on. */
   notifications: boolean
   /** A gate command guessed from the repo (e.g. "pnpm typecheck"), shown when gateCommand is null. */
@@ -159,7 +161,7 @@ export const ModelRoles: ModelRole[] = ['coordinator', 'lead', 'subagent', 'advi
 /** Owner's defaults (2026-11-22), chosen to save subscription usage. */
 export const DefaultRoleModels: RoleModels = { coordinator: 'sonnet', lead: 'sonnet', subagent: 'haiku', advisor: 'fable', verifier: 'sonnet' }
 
-/** One backlog task. Each becomes its own mission, stacked on the previous one. */
+/** One backlog task. Each becomes its own mission (stacked on the previous one only when maxParallel is 1). */
 export interface QueueItem {
   id: string
   title: string
