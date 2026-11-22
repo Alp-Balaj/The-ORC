@@ -5,6 +5,7 @@ import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
 import { Sidebar } from './components/Sidebar'
+import { ThemeToggle } from './components/ThemeToggle'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { ButtonGroup } from './components/ui/button-group'
@@ -243,6 +244,8 @@ export function App(): React.JSX.Element {
         ) : (
           <span className="ml-auto text-[12px] text-faint">No mission open</span>
         )}
+        <span className="h-5 w-px shrink-0 bg-border" />
+        <ThemeToggle className="shrink-0" />
       </header>
 
       <Sidebar
