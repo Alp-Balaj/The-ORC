@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { ReactFlow, ReactFlowProvider, Handle, Position, useNodesState, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, useNodesState, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { AgentView, FeedEntry } from '../../../shared/types'
 import { layoutTree } from '../../../shared/tree-layout'
@@ -7,6 +7,24 @@ import { cn, formatTokens } from '../lib/utils'
 import { StatusDot, statusLabel } from './AgentCard'
 
 type AgentNodeData = { agent: AgentView; selected: boolean }
+
+const barColor: Record<AgentView['status'], string> = {
+  starting: 'bg-muted-foreground/60',
+  working: 'bg-working',
+  idle: 'bg-muted-foreground',
+  'needs-you': 'bg-needs',
+  done: 'bg-done',
+  exited: 'bg-exited'
+}
+
+const labelColor: Record<AgentView['status'], string> = {
+  starting: 'text-muted-foreground',
+  working: 'text-working',
+  idle: 'text-muted-foreground',
+  'needs-you': 'text-needs',
+  done: 'text-done',
+  exited: 'text-exited-foreground'
+}
 
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element {
   const a = data.agent
@@ -16,19 +34,22 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       data-agent={a.name}
       data-status={a.status}
       className={cn(
-        'h-[46px] w-[148px] cursor-pointer rounded-lg border bg-card px-2.5 py-1.5 shadow-sm transition-colors hover:border-input',
-        data.selected && 'border-primary/70 bg-accent',
-        a.status === 'needs-you' && !data.selected && 'border-needs/50'
+        'relative h-[50px] w-[160px] cursor-pointer rounded-lg border bg-card py-1.5 pl-3.5 pr-2.5 shadow-sm transition-colors hover:border-input',
+        a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10',
+        a.status === 'exited' && 'opacity-60',
+        a.status === 'done' && !data.selected && 'opacity-70',
+        data.selected && 'border-primary/70 bg-accent'
       )}
     >
+      <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-lg', barColor[a.status])} />
       <Handle type="target" position={Position.Top} />
       <div className="flex items-center gap-1.5">
         <StatusDot status={a.status} />
-        <span className="truncate text-[12px] font-medium">{a.name}</span>
+        <span className="min-w-0 truncate text-[12px] font-medium">{a.name}</span>
       </div>
-      <div className="mt-0.5 flex justify-between text-[10.5px] text-muted-foreground">
-        <span>{statusLabel[a.status]}</span>
-        {a.tokens > 0 && <span className="tabular-nums">{formatTokens(a.tokens)}</span>}
+      <div className="mt-1 flex justify-between gap-2 text-[10.5px] text-muted-foreground">
+        <span className={cn('truncate', labelColor[a.status])}>{statusLabel[a.status]}</span>
+        {a.tokens > 0 && <span className="ml-auto tabular-nums">{formatTokens(a.tokens)}</span>}
       </div>
       <Handle type="source" position={Position.Bottom} />
     </div>
@@ -36,8 +57,14 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
 }
 
 const nodeTypes = { agent: AgentNode }
-const NodeW = 148
-const NodeH = 46
+
+function edgeStroke(status: AgentView['status']): React.CSSProperties | undefined {
+  if (status === 'working') return { stroke: 'var(--color-working)' }
+  if (status === 'needs-you') return { stroke: 'var(--color-needs)' }
+  return undefined
+}
+const NodeW = 160
+const NodeH = 50
 
 /** Refits the view whenever the set of nodes (or the panel) changes, so a new worker is
  *  never off-screen. */
@@ -74,7 +101,7 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
     }))
     const edges: Edge[] = agents
       .filter((a) => a.parent && placed.has(a.parent))
-      .map((a) => ({ id: `tree:${a.parent}>${a.name}`, source: a.parent!, target: a.name, type: 'smoothstep', animated: a.status === 'working' }))
+      .map((a) => ({ id: `tree:${a.parent}>${a.name}`, source: a.parent!, target: a.name, type: 'smoothstep', animated: a.status === 'working', style: edgeStroke(a.status) }))
     if (showMessages) {
       const names = new Set(agents.map((a) => a.name))
       const seen = new Set<string>()
@@ -118,7 +145,9 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
-    />
+    >
+      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1f252e" />
+    </ReactFlow>
     </ReactFlowProvider>
   )
 }
