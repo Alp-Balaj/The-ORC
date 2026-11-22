@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
 import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type SpaceView } from '../../../shared/types'
+import { isMac, onShortcut, withHint } from '../lib/shortcuts'
 import { cn, formatTokens } from '../lib/utils'
 import { AgentCard, StatusDot } from './AgentCard'
 import { Button } from './ui/button'
@@ -37,6 +38,12 @@ function NewMissionForm({ space, onStarted, onCancel }: {
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
       onSubmit={start}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onCancel()
+        }
+      }}
       data-testid="new-mission-form"
       className="mx-1 my-1.5 space-y-2 overflow-hidden rounded-lg border bg-card p-2.5"
     >
@@ -72,6 +79,12 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
       data-testid="space-settings"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onClose()
+        }
+      }}
       className="mx-1 my-1.5 space-y-2 overflow-hidden rounded-lg border bg-card p-2.5 text-[12px]"
       onSubmit={(e) => {
         e.preventDefault()
@@ -102,8 +115,9 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
   )
 }
 
-export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, onSelectMission, onSelectAgent, onReview }: {
+export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, currentRoot, onSelectMission, onSelectAgent, onReview }: {
   spaces: SpaceView[]
+  currentRoot: string | null
   appRun: AppRunView | null
   missions: MissionView[]
   selectedMission: string | null
@@ -122,6 +136,32 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
 
   // Every repository with a mission is a space, even if it was never added explicitly.
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
+  // Sidebar order, for the Mod+1..9 jump hints on mission rows (9 is the last).
+  const ordered = roots.flatMap((root) => missions.filter((m) => m.repoPath === root))
+  const jumpHint = (id: string): string => {
+    const i = ordered.findIndex((m) => m.id === id)
+    const n = i >= 0 && i < 8 ? i + 1 : i >= 8 && i === ordered.length - 1 ? 9 : null
+    return n === null ? '' : ` (${isMac ? `⌘${n}` : `Ctrl+${n}`})`
+  }
+
+  useEffect(
+    () =>
+      onShortcut((id) => {
+        if (!currentRoot) return
+        if (id === 'newMission') {
+          setFormFor(currentRoot)
+          setCollapsed((c) => {
+            if (!c.has(currentRoot)) return c
+            const n = new Set(c)
+            n.delete(currentRoot)
+            return n
+          })
+        } else if (id === 'spaceSettings' && spaces.some((s) => s.root === currentRoot)) {
+          setSettingsFor(currentRoot)
+        }
+      }),
+    [currentRoot, spaces]
+  )
 
   async function openRepo(): Promise<void> {
     setError(null)
@@ -179,11 +219,11 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   </span>
                 )}
                 {space && (
-                  <Button size="icon" variant="ghost" className={cn('size-6 shrink-0 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100', settingsFor === root && 'text-foreground opacity-100')} title="Space settings" data-testid="space-settings-button" onClick={() => setSettingsFor(settingsFor === root ? null : root)}>
+                  <Button size="icon" variant="ghost" className={cn('size-6 shrink-0 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100', settingsFor === root && 'text-foreground opacity-100')} title={withHint('Space settings', 'spaceSettings')} data-testid="space-settings-button" onClick={() => setSettingsFor(settingsFor === root ? null : root)}>
                     <Settings2 />
                   </Button>
                 )}
-                <Button size="icon" variant="ghost" className={cn('size-6 shrink-0 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100', formFor === root && 'text-foreground opacity-100')} title="New mission in this space" data-testid="new-mission" onClick={() => setFormFor(formFor === root ? null : root)}>
+                <Button size="icon" variant="ghost" className={cn('size-6 shrink-0 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100', formFor === root && 'text-foreground opacity-100')} title={withHint('New mission in this space', 'newMission')} data-testid="new-mission" onClick={() => setFormFor(formFor === root ? null : root)}>
                   {formFor === root ? <X /> : <Plus />}
                 </Button>
               </div>
@@ -223,7 +263,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                         if (!active) onSelectMission(m.id)
                       }}
                       aria-expanded={expanded}
-                      title={expanded ? 'Hide its agents' : 'Show its agents'}
+                      title={(expanded ? 'Hide its agents' : 'Show its agents') + jumpHint(m.id)}
                       className={cn(
                         'flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                         active && 'bg-selected text-foreground hover:bg-selected'
