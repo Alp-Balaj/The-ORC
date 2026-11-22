@@ -141,8 +141,8 @@ export function App(): React.JSX.Element {
                   <span className="hidden shrink-0 xl:inline">{mission.model}</span>
                 </>
               )}
-              <span className="text-muted-foreground/40">·</span>
-              <span className="truncate" title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</span>
+              <span className={cn('text-muted-foreground/40', mission.state === 'stopped' && 'max-[1399px]:hidden')}>·</span>
+              <span className={cn('truncate', mission.state === 'stopped' && 'max-[1399px]:hidden')} title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</span>
             </div>
             {mission.state === 'stopped' && (
               <div className="flex shrink-0 items-center gap-1">
