@@ -1,6 +1,6 @@
 # Overnight report — 2026-11-18/19
 
-_Kept current through the night. `docs/HANDOFF.md` has the full detail._
+_Kept current through the night. `docs/history/` has the full detail (start with `docs/history/2026-11-19-m1-core.md`)._
 
 ## What was built, and how it was verified
 
@@ -14,7 +14,7 @@ _Kept current through the night. `docs/HANDOFF.md` has the full detail._
   - I checked the screenshots myself.
 - **Permission prompts turn the card ◐**, and Esc turns it back. A billed scenario test checks this,
   and a free unit test (`tests/missions-status.test.ts`) replays the recorded hook payloads.
-- **Answers to every "Watch for" item** are in HANDOFF:
+- **Answers to every "Watch for" item** are in `docs/history/2026-11-19-m1-core.md`:
   - worktrees inherit trust;
   - your hooks are layered, not replaced;
   - the coordinator finds deferred tools by itself;

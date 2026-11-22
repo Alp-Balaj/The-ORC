@@ -7,14 +7,17 @@ among Claude Code subagents that write the code (built for fast, continuous deli
 unless asked).
 
 - **The plan is `docs/PLAN.md`.** Read it before designing anything.
-- **Where the build stands, and what's next, is `docs/HANDOFF.md`.** Read it at the start of every session.
+- **Where the build stands, and what's next, is `docs/HANDOFF.md`.** Read it at the start of every
+  session (it's short: current state only). History lives in `docs/history/*.md`.
+- **Search before reading in full:** `mcp__orc__search_history` indexes `docs/**/*.md` section by
+  section. Use it before opening `docs/history/` or `docs/PLAN.md` whole.
 
 ## Commands
 
     pnpm install        # also rebuilds node-pty for Electron (postinstall)
     scripts/orc-app.sh [update]  # the owner's daily ORC: a stable copy of main (see the script)
     pnpm dev            # opens the app window (tell the user first: it appears on their desktop)
-                        # automated runs use smoke mode instead (hidden, offscreen): see docs/HANDOFF.md
+                        # automated runs use smoke mode instead (hidden, offscreen): see docs/history/tests.md
     pnpm typecheck
     pnpm build
     tests/free.sh [out-dir]             # free: typecheck, unit tests, hidden UI replay, crash/quit recovery
@@ -53,3 +56,6 @@ in an ORC mission, then:
 - **UI work starts with Mobbin research:** look at how comparable apps handle the screen or
   pattern (`mcp__claude_ai_Mobbin__*` tools, pre-approved in `.claude/settings.json`), then design.
 - **Never run the billed tests** (`tests/e2e.sh`, `tests/resume.sh`, the probe).
+- **Team leads never edit `docs/HANDOFF.md`.** Write your notes (what you built, how it works, facts
+  established) to a new file `docs/history/<mission>-<lead>.md`; later sessions find them with
+  `mcp__orc__search_history`. Only a dedicated docs pass refreshes HANDOFF.
