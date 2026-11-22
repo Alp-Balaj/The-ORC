@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Bot, Check, GitMerge, ListChecks, Play, ShieldCheck, Undo2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, CircleDashed, GitMerge, ListChecks, Loader2, Play, ShieldCheck, Undo2, X, XCircle } from 'lucide-react'
 import type { DiffView as Diff, MissionView, SpaceView } from '../../../shared/types'
 import { cn } from '../lib/utils'
 import { DiffView } from './DiffView'
@@ -14,23 +14,24 @@ export function SplitPanel({ mission }: { mission: MissionView }): React.JSX.Ele
   if (!s || s.status !== 'pending') return null
   return (
     <div className="border-b border-needs/30 bg-needs/5 px-4 py-3" data-testid="split-panel">
-      <div className="flex items-center gap-2 text-[13px]">
-        <ListChecks className="size-4 text-needs" />
-        <span className="font-semibold">The coordinator proposes a split</span>
-        <span className="text-muted-foreground">· {s.summary}</span>
+      <div className="flex items-center gap-2 text-[13px] font-semibold">
+        <ListChecks className="size-4 shrink-0 text-needs" />
+        The coordinator proposes a split
+        <span className="font-normal text-muted-foreground">· {s.workers.length} worker{s.workers.length === 1 ? '' : 's'}</span>
       </div>
-      <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+      {s.summary && <p className="mt-1 pl-6 text-[12.5px] leading-relaxed text-muted-foreground">{s.summary}</p>}
+      <ul className="mt-2.5 grid gap-2 pl-6 sm:grid-cols-2 xl:grid-cols-3">
         {s.workers.map((w) => (
-          <li key={w.name} className="rounded-md border bg-card px-2.5 py-1.5 text-[12px]">
-            <span className="font-medium">{w.name}</span>
-            <span className="text-muted-foreground"> — {w.task}</span>
+          <li key={w.name} className="rounded-md border bg-card px-3 py-2">
+            <div className="text-[12.5px] font-medium">{w.name}</div>
+            <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted-foreground" title={w.task}>{w.task}</div>
           </li>
         ))}
       </ul>
-      <div className="mt-2 flex gap-1.5">
-        <Input placeholder="Note for the coordinator (optional)" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md" data-testid="split-note" />
+      <div className="mt-3 flex items-center gap-1.5 pl-6">
+        <Input placeholder="Note for the coordinator (optional)" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md flex-1" data-testid="split-note" />
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => void window.orc.decideSplit(mission.id, false, note || null)} data-testid="reject-split"><X /> Reject</Button>
         <Button size="sm" onClick={() => void window.orc.decideSplit(mission.id, true, note || null)} data-testid="approve-split"><Check /> Approve</Button>
-        <Button size="sm" variant="destructive" onClick={() => void window.orc.decideSplit(mission.id, false, note || null)} data-testid="reject-split"><X /> Reject</Button>
       </div>
     </div>
   )
@@ -49,37 +50,75 @@ function useDiff(load: () => Promise<Diff | null>, deps: unknown[]): Diff | null
   return diff
 }
 
+function DiffArea({ diff, empty }: { diff: Diff | null; empty: string }): React.JSX.Element {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {diff ? <DiffView diff={diff} /> : <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed text-[13px] text-muted-foreground">{empty}</div>}
+    </div>
+  )
+}
+
+function DiffStats({ diff }: { diff: Diff | null }): React.JSX.Element | null {
+  if (!diff) return null
+  const added = diff.files.reduce((n, f) => n + f.added, 0)
+  const removed = diff.files.reduce((n, f) => n + f.removed, 0)
+  return (
+    <div className="text-[12px] text-muted-foreground tabular-nums">
+      {diff.files.length} file{diff.files.length === 1 ? '' : 's'} · <span className="text-working">+{added}</span> <span className="text-destructive">−{removed}</span> · {diff.commits} commit{diff.commits === 1 ? '' : 's'}
+    </div>
+  )
+}
+
 /** Checkpointed: one worker's diff, approve or send back. */
 export function ReviewScreen({ mission, agent, onBack }: { mission: MissionView; agent: string; onBack: () => void }): React.JSX.Element {
   const a = mission.agents.find((x) => x.name === agent)
   const diff = useDiff(() => window.orc.workerDiff(mission.id, agent), [mission.id, agent, a?.merge])
   const [note, setNote] = useState('')
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 p-4" data-testid="review-screen">
-      <div className="flex items-center gap-2">
+    <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="review-screen">
+      <div className="flex items-start gap-2 px-4 pt-3 pb-2.5">
         <Button size="sm" variant="ghost" onClick={onBack}><ArrowLeft /> Terminal</Button>
-        <span className="font-semibold">Review {agent}</span>
-        {a?.branch && <Badge variant="outline">{a.branch}</Badge>}
-        {a?.doneSummary && <span className="truncate text-[12px] text-muted-foreground">{a.doneSummary}</span>}
+        <div className="min-w-0 flex-1 pt-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[15px] font-semibold">Review {agent}</span>
+            {a?.branch && <Badge variant="outline">{a.branch}</Badge>}
+          </div>
+          {a?.doneSummary && <p className="mt-1 line-clamp-2 max-w-3xl text-[12.5px] leading-relaxed text-muted-foreground" title={a.doneSummary}>{a.doneSummary}</p>}
+          <div className="mt-1"><DiffStats diff={diff} /></div>
+        </div>
       </div>
-      {diff ? <DiffView diff={diff} /> : <div className="text-muted-foreground">Loading diff…</div>}
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
+        <DiffArea diff={diff} empty="Loading diff…" />
+      </div>
       {a?.merge === 'review' ? (
-        <div className="flex gap-1.5">
-          <Button onClick={() => void window.orc.approveWorker(mission.id, agent).then(onBack)} data-testid="approve-worker"><GitMerge /> Approve and merge into integration</Button>
+        <div className="flex items-center gap-2 border-t bg-panel px-4 py-2.5">
           {a.status === 'exited' ? (
-            <span className="self-center text-[12px] text-muted-foreground">{agent} was stopped, so it can't be sent back.</span>
+            <span className="text-[12px] text-muted-foreground">{agent} was stopped, so it can't be sent back.</span>
           ) : (
             <>
-              <Input placeholder="What should change?" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md" />
+              <Input placeholder="What should change?" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md flex-1" />
               <Button variant="outline" disabled={!note.trim()} onClick={() => void window.orc.sendBack(mission.id, agent, note).then(onBack)}><Undo2 /> Send back</Button>
             </>
           )}
+          <Button className="ml-auto" onClick={() => void window.orc.approveWorker(mission.id, agent).then(onBack)} data-testid="approve-worker"><GitMerge /> Approve and merge into integration</Button>
         </div>
       ) : (
-        <div className="text-[12px] text-muted-foreground">State: {a?.merge ?? 'not reported yet'}</div>
+        <div className="border-t bg-panel px-4 py-2.5 text-[12px] text-muted-foreground">State: {a?.merge ?? 'not reported yet'}</div>
       )}
     </div>
   )
+}
+
+function StatusIcon({ state }: { state: 'pass' | 'fail' | 'warn' | 'running' | 'idle' }): React.JSX.Element {
+  if (state === 'pass') return <CheckCircle2 className="size-4 shrink-0 text-working" />
+  if (state === 'fail') return <XCircle className="size-4 shrink-0 text-destructive" />
+  if (state === 'warn') return <AlertTriangle className="size-4 shrink-0 text-needs" />
+  if (state === 'running') return <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+  return <CircleDashed className="size-4 shrink-0 text-muted-foreground" />
+}
+
+function StaleNote({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return <div className="mt-1.5 flex items-center gap-1 text-[11px] text-needs/80"><AlertTriangle className="size-3" /> {children}</div>
 }
 
 /** Merge to main: the mission's combined diff, the gate, the Verifier, and the button. */
@@ -94,85 +133,115 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
   const stale = v && v.integrationCommit !== mission.integrationCommit
   const gateStale = mission.gate && mission.gate.output !== 'running…' && mission.integrationCommit && mission.gate.at < (mission.feed.findLast((f) => f.kind === 'merge')?.at ?? 0)
 
+  const gateRunning = mission.gate?.output === 'running…'
+  const gateState = !mission.gate ? 'idle' : gateRunning ? 'running' : mission.gate.ok ? 'pass' : 'fail'
+  const gateText = !mission.gate ? (space?.gateCommand ? 'not run' : 'none configured') : gateRunning ? 'running' : mission.gate.ok ? 'passed' : `failed (exit ${mission.gate.exitCode})`
+  const verdict = v ? (/VERDICT:\s*(\w+)/.exec(v.report)?.[1] ?? v.status) : null
+  const verifierPass = !!v && /VERDICT:\s*PASS/.test(v.report)
+  const verifierState = !v ? 'idle' : v.status === 'running' ? 'running' : verifierPass ? 'pass' : 'warn'
+  const unmerged = mission.agents.filter((a) => a.role === 'worker' && a.merge !== 'merged')
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4" data-testid="merge-screen">
-      <div className="flex items-center gap-2">
+    <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="merge-screen">
+      <div className="flex items-start gap-2 px-4 pt-3 pb-2.5">
         <Button size="sm" variant="ghost" onClick={onBack}><ArrowLeft /> Terminal</Button>
-        <span className="font-semibold">Merge {mission.name} into {mission.baseBranch}</span>
-        <Badge variant="outline">integration/{mission.name}</Badge>
-        <span className="text-[12px] text-muted-foreground">{mission.merged.length} worker{mission.merged.length === 1 ? '' : 's'} merged: {mission.merged.join(', ') || 'none yet'}</span>
+        <div className="min-w-0 flex-1 pt-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[15px] font-semibold">Merge {mission.name} into {mission.baseBranch}</span>
+            <Badge variant="outline">integration/{mission.name}</Badge>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <DiffStats diff={diff} />
+            <span className="truncate text-[12px] text-muted-foreground">{mission.merged.length} worker{mission.merged.length === 1 ? '' : 's'} merged: {mission.merged.join(', ') || 'none yet'}</span>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <section className="rounded-lg border bg-card p-3" data-testid="gate-panel">
-          <div className="mb-2 flex items-center gap-1.5 font-medium"><ShieldCheck className="size-4" /> Gate</div>
-          <div className="flex gap-1.5">
-            <Input placeholder="e.g. pnpm test (runs in the merged result)" value={gateCmd} onChange={(e) => setGateCmd(e.target.value)} data-testid="gate-command" />
-            <Button size="sm" variant="outline" onClick={() => space && void window.orc.setGateCommand(space.root, gateCmd || null)} disabled={!space || gateCmd === (space?.gateCommand ?? '')}>Save</Button>
-            <Button size="sm" variant="outline" disabled={!space?.gateCommand || mission.merged.length === 0} onClick={() => void window.orc.runGate(mission.id)} data-testid="run-gate"><Play /> Run</Button>
-          </div>
-          {mission.gate ? (
-            <div className="mt-2">
-              <Badge variant={mission.gate.output === 'running…' ? 'idle' : mission.gate.ok ? 'working' : 'exited'} data-testid="gate-result">
-                {mission.gate.output === 'running…' ? 'running' : mission.gate.ok ? 'passed' : `failed (exit ${mission.gate.exitCode})`}
-              </Badge>
-              {gateStale && <Badge variant="needs-you" className="ml-1">older than the latest merge</Badge>}
-              <pre className="mt-1.5 max-h-40 overflow-auto rounded-md bg-background p-2 font-mono text-[11px] text-muted-foreground">{mission.gate.output || '(no output)'}</pre>
-            </div>
-          ) : (
-            <div className="mt-2 text-[12px] text-muted-foreground">{space?.gateCommand ? 'Not run yet.' : 'No gate configured for this space. Merging is still allowed.'}</div>
-          )}
-        </section>
+      <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4">
+        <DiffArea diff={diff} empty="Nothing merged yet." />
 
-        <section className="rounded-lg border bg-card p-3" data-testid="verifier-panel">
-          <div className="mb-2 flex items-center gap-1.5 font-medium">
-            <Bot className="size-4" /> Verifier
-            <Button size="sm" variant="outline" className="ml-auto" disabled={v?.status === 'running' || mission.merged.length === 0} onClick={() => void window.orc.runVerifier(mission.id)} data-testid="run-verifier">
-              <Play /> {v ? 'Run again' : 'Run'}
-            </Button>
-          </div>
-          {v ? (
-            <>
-              <div className="flex flex-wrap gap-1">
-                <Badge variant={v.status === 'running' ? 'idle' : /VERDICT:\s*PASS/.test(v.report) ? 'working' : 'needs-you'} data-testid="verifier-status">
-                  {v.status === 'running' ? 'running…' : (/VERDICT:\s*(\w+)/.exec(v.report)?.[1] ?? v.status)}
+        <aside className="flex w-[280px] shrink-0 flex-col gap-3 overflow-y-auto xl:w-[310px]">
+          <section className="rounded-lg border bg-card p-3" data-testid="gate-panel">
+            <div className="flex items-center gap-2">
+              <StatusIcon state={gateState} />
+              <ShieldCheck className="size-3.5 text-muted-foreground" />
+              <span className="text-[13px] font-medium">Gate</span>
+              {mission.gate && (
+                <Badge className="ml-auto" variant={gateRunning ? 'idle' : mission.gate.ok ? 'working' : 'exited'} data-testid="gate-result">
+                  {gateRunning ? 'running' : mission.gate.ok ? 'passed' : `failed (exit ${mission.gate.exitCode})`}
                 </Badge>
-                {stale && <Badge variant="needs-you">about an older integration commit</Badge>}
+              )}
+            </div>
+            {gateStale && <StaleNote>Older than the latest merge</StaleNote>}
+            <div className="mt-2.5 flex gap-1.5">
+              <Input placeholder="e.g. pnpm test" title="Runs in the merged result" value={gateCmd} onChange={(e) => setGateCmd(e.target.value)} className="h-8 min-w-0 font-mono text-[12px]" data-testid="gate-command" />
+              <Button size="sm" variant="outline" onClick={() => space && void window.orc.setGateCommand(space.root, gateCmd || null)} disabled={!space || gateCmd === (space?.gateCommand ?? '')}>Save</Button>
+              <Button size="sm" variant="outline" disabled={!space?.gateCommand || mission.merged.length === 0} onClick={() => void window.orc.runGate(mission.id)} data-testid="run-gate"><Play /> Run</Button>
+            </div>
+            {mission.gate ? (
+              <pre className="mt-2 max-h-32 overflow-auto rounded-md border bg-background p-2 font-mono text-[11px] text-muted-foreground">{mission.gate.output || '(no output)'}</pre>
+            ) : (
+              <div className="mt-2 text-[12px] text-muted-foreground">{space?.gateCommand ? 'Not run yet.' : 'No gate configured for this space. Merging is still allowed.'}</div>
+            )}
+          </section>
+
+          <section className="rounded-lg border bg-card p-3" data-testid="verifier-panel">
+            <div className="flex items-center gap-2">
+              <StatusIcon state={verifierState} />
+              <Bot className="size-3.5 text-muted-foreground" />
+              <span className="text-[13px] font-medium">Verifier</span>
+              <div className="ml-auto flex items-center gap-1.5">
+                {v && (
+                  <Badge variant={v.status === 'running' ? 'idle' : verifierPass ? 'working' : 'needs-you'} data-testid="verifier-status">
+                    {v.status === 'running' ? 'running…' : verdict}
+                  </Badge>
+                )}
+                <Button size="sm" variant="outline" disabled={v?.status === 'running' || mission.merged.length === 0} onClick={() => void window.orc.runVerifier(mission.id)} data-testid="run-verifier">
+                  <Play /> {v ? 'Run again' : 'Run'}
+                </Button>
               </div>
-              {v.report && <pre className="mt-1.5 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-background p-2 text-[12px]" data-testid="verifier-report">{v.report}</pre>}
-              <div className="mt-1 font-mono text-[10px] text-muted-foreground" title="sha256 of the pinned template / of the full prompt">template {v.templateHash.slice(0, 12)} · prompt {v.promptHash.slice(0, 12)}</div>
-            </>
-          ) : (
-            <div className="text-[12px] text-muted-foreground">A one-shot, read-only Claude run that checks the combined diff against the brief and the split. It runs on its own once every team is merged.</div>
-          )}
-        </section>
-      </div>
+            </div>
+            {v ? (
+              <>
+                {stale && <StaleNote>About an older integration commit</StaleNote>}
+                {v.report && <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border bg-background p-2 text-[12px] leading-relaxed" data-testid="verifier-report">{v.report}</pre>}
+                <div className="mt-1.5 truncate font-mono text-[10px] text-muted-foreground" title="sha256 of the pinned template / of the full prompt">template {v.templateHash.slice(0, 12)} · prompt {v.promptHash.slice(0, 12)}</div>
+              </>
+            ) : (
+              <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">A one-shot, read-only Claude run that checks the combined diff against the brief and the split. It runs on its own once every team is merged.</div>
+            )}
+          </section>
 
-      <div className="flex min-h-[260px] flex-1 flex-col">{diff ? <DiffView diff={diff} /> : <div className="text-muted-foreground">Nothing merged yet.</div>}</div>
-
-      <div className="flex items-center gap-3 border-t pt-3">
-        <Button
-          disabled={busy || mission.merged.length === 0 || !!mission.mergedToMain}
-          onClick={async () => {
-            setBusy(true)
-            setResult(await window.orc.mergeToMain(mission.id))
-            setBusy(false)
-          }}
-          data-testid="confirm-merge"
-        >
-          <GitMerge /> Merge to {mission.baseBranch}
-        </Button>
-        <span className="text-[12px] text-muted-foreground">
-          Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.
-          {mission.agents.some((a) => a.role === 'worker' && a.merge !== 'merged') && (
-            <span className="text-needs" data-testid="unmerged-warning"> Not merged, kept as they are: {mission.agents.filter((a) => a.role === 'worker' && a.merge !== 'merged').map((a) => a.name).join(', ')}.</span>
-          )}
-        </span>
-        {(result || mission.mergedToMain) && (
-          <span className={cn('text-[12px]', result && !result.ok ? 'text-destructive' : 'text-working')} data-testid="merge-result">
-            {result?.message ?? `Merged at ${mission.mergedToMain!.commit.slice(0, 8)}.`}
-          </span>
-        )}
+          <section className="rounded-lg border border-primary/30 bg-card p-3">
+            <div className="flex items-center gap-2 text-[13px] font-medium"><GitMerge className="size-4 text-muted-foreground" /> Merge</div>
+            <ul className="mt-2 space-y-1 text-[12px]">
+              <li className="flex items-center gap-2"><StatusIcon state={gateState} /><span className="text-muted-foreground">Gate:</span> {gateText}</li>
+              <li className="flex items-center gap-2"><StatusIcon state={verifierState} /><span className="text-muted-foreground">Verifier:</span> {v ? (v.status === 'running' ? 'running' : verdict) : 'not run'}</li>
+              <li className="flex items-center gap-2"><StatusIcon state={mission.merged.length > 0 ? (unmerged.length ? 'warn' : 'pass') : 'idle'} /><span className="text-muted-foreground">Workers:</span> {mission.merged.length} merged{unmerged.length ? `, ${unmerged.length} not` : ''}</li>
+            </ul>
+            <Button
+              className="mt-3 w-full"
+              disabled={busy || mission.merged.length === 0 || !!mission.mergedToMain}
+              onClick={async () => {
+                setBusy(true)
+                setResult(await window.orc.mergeToMain(mission.id))
+                setBusy(false)
+              }}
+              data-testid="confirm-merge"
+            >
+              <GitMerge /> Merge to {mission.baseBranch}
+            </Button>
+            <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.</p>
+            {unmerged.length > 0 && (
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-needs" data-testid="unmerged-warning">Not merged, kept as they are: {unmerged.map((a) => a.name).join(', ')}.</p>
+            )}
+            {(result || mission.mergedToMain) && (
+              <p className={cn('mt-1.5 text-[12px]', result && !result.ok ? 'text-destructive' : 'text-working')} data-testid="merge-result">
+                {result?.message ?? `Merged at ${mission.mergedToMain!.commit.slice(0, 8)}.`}
+              </p>
+            )}
+          </section>
+        </aside>
       </div>
     </div>
   )
