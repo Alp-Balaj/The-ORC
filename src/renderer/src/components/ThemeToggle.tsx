@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Monitor, Moon, Sun } from 'lucide-react'
+import { shortcutHint } from '../lib/shortcuts'
 import { getThemePref, onThemeChange, setThemePref, type ThemePref } from '../lib/theme'
 import { Button } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
@@ -21,7 +22,7 @@ export function ThemeToggle({ className }: { className?: string }): React.JSX.El
           variant="ghost"
           size="icon-sm"
           className={pref === p ? 'bg-selected text-foreground' : undefined}
-          title={label}
+          title={`${label} (cycle: ${shortcutHint('toggleTheme')})`}
           aria-label={label}
           aria-pressed={pref === p}
           onClick={() => {

@@ -2,6 +2,21 @@ import { useEffect, useRef } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { getResolvedTheme, onThemeChange } from './lib/theme'
+import { matchShortcut } from './lib/shortcuts'
+
+// The mounted terminal, for focusActiveTerminal. pendingFocus carries a focus request across a
+// re-mount (switching agent): the next terminal to mount takes it.
+let activeTerm: Terminal | null = null
+let pendingFocus = false
+
+export function focusActiveTerminal(): void {
+  pendingFocus = true
+  requestAnimationFrame(() => {
+    if (!activeTerm) return
+    activeTerm.focus()
+    pendingFocus = false
+  })
+}
 
 const DARK: ITheme = {
   background: '#0b0b0d',
@@ -84,6 +99,11 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
     // The replay selects text through this to test copying.
     Object.assign(el, { orcTerm: term })
     fit.fit()
+    activeTerm = term
+    if (pendingFocus) {
+      pendingFocus = false
+      requestAnimationFrame(() => term.focus())
+    }
 
     let disposed = false
     void window.orc.replay(id).then((buffered) => {
@@ -100,6 +120,8 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       return true
     }
     term.attachCustomKeyEventHandler((e) => {
+      // App shortcuts never reach the session; the window capture listener already handled them.
+      if (matchShortcut(e, 'terminal')) return false
       if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'c') return true
       // Ctrl+Shift+C never reaches the session; Ctrl+C does only when nothing is selected.
       if (copySelection() || e.shiftKey) {
@@ -135,6 +157,7 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       input.dispose()
       el.removeEventListener('contextmenu', onContextMenu)
       observer.disconnect()
+      if (activeTerm === term) activeTerm = null
       term.dispose()
     }
   }, [id])

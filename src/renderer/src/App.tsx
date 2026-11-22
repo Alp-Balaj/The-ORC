@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import { GitMerge, MessagesSquare, MonitorPlay, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
 import { shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
+import { CommandPalette } from './components/CommandPalette'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
+import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
 import { ThemeToggle } from './components/ThemeToggle'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { ButtonGroup } from './components/ui/button-group'
-import { TerminalView } from './TerminalView'
+import { focusActiveTerminal, TerminalView } from './TerminalView'
+import { emitShortcut, installGlobalShortcuts, onShortcut, withHint, type ShortcutId } from './lib/shortcuts'
+import { getThemePref, setThemePref } from './lib/theme'
 import { cn, formatTokens } from './lib/utils'
 
 const modeLabel: Record<string, string> = {
@@ -35,6 +39,23 @@ export function App(): React.JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null)
   // Missions The ORC brought back on its own at launch (each one is live, billed sessions).
   const [resumed, setResumed] = useState<{ id: string; name: string }[]>([])
+  // Keyboard: the quick switcher or the cheat sheet (one at a time), and whether the sidebar shows.
+  const [dialog, setDialog] = useState<'palette' | 'shortcuts' | null>(null)
+  const dialogFromTerminal = useRef(false)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      return localStorage.getItem('orc-sidebar') !== 'closed'
+    } catch {
+      return true
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('orc-sidebar', sidebarOpen ? 'open' : 'closed')
+    } catch {
+      // storage unavailable
+    }
+  }, [sidebarOpen])
   useEffect(() => {
     const onReject = (e: PromiseRejectionEvent): void => {
       e.preventDefault() // shown in the banner: handled, not an uncaught error
@@ -95,10 +116,114 @@ export function App(): React.JSX.Element {
     : appRun?.status === 'running' && appRun.missionId !== mission?.id
       ? `Stops ${appRun.missionName}'s app, then runs "${space.runCommand}" from this mission's integration branch`
       : `Runs "${space.runCommand}" from this mission's integration branch`
+  const canMerge = !!mission && (mission.merged.length > 0 || !!mission.mergedToMain)
+  const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
+  const currentRoot = mission?.repoPath ?? roots[0] ?? null
+
+  const openDialog = (d: 'palette' | 'shortcuts'): void => {
+    if (dialog === d) return closeDialog()
+    if (!dialog) dialogFromTerminal.current = !!document.activeElement?.closest('.xterm')
+    setDialog(d)
+  }
+  const closeDialog = (): void => {
+    setDialog(null)
+    if (dialogFromTerminal.current) focusActiveTerminal()
+    dialogFromTerminal.current = false
+  }
+
+  // Shortcut handlers read this render's state through a ref, so they never see stale state.
+  const onKey = (id: ShortcutId, arg?: number): void => {
+    switch (id) {
+      case 'nextMission':
+      case 'prevMission':
+      case 'missionN': {
+        const ordered = roots.flatMap((root) => missions.filter((m) => m.repoPath === root))
+        if (ordered.length === 0) return
+        const cur = mission ? ordered.findIndex((m) => m.id === mission.id) : -1
+        let i: number
+        if (id === 'missionN') {
+          i = arg === 9 ? ordered.length - 1 : (arg ?? 1) - 1
+          if (i >= ordered.length) return
+        } else {
+          const step = id === 'nextMission' ? 1 : -1
+          i = cur < 0 ? 0 : (cur + step + ordered.length) % ordered.length
+        }
+        selectMission(ordered[i].id)
+        focusActiveTerminal()
+        return
+      }
+      case 'nextAgent':
+      case 'prevAgent': {
+        if (shown.length === 0) return
+        const cur = agent ? shown.findIndex((a) => a.terminalId === agent.terminalId) : -1
+        const step = id === 'nextAgent' ? 1 : -1
+        const i = cur < 0 ? 0 : (cur + step + shown.length) % shown.length
+        selectAgent(shown[i].terminalId)
+        focusActiveTerminal()
+        return
+      }
+      case 'coordinator':
+        if (!mission) return
+        selectAgent(`${mission.id}:coordinator`)
+        focusActiveTerminal()
+        return
+      case 'focusTerminal':
+        setView('terminal')
+        focusActiveTerminal()
+        return
+      case 'palette':
+      case 'shortcuts':
+        openDialog(id)
+        return
+      case 'mergeScreen':
+        if (canMerge) setView('merge')
+        return
+      case 'toggleSidebar':
+        setSidebarOpen((v) => !v)
+        return
+      case 'toggleTheme': {
+        const order = ['light', 'dark', 'system'] as const
+        setThemePref(order[(order.indexOf(getThemePref()) + 1) % order.length])
+        return
+      }
+      case 'newMission':
+      case 'spaceSettings':
+        // The Sidebar opens these forms itself; when it's hidden, show it and ask again once it's mounted.
+        if (!sidebarOpen) {
+          setSidebarOpen(true)
+          setTimeout(() => emitShortcut(id), 50)
+        }
+        return
+    }
+  }
+  const onKeyRef = useRef(onKey)
+  onKeyRef.current = onKey
+  const escRef = useRef(() => {})
+  escRef.current = () => {
+    if (!dialog && view !== 'terminal') setView('terminal')
+  }
+  useEffect(() => {
+    const offInstall = installGlobalShortcuts()
+    const offSub = onShortcut((id, arg) => onKeyRef.current(id, arg))
+    // Escape leaves the merge/review/app screens; never taken from a terminal or a field.
+    const onEsc = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const t = e.target instanceof Element ? e.target : null
+      if (t?.closest('.xterm') || t?.closest('input, textarea, select')) return
+      escRef.current()
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => {
+      offInstall()
+      offSub()
+      window.removeEventListener('keydown', onEsc)
+    }
+  }, [])
+
   const needsYou = mission?.agents.filter((a) => a.status === 'needs-you').length ?? 0
 
   return (
-    <div className="relative grid h-full grid-cols-[300px_minmax(0,1fr)_320px] grid-rows-[44px_minmax(0,1fr)]">
+    <div className={cn('relative grid h-full grid-rows-[44px_minmax(0,1fr)]', sidebarOpen ? 'grid-cols-[300px_minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_320px]')}>
       {actionError && (
         <div className="absolute bottom-3 left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border border-destructive/40 bg-card px-3 py-2 text-[12px] shadow-lg" data-testid="action-error" role="alert">
           <span className="shrink-0 font-medium text-destructive">Action failed:</span>
@@ -123,10 +248,13 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {/* Header */}
-      <header className="col-span-3 flex min-w-0 items-center gap-3 border-b bg-background px-3" data-testid="header">
+      <header className={cn('flex min-w-0 items-center gap-3 border-b bg-background px-3', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="header">
         <div className="flex w-[276px] shrink-0 items-center gap-2">
           <div className="grid h-6 w-9 place-items-center rounded-md bg-primary/15 text-[10.5px] font-black tracking-tight text-primary">ORC</div>
           <span className="font-semibold tracking-tight">The ORC</span>
+          <Button size="icon-sm" variant="ghost" className="ml-auto text-muted-foreground" title={withHint('Toggle sidebar', 'toggleSidebar')} aria-label="Toggle sidebar" aria-pressed={sidebarOpen} data-testid="toggle-sidebar" onClick={() => setSidebarOpen((v) => !v)}>
+            <PanelLeft />
+          </Button>
         </div>
         {mission ? (
           <>
@@ -232,10 +360,10 @@ export function App(): React.JSX.Element {
               <Button
                 size="sm"
                 className="ml-1 text-[12px]"
-                disabled={mission.merged.length === 0 && !mission.mergedToMain}
+                disabled={!canMerge}
                 onClick={() => setView('merge')}
                 data-testid="open-merge"
-                title={mission.merged.length ? 'Review the combined diff, gate and Verifier, then merge' : 'Nothing merged into the integration branch yet'}
+                title={mission.merged.length ? withHint('Review the combined diff, gate and Verifier, then merge', 'mergeScreen') : 'Nothing merged into the integration branch yet'}
               >
                 <GitMerge /> Merge to main
               </Button>
@@ -246,10 +374,15 @@ export function App(): React.JSX.Element {
         )}
         <span className="h-5 w-px shrink-0 bg-border" />
         <ThemeToggle className="shrink-0" />
+        <span className="h-5 w-px shrink-0 bg-border" />
+        <Button size="icon-sm" variant="ghost" className="shrink-0" title={withHint('Keyboard shortcuts', 'shortcuts')} aria-label="Keyboard shortcuts" data-testid="open-shortcuts" onClick={() => openDialog('shortcuts')}>
+          <Keyboard />
+        </Button>
       </header>
 
-      <Sidebar
+      {sidebarOpen && <Sidebar
         spaces={spaces}
+        currentRoot={currentRoot}
         missions={missions}
         appRun={appRun}
         selectedMission={mission?.id ?? null}
@@ -257,7 +390,7 @@ export function App(): React.JSX.Element {
         onSelectMission={selectMission}
         onSelectAgent={selectAgent}
         onReview={(name) => setView({ review: name })}
-      />
+      />}
 
       {/* Terminal */}
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
@@ -337,6 +470,22 @@ export function App(): React.JSX.Element {
           <Feed feed={mission?.feed ?? []} />
         </div>
       </aside>
+
+      <CommandPalette
+        open={dialog === 'palette'}
+        onClose={closeDialog}
+        missions={missions}
+        currentMissionId={mission?.id ?? null}
+        onSelectMission={(id) => {
+          selectMission(id)
+          focusActiveTerminal()
+        }}
+        onSelectAgent={(tid) => {
+          selectAgent(tid)
+          focusActiveTerminal()
+        }}
+      />
+      <ShortcutsDialog open={dialog === 'shortcuts'} onClose={closeDialog} />
     </div>
   )
 }
