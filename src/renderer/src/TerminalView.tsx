@@ -1,6 +1,64 @@
 import { useEffect, useRef } from 'react'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { getResolvedTheme, onThemeChange } from './lib/theme'
+
+const DARK: ITheme = {
+  background: '#0b0b0d',
+  foreground: '#d8dadf',
+  cursor: '#e6e7ea',
+  cursorAccent: '#0b0b0d',
+  selectionBackground: '#6a6df055',
+  selectionInactiveBackground: '#6a6df030',
+  scrollbarSliderBackground: '#2a2c3180',
+  scrollbarSliderHoverBackground: '#3a3c42',
+  scrollbarSliderActiveBackground: '#3a3c42',
+  black: '#1c1d21',
+  red: '#eb5757',
+  green: '#4cc38a',
+  yellow: '#f5a524',
+  blue: '#6ea8fe',
+  magenta: '#b18cf7',
+  cyan: '#4cc9d8',
+  white: '#c9ccd3',
+  brightBlack: '#5f626a',
+  brightRed: '#ff7b7b',
+  brightGreen: '#6fdca6',
+  brightYellow: '#ffc053',
+  brightBlue: '#93bfff',
+  brightMagenta: '#c9acff',
+  brightCyan: '#7adfe9',
+  brightWhite: '#f0f1f3'
+}
+
+// Light: the terminal sits in <main className="bg-panel">, so its background is the panel white.
+const LIGHT: ITheme = {
+  background: '#ffffff',
+  foreground: '#24262b',
+  cursor: '#1b1c1f',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#5b5ee633',
+  selectionInactiveBackground: '#5b5ee61f',
+  scrollbarSliderBackground: '#d4d4d880',
+  scrollbarSliderHoverBackground: '#b4b4bb',
+  scrollbarSliderActiveBackground: '#b4b4bb',
+  black: '#24262b',
+  red: '#cf3a3a',
+  green: '#1a8f52',
+  yellow: '#a86a00',
+  blue: '#2f6fde',
+  magenta: '#8a4fd8',
+  cyan: '#13849a',
+  white: '#8a8d94',
+  brightBlack: '#6b6e76',
+  brightRed: '#e05252',
+  brightGreen: '#23a862',
+  brightYellow: '#b87500',
+  brightBlue: '#4b86ea',
+  brightMagenta: '#9f6be3',
+  brightCyan: '#1c9bb3',
+  brightWhite: '#b4b6bb'
+}
 
 /** Shows one host terminal. Re-mounting with another id replays that
  *  terminal's buffered output, so switching between agents is lossless.
@@ -14,7 +72,10 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       fontFamily: 'JetBrainsMono Nerd Font, monospace',
       fontSize: 13,
       cursorBlink: true,
-      theme: { background: '#0a0c0f' }
+      theme: getResolvedTheme() === 'light' ? LIGHT : DARK
+    })
+    const offTheme = onThemeChange((resolved) => {
+      term.options.theme = resolved === 'light' ? LIGHT : DARK
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -74,6 +135,7 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       disposed = true
       cancelAnimationFrame(frame)
       offData()
+      offTheme()
       input.dispose()
       el.removeEventListener('contextmenu', onContextMenu)
       observer.disconnect()

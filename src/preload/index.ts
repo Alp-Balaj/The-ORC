@@ -43,6 +43,7 @@ const api = {
   onMissions: (cb: (m: MissionView[]) => void) => listen<[MissionView[]]>('missions:changed', cb),
   replay: (id: string): Promise<string> => ipcRenderer.invoke('terminal:replay', id),
   copyText: (text: string): void => clipboard.writeText(text),
+  setNativeTheme: (pref: 'light' | 'dark' | 'system'): void => ipcRenderer.send('theme:set-native', pref),
   write: (id: string, data: string): void => ipcRenderer.send('terminal:write', id, data),
   resize: (id: string, cols: number, rows: number): void =>
     ipcRenderer.send('terminal:resize', id, cols, rows),

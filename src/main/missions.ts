@@ -366,12 +366,15 @@ export class Missions implements ControlHandlers {
     const mission = this.missions.get(missionId)
     const a = mission?.agents.get(agentName)
     if (!mission || !a?.branch) return null
+    // Merge to main deleted the merged workers' branches (unmerged ones are kept).
+    if (mission.mergedToMain && a.merge === 'merged' && mission.merged.includes(a.name)) return null
     return this.git.branchDiff(mission.repoPath, mission.baseBranch, a.branch)
   }
 
   async missionDiff(missionId: string): Promise<DiffView | null> {
     const mission = this.missions.get(missionId)
-    if (!mission || mission.merged.length === 0) return null
+    // After Merge to main the integration branch is deleted.
+    if (!mission || mission.merged.length === 0 || mission.mergedToMain) return null
     return this.git.combinedDiff(mission.repoPath, mission.name, mission.baseBranch)
   }
 

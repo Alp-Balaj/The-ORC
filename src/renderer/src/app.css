@@ -1,31 +1,71 @@
 @import "tailwindcss";
 
-/* shadcn-style tokens, dark only (The ORC is a terminal app). */
+/* shadcn-style tokens. Dark is the default; light overrides below.
+   Neutral graphite surfaces layered by small lightness steps, hairline borders,
+   one indigo accent. */
 @theme {
-  --color-background: #0a0c0f;
-  --color-foreground: #d9dde3;
-  --color-panel: #0f1217;
-  --color-card: #13171d;
-  --color-card-foreground: #d9dde3;
-  --color-border: #1f252e;
-  --color-input: #262d37;
-  --color-ring: #4c8dff;
-  --color-primary: #3b7cf0;
+  --color-background: #0b0b0d;
+  --color-foreground: #e6e7ea;
+  --color-panel: #101113;
+  --color-card: #16171a;
+  --color-card-foreground: #e6e7ea;
+  --color-border: #232428;
+  --color-border-strong: #2f3136;
+  --color-input: #2a2c31;
+  --color-ring: #8285f7;
+  --color-primary: #6a6df0;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #1b2028;
-  --color-secondary-foreground: #c9ced6;
-  --color-muted: #181c23;
-  --color-muted-foreground: #7c8592;
-  --color-accent: #1a2029;
-  --color-accent-foreground: #e6e9ee;
-  --color-destructive: #f0605d;
-  --color-working: #3fc56b;
-  --color-needs: #e6a23c;
-  --color-done: #5aa2ff;
-  --color-exited: #8a4b4b;
-  --color-exited-foreground: #c98b8b;
-  --font-sans: "Inter", system-ui, sans-serif;
+  --color-secondary: #1c1d21;
+  --color-secondary-foreground: #d2d4d9;
+  --color-muted: #18191c;
+  --color-muted-foreground: #8b8e96;
+  --color-faint: #5f626a;
+  --color-accent: #1f2024;
+  --color-accent-foreground: #f0f1f3;
+  --color-selected: #25262c;
+  --color-destructive: #eb5757;
+  --color-working: #4cc38a;
+  --color-needs: #f5a524;
+  --color-done: #6ea8fe;
+  --color-exited: #5c3b3d;
+  --color-exited-foreground: #d08a8a;
+  --color-scrollbar: #2a2c31;
+  --color-scrollbar-hover: #3a3c42;
+  --color-edge: #34363c;
+  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
   --font-mono: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Light: off-white chrome, white content, hairline zinc borders, darker status colours. */
+:root[data-theme="light"] {
+  --color-background: #f7f7f8;
+  --color-foreground: #1b1c1f;
+  --color-panel: #ffffff;
+  --color-card: #ffffff;
+  --color-card-foreground: #1b1c1f;
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
+  --color-input: #d4d4d8;
+  --color-ring: #5e62e8;
+  --color-primary: #5b5ee6;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f1f3;
+  --color-secondary-foreground: #2b2d31;
+  --color-muted: #f2f2f4;
+  --color-muted-foreground: #62656d;
+  --color-faint: #9a9ca3;
+  --color-accent: #ececef;
+  --color-accent-foreground: #111214;
+  --color-selected: #e6e6eb;
+  --color-destructive: #d93f3f;
+  --color-working: #1a9455;
+  --color-needs: #c87400;
+  --color-done: #2f6fde;
+  --color-exited: #f1d6d6;
+  --color-exited-foreground: #a84646;
+  --color-scrollbar: #d4d4d8;
+  --color-scrollbar-hover: #b4b4bb;
+  --color-edge: #c9c9cf;
 }
 
 @layer base {
@@ -36,22 +76,43 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     font-size: 13px;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.003em;
+    text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
   * { border-color: var(--color-border); }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-thumb { background: #262d37; border-radius: 4px; }
+  ::selection { background: color-mix(in srgb, var(--color-primary) 35%, transparent); }
+
+  /* Thin, quiet scrollbars: 10px hit area, 6px visible thumb. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-scrollbar);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-scrollbar-hover); background-clip: padding-box; }
   ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-corner { background: transparent; }
 }
 
 /* xterm: Tailwind's preflight must not reach inside the terminal. */
 .xterm .xterm-viewport { background: transparent !important; }
-.xterm .xterm-viewport::-webkit-scrollbar-thumb { background: #262d37; }
+.xterm .xterm-viewport::-webkit-scrollbar { width: 10px; }
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
+}
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--color-scrollbar-hover); background-clip: padding-box; }
+.xterm .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
 
-/* React Flow, dark. */
+/* React Flow. */
 .react-flow { --xy-background-color: transparent; }
 .react-flow__attribution { display: none; }
-.react-flow__edge-path { stroke: #2f3742; stroke-width: 1.5; }
+.react-flow__edge-path { stroke: var(--color-edge); stroke-width: 1.5; }
 .react-flow__edge.message .react-flow__edge-path { stroke: var(--color-done); stroke-dasharray: 4 4; }
 .react-flow__edge.message.failed .react-flow__edge-path { stroke: var(--color-destructive); }
 .react-flow__handle { opacity: 0; }
