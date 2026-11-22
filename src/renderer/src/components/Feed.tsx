@@ -42,50 +42,109 @@ const verb: Record<FeedEntry['kind'], string> = {
   orc: 'the ORC'
 }
 
-const time = (t: number): string => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+type Tone = 'attention' | 'amber' | 'routine' | 'milestone'
+
+/** attention/amber: needs the owner's eye; routine: chatter; milestone: progress. */
+const tone = (f: FeedEntry): Tone => {
+  switch (f.kind) {
+    case 'question': return 'amber'
+    case 'verifier': return f.status === 'ok' ? 'milestone' : 'amber'
+    case 'stopped':
+    case 'conflict': return 'attention'
+    case 'gate':
+    case 'main': return f.status === 'ok' ? 'milestone' : 'attention'
+    case 'orc':
+    case 'split': return f.status === 'failed' ? 'attention' : 'milestone'
+    case 'message': return f.status === 'failed' ? 'attention' : 'routine'
+    case 'delivered':
+    case 'commit':
+    case 'steer':
+    case 'spawn': return 'routine'
+    default: return 'milestone'
+  }
+}
+
+const fullTime = (t: number): string => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const shortTime = (t: number): string => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+const GROUP_MS = 2 * 60_000
+const GAP_MS = 10 * 60_000
 
 export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
   const items = [...feed].reverse().slice(0, 80)
   if (items.length === 0) {
     return <div className="px-3 py-4 text-[12px] text-muted-foreground">Spawns, messages and reports appear here.</div>
   }
-  return (
-    <ul className="space-y-0.5 px-2 py-1.5">
-      <AnimatePresence initial={false}>
-        {items.map((f) => (
-          <motion.li
-            key={f.id}
-            layout
-            initial={{ opacity: 0, x: -6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.15 }}
-            data-testid="feed-entry"
-            data-kind={f.kind}
-            data-status={f.status ?? ''}
-            className="rounded-md px-1.5 py-1 hover:bg-accent/60"
-          >
-            <div className="flex items-center gap-1.5 text-[12px]">
-              {icon(f)}
-              <span className="font-medium">{f.from}</span>
-              {f.to ? (
-                <>
-                  <ArrowRight className="size-3 text-muted-foreground" />
-                  <span className="font-medium">{f.to}</span>
-                </>
+  const rows: React.JSX.Element[] = []
+  items.forEach((f, i) => {
+    const prev = i > 0 ? items[i - 1] : null
+    const gap = prev ? Math.abs(prev.at - f.at) : 0
+    if (prev && gap > GAP_MS) {
+      rows.push(
+        <li key={`gap-${f.id}`} aria-hidden className="flex items-center gap-2 px-1.5 pb-0.5 pt-2.5">
+          <span className="text-[10px] tabular-nums text-muted-foreground/70">{shortTime(prev.at)}</span>
+          <span className="h-px flex-1 bg-border/60" />
+        </li>
+      )
+    }
+    const grouped = !!prev && prev.from === f.from && gap <= GROUP_MS
+    const t = tone(f)
+    const flagged = t === 'attention' || t === 'amber'
+    const routine = t === 'routine'
+    rows.push(
+      <motion.li
+        key={f.id}
+        layout
+        initial={{ opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.15 }}
+        data-testid="feed-entry"
+        data-kind={f.kind}
+        data-status={f.status ?? ''}
+        className={cn(
+          'rounded-md px-1.5 pb-1 hover:bg-accent/50',
+          grouped ? 'pt-0' : 'pt-1',
+          t === 'attention' && 'my-0.5 rounded-l-sm border-l-2 border-destructive bg-destructive/10 pt-1 hover:bg-destructive/15',
+          t === 'amber' && 'my-0.5 rounded-l-sm border-l-2 border-needs bg-needs/10 pt-1 hover:bg-needs/15'
+        )}
+      >
+        <div className={cn('flex items-center gap-1.5', routine ? 'text-[11.5px] text-muted-foreground' : 'text-[12px]')}>
+          <span className={cn('flex', routine && 'opacity-60', grouped && !flagged && 'opacity-50')}>{icon(f)}</span>
+          {!(grouped && !flagged) && <span className={cn('truncate', routine ? 'text-muted-foreground' : 'font-medium text-foreground')}>{f.from}</span>}
+          {f.to ? (
+            <>
+              {grouped && !flagged ? (
+                <span className="shrink-0 text-muted-foreground">{verb[f.kind]}</span>
               ) : (
-                <span className="text-muted-foreground">{verb[f.kind]}</span>
+                <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
               )}
-              <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-muted-foreground">{time(f.at)}</span>
-            </div>
-            {f.text && (
-              <div className={cn('ml-5 line-clamp-2 text-[11.5px] text-muted-foreground', f.status === 'failed' && 'text-destructive/90')} title={f.text}>
-                {f.kind !== 'stopped' && <span className="text-muted-foreground/70">{verb[f.kind]}: </span>}
-                {f.text}
-              </div>
+              <span className={cn('truncate', routine ? 'text-muted-foreground' : 'font-medium text-foreground')}>{f.to}</span>
+            </>
+          ) : (
+            <span className={cn('truncate', flagged ? 'text-foreground' : 'text-muted-foreground')}>{verb[f.kind]}</span>
+          )}
+          <span className="ml-auto shrink-0 pl-1 text-[10.5px] tabular-nums text-muted-foreground" title={fullTime(f.at)}>{shortTime(f.at)}</span>
+        </div>
+        {f.text && (
+          <div
+            className={cn(
+              'ml-5',
+              routine ? 'line-clamp-1 text-[11px] text-muted-foreground/80' : 'line-clamp-2 text-[11.5px] text-muted-foreground',
+              t === 'attention' && 'text-destructive/90',
+              t === 'amber' && 'text-needs'
             )}
-          </motion.li>
-        ))}
-      </AnimatePresence>
+            title={f.text}
+          >
+            {f.kind !== 'stopped' && !(grouped && !flagged && f.to) && <span className={flagged ? 'opacity-70' : 'text-muted-foreground/70'}>{verb[f.kind]}: </span>}
+            {f.text}
+          </div>
+        )}
+      </motion.li>
+    )
+  })
+  return (
+    <ul className="px-2 py-1.5">
+      <AnimatePresence initial={false}>{rows}</AnimatePresence>
     </ul>
   )
 }
