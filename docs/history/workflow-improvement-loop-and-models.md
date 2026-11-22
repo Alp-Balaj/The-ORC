@@ -90,3 +90,26 @@ Team lead area: backlog queue, models per role, plan-usage budget, then six roun
   `<task-notification>`.
 - **Not verified live (no billed runs):** the advisor actually turning on, the status-line POST in a
   real session, `rate_limits` on the owner's plan, auto-stop timing, and the Run app restore.
+
+## CodeGraph index in worktrees (follow-up)
+
+- **`src/main/codegraph.ts` `shareCodegraph(repo, worktree)`:**
+  - **When:** called after `addWorktree` (each worker) and after `ensureIntegration` creates
+    `_integration`.
+  - **What it copies:** `<repo>/.codegraph/` into the worktree, never a symlink. The daemon's runtime
+    files and `-shm` are skipped; the db and its `-wal` are copied together.
+  - **Then:** it starts `codegraph sync <worktree>` in the background (detached, killed after 120 s,
+    errors and a missing binary ignored).
+  - **Launch delay:** the copy is raced against 2 s, so a launch never waits longer.
+  - **Skipped silently** when there is no `.codegraph/`.
+- **Never committed:** `ensureOrcExcluded` adds an unanchored `.codegraph/` line to the shared
+  `.git/info/exclude`. `ensureIntegration` now calls it too. This repo's `.gitignore` lists
+  `.codegraph/`.
+
+### Facts
+
+- **CodeGraph 1.6.4 stores paths relative to the project root and tracks files by content hash,** so a
+  copied index is valid as is. `codegraph sync` is the incremental update; `index` is a full rebuild.
+- **Without a copy, a worktree silently answers from the main checkout's index,** which may be a
+  different branch: CodeGraph walks up to the nearest `.codegraph/`.
+- **The background sync has not run yet,** because codegraph isn't installed.

@@ -1,6 +1,8 @@
 import { execFile, execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { shareCodegraph } from './codegraph.ts'
+import { ensureOrcExcluded } from './git-worktrees.ts'
 
 /** Git for missions. The app owns git: agents never commit. Every call in one repository is
  *  serialized (two workers finishing at once would otherwise race on index locks), times
@@ -81,9 +83,11 @@ export async function ensureIntegration(repo: string, mission: string, base: str
   return serialized(repo, async () => {
     const path = integrationPath(repo, mission)
     if (!existsSync(path)) {
+      await ensureOrcExcluded(repo)
       const exists = await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${integrationBranch(mission)}`], { allowFail: true })
       if (exists.code === 0) await git(repo, ['worktree', 'add', '-q', path, integrationBranch(mission)])
       else await git(repo, ['worktree', 'add', '-q', '-b', integrationBranch(mission), path, base])
+      await shareCodegraph(repo, path)
     }
     return path
   })

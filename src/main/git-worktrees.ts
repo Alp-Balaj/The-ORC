@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { shareCodegraph } from './codegraph.ts'
 
 const run = promisify(execFile)
 
@@ -28,8 +29,10 @@ export async function ensureOrcExcluded(repo: string): Promise<void> {
   const exclude = resolve(repo, commonDir, 'info', 'exclude')
   await mkdir(resolve(repo, commonDir, 'info'), { recursive: true })
   const existing = await readFile(exclude, 'utf8').catch(() => '')
-  if (!existing.split('\n').includes('/.orc/')) {
-    await appendFile(exclude, `${existing.endsWith('\n') || existing === '' ? '' : '\n'}/.orc/\n`)
+  // .codegraph/ is unanchored so it matches in every worktree (each gets its own index copy).
+  const missing = ['/.orc/', '.codegraph/'].filter((line) => !existing.split('\n').includes(line))
+  if (missing.length) {
+    await appendFile(exclude, `${existing.endsWith('\n') || existing === '' ? '' : '\n'}${missing.join('\n')}\n`)
   }
 }
 
@@ -48,6 +51,7 @@ export async function addWorktree(
   const path = join(repo, '.orc', 'worktrees', mission, agent)
   const branch = `orc/${mission}/${agent}`
   await git(repo, 'worktree', 'add', '-b', branch, path, base)
+  await shareCodegraph(repo, path)
   return { path, branch }
 }
 
