@@ -22,6 +22,12 @@ interface Chunk {
 }
 
 const RECORD_FILE = /^(\d{4}-\d{2}-\d{2}) - (.+)\.md$/
+/** Recency boost for records (docs keep plain bm25): score = -bm25 * (1 + RECORD_BOOST) * decay,
+ *  decay = DECAY_FLOOR + (1 - DECAY_FLOOR) * 0.5^(ageDays / HALF_LIFE_DAYS). */
+const RECORD_BOOST = 0.4
+const DECAY_FLOOR = 0.7
+const HALF_LIFE_DAYS = 14
+const DAY_MS = 86_400_000
 const SPLIT_AT = 4000
 const PIECE = 2000
 
@@ -65,19 +71,27 @@ export class HistoryIndex {
 
       const where = prefixes.map(() => 'substr(path, 1, ?) = ?').join(' OR ')
       const args = prefixes.flatMap((p) => [p.length, p])
-      const rows = db
+      const candidates = db
         .prepare(
-          `SELECT kind, label, date, path, snippet(chunks, 1, '', '', '…', 24) AS snip
+          `SELECT kind, label, date, path, snippet(chunks, 1, '', '', '…', 24) AS snip,
+                  bm25(chunks, 4.0, 1.0, 0, 0, 0, 0) AS rank
            FROM chunks WHERE chunks MATCH ? AND (${where})
-           ORDER BY bm25(chunks, 4.0, 1.0, 0, 0, 0, 0) LIMIT ?`
+           ORDER BY rank LIMIT ?`
         )
-        .all(terms.map((t) => `"${t}"`).join(' OR '), ...args, limit) as unknown as {
+        .all(terms.map((t) => `"${t}"`).join(' OR '), ...args, Math.max(50, limit * 4)) as unknown as {
         kind: string
         label: string
         date: string
         path: string
         snip: string
+        rank: number
       }[]
+      const now = Date.now()
+      const rows = candidates
+        .map((r) => ({ r, score: -r.rank * (r.kind === 'record' ? recencyFactor(r.date, now) : 1) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map((x) => x.r)
 
       const scope = recordsDir ? 'records + docs' : 'docs only, no records folder'
       const q = o.query.trim().replace(/\s+/g, ' ')
@@ -170,6 +184,14 @@ export class HistoryIndex {
     }
     this.lastIndexed = changed
   }
+}
+
+/** Multiplier for a record section dated `date` ("YYYY-MM-DD[ HH:MM]", local time). */
+function recencyFactor(date: string, now: number): number {
+  const t = new Date(date.length > 10 ? date.replace(' ', 'T') : `${date}T00:00`).getTime()
+  const ageDays = Number.isFinite(t) ? Math.max(0, (now - t) / DAY_MS) : Infinity
+  const decay = DECAY_FLOOR + (1 - DECAY_FLOOR) * 0.5 ** (ageDays / HALF_LIFE_DAYS)
+  return (1 + RECORD_BOOST) * decay
 }
 
 /** Free text → safe FTS5 terms: words only (FTS syntax characters dropped), deduped, capped. */
