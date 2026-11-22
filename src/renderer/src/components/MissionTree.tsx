@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
@@ -175,7 +175,7 @@ function AutoFit({ shape }: { shape: string }): null {
  *  lead's workers in a column under it, finished workers folded into a "+N done" chip. With
  *  `showMessages`, the latest messages between agents are drawn as dashed edges (red when
  *  Claude Code said "not sent"). */
-export function MissionTree({ agents, feed, selected, onSelect, showMessages }: {
+function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
   agents: AgentView[]
   feed: FeedEntry[]
   selected: string | null
@@ -345,3 +345,6 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
     </ReactFlowProvider>
   )
 }
+
+/** Memoized: the App re-renders on every push; the tree only needs the ones that change it. */
+export const MissionTree = memo(MissionTreeView)

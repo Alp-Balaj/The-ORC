@@ -136,6 +136,8 @@ export class Missions implements ControlHandlers {
   private controlPort = 0
   private feedSeq = 0
   private emitTimer: ReturnType<typeof setTimeout> | null = null
+  /** The last views sent to the renderer, serialized: an identical update is not sent again. */
+  private lastViews = ''
   /** Most agents one mission may have, coordinator included (M4 makes this per space). */
   maxAgentsPerMission = 8
   /** How a session is started. Tests swap in a fake command. */
@@ -1311,12 +1313,17 @@ export class Missions implements ControlHandlers {
     this.emit()
   }
 
-  /** Coalesces bursts of hook events into one renderer update. */
+  /** Coalesces bursts of hook events into one renderer update, and skips the update when the
+   *  views are the same as the last one sent. */
   private emit(): void {
     if (this.emitTimer) return
     this.emitTimer = setTimeout(() => {
       this.emitTimer = null
-      this.changed(this.views())
+      const views = this.views()
+      const json = JSON.stringify(views)
+      if (json === this.lastViews) return
+      this.lastViews = json
+      this.changed(views)
     }, 30)
   }
 }
