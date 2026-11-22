@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
           <p className="mt-2 text-[13px] text-muted-foreground">
             Your sessions are still running: they live in the app's main process, not in this window. Reloading reconnects to them.
           </p>
-          <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-background p-2 font-mono text-[11px] text-muted-foreground">{String(this.state.error.stack ?? this.state.error)}</pre>
+          <pre className="mt-3 max-h-40 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-[11px] text-muted-foreground">{String(this.state.error.stack ?? this.state.error)}</pre>
           <Button className="mt-3" onClick={() => location.reload()}><RotateCcw /> Reload the window</Button>
         </div>
       </div>

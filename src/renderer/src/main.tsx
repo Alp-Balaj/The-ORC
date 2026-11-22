@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client'
+import '@fontsource-variable/inter'
 import '@xterm/xterm/css/xterm.css'
 import './app.css'
 import { App } from './App'

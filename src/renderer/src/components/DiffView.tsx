@@ -68,7 +68,7 @@ function splitPath(p: string): [string, string] {
   return i < 0 ? ['', p] : [p.slice(0, i + 1), p.slice(i + 1)]
 }
 
-const gutter = 'w-8 shrink-0 select-none pr-1.5 text-right tabular-nums text-muted-foreground/60'
+const gutter = 'w-8 shrink-0 select-none pr-1.5 text-right tabular-nums text-faint'
 
 /** Read-only diff: a file list and the unified patch, one file at a time or all. */
 export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
@@ -78,13 +78,13 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
   const shown = file ? sections.filter((s) => s.path === file || s.newPath === file) : sections
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border" data-testid="diff">
-      <div className="hidden min-[1600px]:flex w-52 shrink-0 flex-col overflow-y-auto border-r bg-panel pb-1">
-        <div className="flex items-center px-3 pt-2.5 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border" data-testid="diff">
+      <div className="hidden min-[1600px]:flex w-52 shrink-0 flex-col overflow-y-auto border-r border-border bg-background pb-1">
+        <div className="flex items-center px-3 pt-2.5 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">
           Files <span className="ml-auto tabular-nums normal-case">{diff.files.length}</span>
         </div>
         <button
-          className={cn('mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1.5 text-left text-[12px] hover:bg-accent', !file && 'bg-accent shadow-[inset_2px_0_0] shadow-primary')}
+          className={cn('mx-1 flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', !file && 'bg-selected text-foreground')}
           onClick={() => setFile(null)}
         >
           <FileDiff className="size-3.5 text-muted-foreground" /> All files
@@ -96,12 +96,12 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
               key={f.path}
               data-testid="diff-file"
               title={f.path}
-              className={cn('mx-1 flex min-w-0 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left font-mono text-[11.5px] hover:bg-accent', file === f.path && 'bg-accent shadow-[inset_2px_0_0] shadow-primary')}
+              className={cn('mx-1 flex min-w-0 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left font-mono text-[12px] transition-colors hover:bg-accent', file === f.path && 'bg-selected')}
               onClick={() => setFile(f.path)}
             >
               <span className="flex min-w-0 flex-1 flex-col leading-tight">
                 <span className="truncate text-foreground">{name}</span>
-                {dir && <span className="truncate text-[10.5px] text-muted-foreground">{dir}</span>}
+                {dir && <span className="truncate text-[10.5px] text-faint">{dir}</span>}
               </span>
               <span className="shrink-0 text-[10.5px] tabular-nums text-working">+{f.added}</span>
               <span className="shrink-0 text-[10.5px] tabular-nums text-destructive">−{f.removed}</span>
@@ -109,10 +109,10 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
           )
         })}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <div className="border-b bg-panel px-2 py-1.5 text-[12px] min-[1600px]:hidden">
+      <div className="flex min-w-0 flex-1 flex-col bg-panel">
+      <div className="border-b border-border bg-background px-2 py-1.5 text-[12px] min-[1600px]:hidden">
         <select
-          className="max-w-full truncate rounded-md border border-input bg-background px-2 py-1 font-mono text-[12px]"
+          className="max-w-full truncate rounded-md border border-input bg-panel px-2 py-1 font-mono text-[12px] text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           value={file ?? ''}
           onChange={(e) => setFile(e.target.value || null)}
         >
@@ -131,14 +131,14 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
               const st = stats.get(s.path) ?? stats.get(s.newPath)
               const [dir, name] = splitPath(s.newPath)
               return (
-                <div key={s.path} className="rounded-md border">
-                  <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-md border-b bg-card px-3 py-1.5">
+                <div key={s.path} className="rounded-md border border-border">
+                  <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-md border-b border-border bg-card px-3 py-1.5">
                     <span className="whitespace-pre">
                       {s.label === 'renamed' && <span className="text-muted-foreground">{s.path} → </span>}
-                      <span className="text-muted-foreground">{dir}</span>
-                      <span className="text-foreground">{name}</span>
+                      <span className="text-faint">{dir}</span>
+                      <span className="font-medium text-foreground">{name}</span>
                     </span>
-                    {s.label && <span className="rounded-sm border px-1.5 text-[10.5px] text-muted-foreground">{s.label}</span>}
+                    {s.label && <span className="rounded-sm border border-border-strong px-1.5 text-[10.5px] text-muted-foreground">{s.label}</span>}
                     <span className="ml-auto pl-4 tabular-nums text-working">+{st?.added ?? s.added}</span>
                     <span className="tabular-nums text-destructive">−{st?.removed ?? s.removed}</span>
                   </div>
@@ -147,15 +147,15 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
                       r.kind === 'hunk' ? (
                         <div key={i} className="whitespace-pre bg-done/5 px-3 py-0.5 text-[11px] text-done/80">{r.text}</div>
                       ) : r.kind === 'note' ? (
-                        <div key={i} className="whitespace-pre px-3 py-1 text-muted-foreground">{r.text}</div>
+                        <div key={i} className="whitespace-pre px-3 py-1 text-faint">{r.text}</div>
                       ) : (
                         <div key={i} className={cn('flex', r.kind === 'add' && 'bg-working/10', r.kind === 'del' && 'bg-destructive/10')}>
-                          <span className={cn(gutter, r.kind === 'add' && 'bg-working/15', r.kind === 'del' && 'bg-destructive/15')}>{r.old ?? ''}</span>
-                          <span className={cn(gutter, r.kind === 'add' && 'bg-working/15', r.kind === 'del' && 'bg-destructive/15')}>{r.new ?? ''}</span>
+                          <span className={cn(gutter, r.kind === 'add' && 'bg-working/15 text-working/70', r.kind === 'del' && 'bg-destructive/15 text-destructive/70')}>{r.old ?? ''}</span>
+                          <span className={cn(gutter, r.kind === 'add' && 'bg-working/15 text-working/70', r.kind === 'del' && 'bg-destructive/15 text-destructive/70')}>{r.new ?? ''}</span>
                           <span className={cn('w-5 shrink-0 select-none text-center', r.kind === 'add' && 'text-working', r.kind === 'del' && 'text-destructive')}>
                             {r.kind === 'add' ? '+' : r.kind === 'del' ? '−' : ''}
                           </span>
-                          <span className="whitespace-pre pr-4">{r.text || ' '}</span>
+                          <span className="whitespace-pre pr-4 text-foreground/90">{r.text || ' '}</span>
                         </div>
                       )
                     )}

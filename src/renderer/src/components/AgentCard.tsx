@@ -24,31 +24,31 @@ export const statusLabel: Record<AgentStatus, string> = {
 }
 
 const dotClass: Record<AgentStatus, string> = {
-  starting: 'bg-muted-foreground/60',
-  working: 'bg-working shadow-[0_0_8px_var(--color-working)] animate-orc-pulse',
-  idle: 'bg-muted-foreground/50',
-  'needs-you': 'bg-needs shadow-[0_0_8px_var(--color-needs)]',
-  done: 'bg-done/70',
-  exited: 'bg-exited'
+  starting: 'bg-faint',
+  working: 'bg-working animate-orc-pulse',
+  idle: 'bg-faint',
+  'needs-you': 'bg-needs shadow-[0_0_0_3px] shadow-needs/20',
+  done: 'bg-done',
+  exited: 'bg-exited-foreground/60'
 }
 
 const labelClass: Record<AgentStatus, string> = {
   starting: 'text-muted-foreground',
   working: 'text-working',
   idle: 'text-muted-foreground',
-  'needs-you': 'rounded bg-needs px-1.5 font-semibold leading-4 text-background',
+  'needs-you': 'rounded bg-needs/15 px-1.5 font-medium leading-4 text-needs ring-1 ring-inset ring-needs/30',
   done: 'text-done',
   exited: 'text-exited-foreground'
 }
 
 /** Card surface per status (when not selected): needs-you is loudest, done and exited recede. */
 const cardClass: Record<AgentStatus, string> = {
-  starting: 'bg-card/50',
-  working: 'bg-card',
-  idle: 'bg-card/50',
-  'needs-you': 'border-needs/50 bg-needs/[0.07] hover:border-needs/70',
-  done: 'border-transparent bg-transparent hover:bg-card/40',
-  exited: 'border-transparent bg-transparent hover:bg-card/40'
+  starting: 'border-border bg-card hover:border-border-strong',
+  working: 'border-border bg-card hover:border-border-strong',
+  idle: 'border-border bg-card hover:border-border-strong',
+  'needs-you': 'border-needs/40 bg-card hover:border-needs/60',
+  done: 'border-transparent bg-transparent hover:border-border hover:bg-card',
+  exited: 'border-transparent bg-transparent hover:border-border hover:bg-card'
 }
 
 export function StatusDot({ status, className }: { status: AgentStatus; className?: string }): React.JSX.Element {
@@ -79,8 +79,8 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
       data-status={a.status}
       onClick={onSelect}
       className={cn(
-        'group relative cursor-pointer rounded-lg border px-2.5 py-2 transition-colors hover:border-input',
-        selected ? 'border-primary/60 bg-accent' : cardClass[a.status]
+        'group relative cursor-pointer rounded-lg border px-2.5 py-2 transition-colors',
+        selected ? 'border-ring/50 bg-selected' : cardClass[a.status]
       )}
     >
       {a.status === 'needs-you' && !selected && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-needs" />}
@@ -88,7 +88,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
       <div className={cn('min-w-0 transition-opacity', !selected && (a.status === 'done' || a.status === 'exited') && 'opacity-70 group-hover:opacity-100')}>
       <div className="flex min-w-0 items-center gap-2">
         <StatusDot status={a.status} />
-        <span className={cn('min-w-0 truncate text-[13px] font-medium', a.status === 'idle' || a.status === 'starting' ? 'text-foreground/80' : 'text-foreground')}>{a.name}</span>
+        <span className={cn('min-w-0 truncate text-[13px] font-medium', a.status === 'idle' || a.status === 'starting' ? 'text-muted-foreground' : 'text-foreground')}>{a.name}</span>
         <span className={cn('ml-auto shrink-0 text-[11px]', labelClass[a.status])}>{statusLabel[a.status]}</span>
         {onStop && !confirming && (
           <button
@@ -96,7 +96,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
             aria-label={`Stop ${a.name}`}
             title="Stop this worker"
             className={cn(
-              'grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100',
+              'grid size-5 shrink-0 cursor-pointer place-items-center rounded text-faint opacity-0 transition-[opacity,color] hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none group-hover:opacity-100',
               selected && 'opacity-100'
             )}
             onClick={(e) => {
@@ -112,7 +112,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
             data-testid="dismiss-agent"
             aria-label={`Remove ${a.name}`}
             title="Remove this exited worker from the cards and tree. Its report, worktree and branch are kept."
-            className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-faint hover:bg-destructive/10 hover:text-destructive focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
             onClick={(e) => {
               e.stopPropagation()
               onDismiss()
@@ -127,20 +127,19 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
           data-testid="stop-worker-confirm"
           role="alertdialog"
           aria-label={`Stop ${a.name}?`}
-          className="mt-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5"
+          className="mt-1.5 rounded-md border border-destructive/30 bg-muted px-2 py-1.5"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.key === 'Escape' && setConfirming(false)}
         >
           <div className="text-[12px] font-medium text-foreground">Stop {a.name}?</div>
-          <div className="mt-0.5 text-[11.5px] text-muted-foreground">{stopConsequence(a)}</div>
+          <div className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">{stopConsequence(a)}</div>
           <div className="mt-1.5 flex justify-end gap-1.5">
-            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" autoFocus onClick={() => setConfirming(false)}>
+            <Button size="xs" variant="ghost" autoFocus onClick={() => setConfirming(false)}>
               Keep running
             </Button>
             <Button
-              size="sm"
+              size="xs"
               variant="destructive"
-              className="h-6 px-2 text-[11px]"
               data-testid="stop-worker-yes"
               disabled={stopping}
               onClick={() => {
@@ -158,7 +157,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
         </div>
       )}
       <div className="mt-1 truncate pl-4 font-mono text-[11.5px] text-muted-foreground" title={a.activity}>{a.activity}</div>
-      <div className="mt-0.5 flex min-w-0 items-center gap-1.5 pl-4 text-[11px] text-muted-foreground/80">
+      <div className="mt-0.5 flex min-w-0 items-center gap-1.5 pl-4 text-[11px] text-faint">
         {a.branch && a.role === 'worker' && (
           <span className="flex min-w-0 items-center gap-1" title={a.branch}>
             <GitBranch className="size-3 shrink-0" />
@@ -169,12 +168,12 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
         {a.tokens > 0 && <span className="shrink-0 tabular-nums" title={`${a.tokens} tokens · context ${a.contextTokens}`}>{formatTokens(a.tokens)} tok</span>}
       </div>
       {a.lastInstructionBy && (
-        <div className="mt-0.5 truncate pl-4 text-[11px] text-muted-foreground/80" data-testid="last-instruction">
-          last instruction: <span className={a.lastInstructionBy === 'you' ? 'text-foreground' : ''}>{a.lastInstructionBy}</span>, {ago(a.lastInstructionAt)}
+        <div className="mt-0.5 truncate pl-4 text-[11px] text-faint" data-testid="last-instruction">
+          last instruction: <span className={a.lastInstructionBy === 'you' ? 'text-muted-foreground' : ''}>{a.lastInstructionBy}</span>, {ago(a.lastInstructionAt)}
         </div>
       )}
       {a.merge === 'merged' && (
-        <div className="mt-1 flex items-center gap-1 pl-4 text-[11px] text-working" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3" /> merged into integration</div>
+        <div className="mt-1 flex items-center gap-1 pl-4 text-[11px] text-muted-foreground" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3 text-working" /> merged into integration</div>
       )}
       {a.merge === 'conflict' && (
         <div className="mt-1 flex min-w-0 items-center gap-1 pl-4 text-[11px] text-destructive" data-testid="merge-state" data-merge="conflict" title={a.conflictFiles.join(', ')}><Swords className="size-3 shrink-0" /> <span className="truncate">conflict: {a.conflictFiles.join(', ')}</span></div>
@@ -182,7 +181,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
       {a.merge === 'review' && (
         <button
           data-testid="review-worker"
-          className="mt-1.5 ml-4 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-center gap-1 rounded-md border border-needs/40 bg-needs/10 py-1 text-[12px] text-needs hover:bg-needs/20"
+          className="mt-1.5 ml-4 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-center gap-1 rounded-md border border-needs/40 bg-needs/10 py-1 text-[12px] font-medium text-needs transition-colors hover:border-needs/60 hover:bg-needs/15 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
           onClick={(e) => {
             e.stopPropagation()
             onReview?.()
@@ -192,7 +191,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
         </button>
       )}
       {a.question && (
-        <div className="mt-1.5 ml-4 flex min-w-0 gap-1.5 rounded-md bg-needs/10 px-2 py-1 text-[12px] leading-snug text-foreground/90">
+        <div className="mt-1.5 ml-4 flex min-w-0 gap-1.5 rounded-md border border-needs/20 bg-needs/5 px-2 py-1 text-[12px] leading-snug text-foreground">
           <CircleHelp className="mt-px size-3.5 shrink-0 text-needs" />
           <span className="min-w-0 break-words">{a.question}</span>
         </div>

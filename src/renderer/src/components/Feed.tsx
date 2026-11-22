@@ -73,7 +73,7 @@ const GAP_MS = 10 * 60_000
 export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
   const items = [...feed].reverse().slice(0, 80)
   if (items.length === 0) {
-    return <div className="px-3 py-4 text-[12px] text-muted-foreground">Spawns, messages and reports appear here.</div>
+    return <div className="px-3 py-4 text-[12px] text-faint">Spawns, messages and reports appear here.</div>
   }
   const rows: React.JSX.Element[] = []
   items.forEach((f, i) => {
@@ -82,8 +82,8 @@ export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
     if (prev && gap > GAP_MS) {
       rows.push(
         <li key={`gap-${f.id}`} aria-hidden className="flex items-center gap-2 px-1.5 pb-0.5 pt-2.5">
-          <span className="text-[10px] tabular-nums text-muted-foreground/70">{shortTime(prev.at)}</span>
-          <span className="h-px flex-1 bg-border/60" />
+          <span className="text-[10px] tabular-nums text-faint">{shortTime(prev.at)}</span>
+          <span className="h-px flex-1 bg-border" />
         </li>
       )
     }
@@ -102,9 +102,9 @@ export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
         data-kind={f.kind}
         data-status={f.status ?? ''}
         className={cn(
-          'rounded-md px-1.5 pb-1 hover:bg-accent/50',
+          'rounded-md px-1.5 pb-1 transition-colors hover:bg-accent',
           grouped ? 'pt-0' : 'pt-1',
-          t === 'attention' && 'my-0.5 rounded-l-sm border-l-2 border-destructive bg-destructive/10 pt-1 hover:bg-destructive/15',
+          t === 'attention' && 'my-0.5 rounded-l-sm border-l-2 border-destructive bg-destructive/5 pt-1 hover:bg-destructive/10',
           t === 'amber' && 'my-0.5 rounded-l-sm border-l-2 border-needs bg-needs/10 pt-1 hover:bg-needs/15'
         )}
       >
@@ -116,26 +116,26 @@ export function Feed({ feed }: { feed: FeedEntry[] }): React.JSX.Element {
               {grouped && !flagged ? (
                 <span className="shrink-0 text-muted-foreground">{verb[f.kind]}</span>
               ) : (
-                <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
+                <ArrowRight className="size-3 shrink-0 text-faint" />
               )}
               <span className={cn('truncate', routine ? 'text-muted-foreground' : 'font-medium text-foreground')}>{f.to}</span>
             </>
           ) : (
             <span className={cn('truncate', flagged ? 'text-foreground' : 'text-muted-foreground')}>{verb[f.kind]}</span>
           )}
-          <span className="ml-auto shrink-0 pl-1 text-[10.5px] tabular-nums text-muted-foreground" title={fullTime(f.at)}>{shortTime(f.at)}</span>
+          <span className="ml-auto shrink-0 pl-1 text-[10.5px] tabular-nums text-faint" title={fullTime(f.at)}>{shortTime(f.at)}</span>
         </div>
         {f.text && (
           <div
             className={cn(
               'ml-5',
-              routine ? 'line-clamp-1 text-[11px] text-muted-foreground/80' : 'line-clamp-2 text-[11.5px] text-muted-foreground',
+              routine ? 'line-clamp-1 text-[11px] text-faint' : 'line-clamp-2 text-[11.5px] text-muted-foreground',
               t === 'attention' && 'text-destructive/90',
               t === 'amber' && 'text-needs'
             )}
             title={f.text}
           >
-            {f.kind !== 'stopped' && !(grouped && !flagged && f.to) && <span className={flagged ? 'opacity-70' : 'text-muted-foreground/70'}>{verb[f.kind]}: </span>}
+            {f.kind !== 'stopped' && !(grouped && !flagged && f.to) && <span className={flagged ? 'opacity-70' : 'text-faint'}>{verb[f.kind]}: </span>}
             {f.text}
           </div>
         )}

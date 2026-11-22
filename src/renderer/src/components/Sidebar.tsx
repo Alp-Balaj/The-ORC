@@ -144,9 +144,9 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
     })
 
   return (
-    <aside className="flex h-full min-h-0 flex-col border-r bg-panel">
+    <aside className="flex h-full min-h-0 flex-col border-r bg-background">
       <div className="flex items-center justify-between px-3 pb-2 pt-3">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Spaces</div>
+        <div className="text-[11px] font-medium uppercase tracking-wide text-faint">Spaces</div>
         <Button size="sm" variant="ghost" className="-mr-1.5 h-7 px-2 text-muted-foreground hover:text-foreground" onClick={openRepo} title="Open a repository as a space" data-testid="open-repo">
           <FolderPlus /> Open repo
         </Button>
@@ -154,7 +154,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
       {error && <div className="px-3 pb-2 text-[12px] text-destructive">{error}</div>}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {roots.length === 0 && (
-          <div className="mx-1 mt-6 rounded-lg border border-dashed p-4 text-center text-[12px] leading-relaxed text-muted-foreground">
+          <div className="mx-1 mt-6 rounded-lg border border-dashed border-border-strong p-4 text-center text-[12px] leading-relaxed text-muted-foreground">
             Open a git repository to make it a space. Each space holds missions; each mission has a coordinator you talk to.
           </div>
         )}
@@ -166,15 +166,15 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
           const live = ms.filter((m) => m.state === 'running').flatMap((m) => m.agents).filter((a) => a.status !== 'done' && a.status !== 'exited').length
           return (
             <div key={root} className="mb-1.5" data-testid="space" data-space={name}>
-              <div className="group flex h-7 items-center gap-1 rounded-md px-1 hover:bg-accent/50">
+              <div className="group flex h-7 items-center gap-1 rounded-md px-1 transition-colors hover:bg-accent">
                 <button className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left text-[13px]" onClick={() => toggle(root)} title={root}>
                   {open ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
                   <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 truncate font-medium">{name}</span>
-                  {ms.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{ms.length}</span>}
+                  {ms.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-faint">{ms.length}</span>}
                 </button>
                 {space && (
-                  <span className={cn('shrink-0 px-0.5 text-[10.5px] tabular-nums text-muted-foreground', live >= space.maxLive && 'text-needs')} title="Live agents in this space / most allowed" data-testid="live-count">
+                  <span className={cn('shrink-0 px-0.5 text-[10.5px] tabular-nums text-faint', live >= space.maxLive && 'font-medium text-needs')} title="Live agents in this space / most allowed" data-testid="live-count">
                     {live}/{space.maxLive}
                   </span>
                 )}
@@ -203,7 +203,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                 )}
               </AnimatePresence>
               {open && ms.length > 0 && (
-              <div className="ml-2.5 mt-0.5 space-y-px border-l border-border/60 pl-1.5">
+              <div className="ml-2.5 mt-0.5 space-y-px border-l border-border pl-1.5">
               {ms.map((m) => {
                 const active = m.id === selectedMission
                 const expanded = active && !closedMissions.has(m.id)
@@ -225,22 +225,22 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                       aria-expanded={expanded}
                       title={expanded ? 'Hide its agents' : 'Show its agents'}
                       className={cn(
-                        'flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] text-foreground/85 transition-colors hover:bg-accent/50 hover:text-foreground',
-                        active && 'bg-accent font-medium text-foreground hover:bg-accent'
+                        'flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                        active && 'bg-selected text-foreground hover:bg-selected'
                       )}
                     >
                       {expanded ? <ChevronDown className="size-3 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3 shrink-0 text-muted-foreground" />}
-                      <span className={cn('min-w-0 truncate', m.state === 'stopped' && 'text-muted-foreground line-through')}>{m.name}</span>
+                      <span className={cn('min-w-0 truncate', m.state === 'stopped' && 'text-faint line-through')}>{m.name}</span>
                       {appRun?.missionId === m.id && appRun.status === 'running' && (
                         <MonitorPlay className="size-3 shrink-0 text-working" aria-label="Its app is running" data-testid="app-running-marker" />
                       )}
                       <span className="ml-auto flex shrink-0 items-center gap-1.5">
                         {needs > 0 ? (
-                          <span className="rounded-full bg-needs px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-background" title={`${needs} agent${needs === 1 ? '' : 's'} need${needs === 1 ? 's' : ''} you`}>{needs}</span>
+                          <span className="rounded-full bg-needs px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-background shadow-[0_0_0_3px] shadow-needs/20" title={`${needs} agent${needs === 1 ? '' : 's'} need${needs === 1 ? 's' : ''} you`}>{needs}</span>
                         ) : working ? (
                           <span title="working" className="flex items-center"><StatusDot status="working" className="size-1.5" /></span>
                         ) : null}
-                        {m.tokens > 0 && <span className="text-[10.5px] font-normal tabular-nums text-muted-foreground">{formatTokens(m.tokens)}</span>}
+                        {m.tokens > 0 && <span className="text-[10.5px] font-normal tabular-nums text-faint">{formatTokens(m.tokens)}</span>}
                       </span>
                     </button>
                     {expanded && (
