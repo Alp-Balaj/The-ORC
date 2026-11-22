@@ -6,7 +6,7 @@ export const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
   { id: 'blue', label: 'Blue', swatch: '#3d7bf0' },
   { id: 'violet', label: 'Violet', swatch: '#8b5cf6' },
   { id: 'green', label: 'Green', swatch: '#2fb67c' },
-  { id: 'amber', label: 'Amber', swatch: '#f5a524' },
+  { id: 'amber', label: 'Amber', swatch: '#e8c13a' },
   { id: 'rose', label: 'Rose', swatch: '#e8456f' },
   { id: 'teal', label: 'Teal', swatch: '#14b8a6' }
 ]
