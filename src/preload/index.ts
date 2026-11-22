@@ -1,7 +1,7 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
 import type { AppRunView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
 
-export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number }
+export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; notifications?: boolean }
 
 function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const fn = (_e: unknown, ...args: unknown[]): void => cb(...(args as A))
@@ -60,6 +60,9 @@ const api = {
   onPlanUsage: (cb: (u: PlanUsageView | null) => void) => listen<[PlanUsageView | null]>('usage:changed', cb),
   replay: (id: string): Promise<string> => ipcRenderer.invoke('terminal:replay', id),
   copyText: (text: string): void => clipboard.writeText(text),
+  /** The mission/agent on screen, so notifications skip what the owner is already looking at. */
+  setSelection: (missionId: string | null, terminalId: string | null): void => ipcRenderer.send('ui:selection', missionId, terminalId),
+  onNotifySelect: (cb: (missionId: string, terminalId: string) => void) => listen<[string, string]>('notify:select', cb),
   setNativeTheme: (pref: 'light' | 'dark' | 'system'): void => ipcRenderer.send('theme:set-native', pref),
   write: (id: string, data: string): void => ipcRenderer.send('terminal:write', id, data),
   resize: (id: string, cols: number, rows: number): void =>

@@ -143,6 +143,8 @@ export interface SpaceView {
   usageThreshold: number
   /** Minutes a finished, merged lead may sit idle before The ORC stops it. 0 = off. Default 15. */
   idleStopMinutes: number
+  /** Desktop notifications and the needs-you badge for this space's missions. Default on. */
+  notifications: boolean
   /** A gate command guessed from the repo (e.g. "pnpm typecheck"), shown when gateCommand is null. */
   suggestedGate: string | null
 }
