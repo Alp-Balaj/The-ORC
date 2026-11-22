@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import type { PermissionMode, StartMissionRequest } from '../shared/types.ts'
 import type { SpacePatch } from '../preload/index.ts'
 import { ControlServer } from './control-server.ts'
+import { HistoryIndex } from './history-index.ts'
 import { renameOver } from './rename-over.ts'
 import { Missions } from './missions.ts'
 import { startStatusPoller } from './agent-status.ts'
@@ -97,6 +98,7 @@ function isOrphan(pid: number, sessionId: string): boolean {
     return false
   }
 }
+let historyIndex: HistoryIndex | null = null
 const control = new ControlServer({
   agentForToken: (t) => missions.agentForToken(t),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
@@ -104,6 +106,12 @@ const control = new ControlServer({
   askHuman: (c, q) => missions.askHuman(c, q),
   stopAgent: (c, n, r) => missions.stopAgent(c, n, r),
   proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
+  searchHistory: (c, query, limit) => {
+    const m = missions.views().find((v) => v.agents.some((a) => a.terminalId === c))
+    if (!m) return 'search_history: unknown caller (no mission found for this session).'
+    historyIndex ??= new HistoryIndex(join(smoke ?? app.getPath('userData'), 'history-index.sqlite'))
+    return historyIndex.search({ recordsDir: spaces.recordsPath(m.repoPath), repoRoot: m.repoPath, query, limit: limit ?? undefined })
+  },
   hookEvent: (c, e) => {
     // Raw payloads, so status bugs can be diagnosed from a file.
     try {
