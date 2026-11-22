@@ -1,11 +1,28 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { renameOver } from './rename-over.ts'
 import { basename } from 'node:path'
-import type { SpaceView } from '../shared/types.ts'
+import { ModelRoles, type RoleModels, type SpaceView } from '../shared/types.ts'
 import { repoRoot } from './git-worktrees.ts'
 import { defaultRecordsDir } from './records.ts'
 
 export const DefaultMaxLive = 6
+export const DefaultUsageThreshold = 80
+
+/** Known roles with a non-empty string (trimmed); an explicit null is kept for advisor only
+ *  ("no advisor"). Anything else is dropped. */
+function cleanModels(v: unknown): Partial<RoleModels> {
+  const out: Partial<RoleModels> = {}
+  if (!v || typeof v !== 'object') return out
+  for (const role of ModelRoles) {
+    const m = (v as Record<string, unknown>)[role]
+    if (typeof m === 'string' && m.trim()) out[role] = m.trim()
+    else if (m === null && role === 'advisor') out[role] = null
+  }
+  return out
+}
+
+const clampThreshold = (n: unknown): number =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.max(1, Math.min(100, Math.round(n))) : DefaultUsageThreshold
 
 interface Settings {
   gateCommand: string | null
@@ -13,6 +30,9 @@ interface Settings {
   /** Where mission records go instead of the default folder. Null: the default. */
   recordsDir: string | null
   runCommand: string | null
+  models: Partial<RoleModels>
+  /** Plan usage % at which this space's queue pauses. */
+  usageThreshold: number
 }
 
 /** The repositories the user has opened, in order, with per-space settings. Saved to a JSON
@@ -44,7 +64,9 @@ export class Spaces {
               gateCommand: typeof o.gateCommand === 'string' && o.gateCommand ? o.gateCommand : null,
               maxLive: typeof o.maxLive === 'number' && o.maxLive > 0 ? o.maxLive : DefaultMaxLive,
               recordsDir: typeof dir === 'string' && dir ? dir : null,
-              runCommand: typeof o.runCommand === 'string' && o.runCommand ? o.runCommand : null
+              runCommand: typeof o.runCommand === 'string' && o.runCommand ? o.runCommand : null,
+              models: cleanModels(o.models),
+              usageThreshold: clampThreshold(o.usageThreshold)
             })
           }
         }
@@ -53,7 +75,7 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold }
   }
 
   list(): SpaceView[] {
@@ -77,12 +99,22 @@ export class Spaces {
     return this.get(root).runCommand
   }
 
+  models(root: string): Partial<RoleModels> {
+    return this.get(root).models
+  }
+
+  usageThreshold(root: string): number {
+    return this.get(root).usageThreshold
+  }
+
   update(root: string, patch: Partial<Settings>): void {
     const next = { ...this.get(root), ...patch }
     next.gateCommand = next.gateCommand?.trim() || null
     next.recordsDir = next.recordsDir?.trim() || null
     next.runCommand = next.runCommand?.trim() || null
     next.maxLive = Math.max(1, Math.min(50, Math.round(next.maxLive) || DefaultMaxLive))
+    next.models = cleanModels(next.models)
+    next.usageThreshold = clampThreshold(next.usageThreshold)
     this.settings.set(root, next)
     this.save()
   }
