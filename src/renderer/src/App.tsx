@@ -8,6 +8,7 @@ import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScree
 import { MissionTree } from './components/MissionTree'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
+import { PlanUsageHeader } from './components/PlanUsageHeader'
 import { AccentPicker } from './components/AccentPicker'
 import { ThemeToggle } from './components/ThemeToggle'
 import { Badge } from './components/ui/badge'
@@ -506,6 +507,8 @@ export function App(): React.JSX.Element {
         ) : (
           <span className="ml-auto text-[12px] text-faint">No mission open</span>
         )}
+        <span className="h-5 w-px shrink-0 bg-border" />
+        <PlanUsageHeader warnAt={spaces.length > 0 ? Math.min(...spaces.map((s) => s.usageThreshold)) : 80} />
         <span className="h-5 w-px shrink-0 bg-border" />
         <ThemeToggle className="shrink-0" />
         <AccentPicker className="shrink-0" />
