@@ -22,6 +22,7 @@ const OrcTools = [
   'mcp__orc__ask_human',
   'mcp__orc__propose_split',
   'mcp__orc__stop_agent',
+  'mcp__orc__search_history',
   'SendMessage',
   'ListAgents'
 ]
@@ -65,6 +66,12 @@ export interface LaunchSpec {
   controlPort: number
   permissionMode: PermissionMode
   model?: string | null
+  /** Model for Agent-tool subagents (CLAUDE_CODE_SUBAGENT_MODEL, via the settings `env` key). */
+  subagentModel?: string | null
+  /** Model for the server-side advisor tool, as an alias ("fable", "opus") or a full id. */
+  advisorModel?: string | null
+  /** Status line that posts Claude Code's status JSON (rate limits etc.) to the app. Default on. */
+  statusLine?: boolean
   systemPrompt: string
   firstPrompt?: string
   /** Folders outside the session's cwd it may read without a prompt (mission records). */
@@ -86,13 +93,28 @@ function hookCommand(port: number, token: string): string {
   )
 }
 
+/** Posts the status-line stdin JSON to /hook, wrapped as an OrcStatusLine event; curl's stdout
+ *  (the app's reply, often empty) becomes the status line text. */
+function statusLineCommand(port: number, token: string): string {
+  return (
+    `{ printf '{"hook_event_name":"OrcStatusLine","status":'; cat; printf '}'; } | ` +
+    `curl -s -m 2 -X POST -H 'Authorization: Bearer ${token}' ` +
+    `-H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hook || true`
+  )
+}
+
 export function claudeArgs(spec: LaunchSpec): string[] {
   const hook = { type: 'command', command: hookCommand(spec.controlPort, spec.token) }
   const settings = {
     permissions: { allow: [...OrcTools, ...(spec.readDirs ?? []).map(readRule)], deny: DeniedGitWrites },
     hooks: Object.fromEntries(
       HookEvents.map((event) => [event, [{ matcher: '*', hooks: [hook] }]])
-    )
+    ),
+    ...(spec.subagentModel ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: spec.subagentModel } } : {}),
+    ...(spec.advisorModel ? { advisorModel: spec.advisorModel } : {}),
+    ...(spec.statusLine !== false
+      ? { statusLine: { type: 'command', command: statusLineCommand(spec.controlPort, spec.token) } }
+      : {})
   }
   const mcp = {
     mcpServers: {
@@ -126,7 +148,8 @@ export function coordinatorPrompt(mission: string, sessionName: string, repo: st
   const past = pastRecords.length
     ? [
         'Records of earlier missions in this repository (newest first) say what was built before and',
-        'why. Read the ones that look related to the request before splitting the work:',
+        'why. Before splitting the work, call `mcp__orc__search_history` with a query about the request',
+        'to find related earlier missions; Read a record file only when its snippets are not enough:',
         pastRecords.map((p) => `"${p}"`).join(', ') + '.'
       ]
     : []
@@ -179,6 +202,8 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
     `works only in the current directory, and these rules: "${SpeedRules}"`,
     'Do not call spawn_agent: your team is made of subagents.',
     'Work only inside your current directory (your own git worktree).',
+    'Before reading past mission records or project history docs, call `mcp__orc__search_history`',
+    'with a query first, and read a full file only when its snippets are not enough.',
     'Never commit, merge, push or manage branches: The ORC commits for you.',
     'Only when EVERY subagent has returned and the pieces fit together, call the',
     '`mcp__orc__report_done` tool (orc MCP server; load it with ToolSearch first if needed) with a',

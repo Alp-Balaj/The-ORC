@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { AgentView, DiffView, FeedEntry, GateView, Gating, MissionView, SplitView, StartMissionRequest, VerifierView } from '../shared/types.ts'
+import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
 import { claudeArgs, coordinatorPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
 import * as gitOps from './git-worktrees.ts'
@@ -33,7 +33,13 @@ interface Agent extends AgentView {
 export interface SavedState {
   version: 1
   savedAt: number
-  missions: (Omit<Mission, 'agents' | 'held'> & { agents: (AgentView & { transcriptPath: string | null; pid: number | null; notes: string[] })[] })[]
+  /** models/mainBranch/queueItemId are missing in states saved before 2026-11-22 (which had `model`). */
+  missions: (Omit<Mission, 'agents' | 'held' | 'models' | 'mainBranch' | 'queueItemId'> & {
+    models?: RoleModels
+    mainBranch?: string
+    queueItemId?: string | null
+    model?: string | null
+    agents: (AgentView & { transcriptPath: string | null; pid: number | null; notes: string[] })[] })[]
 }
 
 interface Mission {
@@ -42,7 +48,10 @@ interface Mission {
   repoPath: string
   baseBranch: string
   permissionMode: StartMissionRequest['permissionMode']
-  model: string | null
+  models: RoleModels
+  /** The branch Merge to main targets (baseBranch, unless stacked on another mission). */
+  mainBranch: string
+  queueItemId: string | null
   state: 'running' | 'stopped'
   createdAt: number
   agents: Map<string, Agent>
@@ -135,7 +144,9 @@ export class Missions implements ControlHandlers {
         repoPath: m.repoPath,
         baseBranch: m.baseBranch,
         permissionMode: m.permissionMode,
-        model: m.model,
+        models: m.models,
+        mainBranch: m.mainBranch,
+        queueItemId: m.queueItemId,
         state: m.state,
         createdAt: m.createdAt,
         agents,
@@ -167,13 +178,16 @@ export class Missions implements ControlHandlers {
     if ((await this.git.branchesUnder(repo, `orc/${name}/`)).length > 0) {
       throw new Error(`a mission named "${name}" ran in this repository before (its orc/${name}/… branches still exist). Pick another name.`)
     }
+    const baseBranch = req.baseBranch ?? (await this.git.currentBranch(repo))
     const mission: Mission = {
       id: randomUUID(),
       name,
       repoPath: repo,
-      baseBranch: await this.git.currentBranch(repo),
+      baseBranch,
       permissionMode: req.permissionMode,
-      model: req.model?.trim() || null,
+      models: resolveModels(this.spaceModelsFor(repo), req),
+      mainBranch: req.mainBranch ?? baseBranch,
+      queueItemId: req.queueItemId ?? null,
       state: 'running',
       createdAt: Date.now(),
       agents: new Map(),
@@ -185,7 +199,7 @@ export class Missions implements ControlHandlers {
       gate: null,
       verifier: null,
       mergedToMain: null,
-      brief: null,
+      brief: req.brief?.trim() || null,
       paused: false,
       held: []
     }
@@ -200,7 +214,9 @@ export class Missions implements ControlHandlers {
         task: '',
         cwd: repo,
         branch: mission.baseBranch,
-        systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating, this.pastRecordsFor(mission))
+        systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating, this.pastRecordsFor(mission)),
+        // Already the brief, so its UserPromptSubmit (counted as the human's) doesn't replace it.
+        firstPrompt: mission.brief ?? undefined
       })
     } catch (err) {
       // The coordinator never started: forget the mission so the name can be used again.
@@ -428,7 +444,7 @@ export class Missions implements ControlHandlers {
     this.emit()
     const r = await this.verify({
       cwd: missionGit.integrationPath(mission.repoPath, mission.name),
-      model: mission.model,
+      model: mission.models.verifier,
       brief: mission.brief,
       split: mission.split?.status === 'approved' ? mission.split : null,
       reports: [...mission.agents.values()].filter((x) => x.doneSummary).map((x) => ({ worker: x.name, summary: x.doneSummary! })),
@@ -445,28 +461,61 @@ export class Missions implements ControlHandlers {
   /** How the Verifier runs. Tests swap in a fake. */
   verify = runVerifier
 
+  /** A space's per-role models (index.ts wires this to Spaces). */
+  spaceModelsFor: (repo: string) => Partial<RoleModels> = () => ({})
+
+  /** A session's status-line input (Claude Code's JSON) → the line it shows. index.ts wires
+   *  this to the plan-usage tracker. */
+  statusLine: (status: unknown) => string | null = () => null
+
   /** The human pressed Merge to main. */
   async mergeToMain(missionId: string): Promise<{ ok: boolean; message: string }> {
     const mission = this.missions.get(missionId)
     if (!mission) return { ok: false, message: 'no such mission' }
     if (mission.merged.length === 0) return { ok: false, message: 'Nothing is merged into the integration branch yet.' }
-    const r = await this.git.mergeToMain(mission.repoPath, mission.name, mission.baseBranch)
+    const r = await this.git.mergeToMain(mission.repoPath, mission.name, mission.mainBranch)
     if (!r.ok) {
-      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merge to ${mission.baseBranch} refused: ${oneLine(r.reason)}`, status: 'failed' })
+      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merge to ${mission.mainBranch} refused: ${oneLine(r.reason)}`, status: 'failed' })
       return { ok: false, message: r.reason }
     }
-    mission.mergedToMain = { commit: r.commit, at: Date.now() }
-    this.record(mission, `Merged into ${mission.baseBranch}`, `Commit \`${r.commit}\`.\n\nSessions (reopen with \`claude --resume <id>\`):\n${[...mission.agents.values()].map((x) => `- ${x.sessionName}: \`${x.sessionId}\``).join('\n')}`)
-    this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}`, status: 'ok' })
-    // The work is in main: end the sessions, then remove worktrees and branches.
+    const at = Date.now()
+    mission.mergedToMain = { commit: r.commit, at }
+    this.record(mission, `Merged into ${mission.mainBranch}`, `Commit \`${r.commit}\`.\n\nSessions (reopen with \`claude --resume <id>\`):\n${[...mission.agents.values()].map((x) => `- ${x.sessionName}: \`${x.sessionId}\``).join('\n')}`)
+    this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merged into ${mission.mainBranch} at ${r.commit.slice(0, 8)}`, status: 'ok' })
+    // A stacked mission's merge also brings in the missions it was stacked on.
+    const chain: Mission[] = []
+    for (let base = mission.baseBranch; ;) {
+      const p = [...this.missions.values()].find((x) => x.repoPath === mission.repoPath && !x.mergedToMain && !chain.includes(x) && x !== mission && missionGit.integrationBranch(x.name) === base)
+      if (!p) break
+      chain.push(p)
+      base = p.baseBranch
+    }
+    for (const p of chain) {
+      p.mergedToMain = { commit: r.commit, at }
+      this.record(p, `Merged into ${p.mainBranch}`, `With ${mission.name}, commit \`${r.commit}\`.`)
+      this.feed(p, { kind: 'main', from: 'you', to: null, text: `merged into ${p.mainBranch} with ${mission.name} at ${r.commit.slice(0, 8)}`, status: 'ok' })
+    }
+    // Missions stacked on a branch that is about to be deleted: its content is in main now.
+    const gone = new Set([mission, ...chain].map((x) => missionGit.integrationBranch(x.name)))
+    for (const x of this.missions.values()) if (gone.has(x.baseBranch) && !x.mergedToMain) x.baseBranch = x.mainBranch
+    let keptNote = ''
+    for (const m of [mission, ...chain]) {
+      const kept = await this.endMerged(m)
+      if (m === mission && kept.length) keptNote = ` Kept (not merged): ${kept.map((x) => `${x.name} on ${x.branch}`).join(', ')}.`
+    }
+    return { ok: true, message: `Merged into ${mission.mainBranch} at ${r.commit.slice(0, 8)}. Merged workers' worktrees and branches removed.${keptNote}` }
+  }
+
+  /** The work is in main: end the sessions, then remove merged workers' worktrees and branches
+   *  and the integration branch. Returns the workers kept (not merged). */
+  private async endMerged(mission: Mission): Promise<Agent[]> {
     this.stopMission(mission.id)
     const workers = [...mission.agents.values()].filter((x) => x.role === 'worker' && x.branch)
     const merged = workers.filter((x) => x.merge === 'merged' && mission.merged.includes(x.name))
     const kept = workers.filter((x) => !merged.includes(x))
     await this.git.cleanupMission(mission.repoPath, mission.name, merged.map((x) => ({ path: x.cwd, branch: x.branch! })))
-    const keptNote = kept.length ? ` Kept (not merged): ${kept.map((x) => `${x.name} on ${x.branch}`).join(', ')}.` : ''
     if (kept.length) this.orcNote(mission, `not merged, worktrees kept: ${kept.map((x) => x.name).join(', ')}`)
-    return { ok: true, message: `Merged into ${mission.baseBranch} at ${r.commit.slice(0, 8)}. Merged workers' worktrees and branches removed.${keptNote}` }
+    return kept
   }
 
   /** A coordinator (or the worker's parent) shuts down a worker whose job is finished. Only
@@ -560,6 +609,8 @@ export class Missions implements ControlHandlers {
     const agent = this.byTerminal.get(callerTerminal)
     // A hook already in flight when the agent was shut down must not bring its status back.
     if (!agent || agent.shutDown) return null
+    // The session's status line (plan usage): returns the text it shows, nothing else changes.
+    if (e.hook_event_name === 'OrcStatusLine') return this.statusLine((e as unknown as { status?: unknown }).status)
     const mission = this.missions.get(agent.missionId)!
     if (!agent.tally && typeof e.transcript_path === 'string') agent.tally = new TranscriptTally(e.transcript_path)
     const done = agent.status === 'done'
@@ -1004,7 +1055,9 @@ export class Missions implements ControlHandlers {
         token: agent.token,
         controlPort: this.controlPort,
         permissionMode: mission.permissionMode,
-        model: mission.model,
+        model: agent.role === 'coordinator' ? mission.models.coordinator : mission.models.lead,
+        subagentModel: mission.models.subagent,
+        advisorModel: mission.models.advisor,
         systemPrompt: o.systemPrompt,
         firstPrompt: o.firstPrompt,
         // The coordinator reads earlier missions' records, which live outside the repo.
@@ -1031,7 +1084,7 @@ export class Missions implements ControlHandlers {
       savedAt: Date.now(),
       missions: [...this.missions.values()].map((m) => ({
         id: m.id, name: m.name, repoPath: m.repoPath, baseBranch: m.baseBranch, permissionMode: m.permissionMode,
-        model: m.model, state: m.state, createdAt: m.createdAt, feed: m.feed.slice(-MaxFeed), gating: m.gating,
+        models: m.models, mainBranch: m.mainBranch, queueItemId: m.queueItemId, state: m.state, createdAt: m.createdAt, feed: m.feed.slice(-MaxFeed), gating: m.gating,
         split: m.split, merged: m.merged, integrationCommit: m.integrationCommit, gate: m.gate,
         verifier: m.verifier?.status === 'running' ? null : m.verifier, mergedToMain: m.mergedToMain, brief: m.brief, paused: m.paused, recorded: m.recorded,
         agents: [...m.agents.values()].map((a) => ({
@@ -1051,8 +1104,17 @@ export class Missions implements ControlHandlers {
     if (saved?.version !== 1) return log
     for (const sm of saved.missions) {
       if (this.missions.has(sm.id)) continue
-      const { agents: savedAgents, ...rest } = sm
-      const mission: Mission = { ...rest, agents: new Map(), held: [] }
+      const { agents: savedAgents, model: legacyModel, models, mainBranch, queueItemId, ...rest } = sm
+      // Saved before per-role models: keep what it ran with (one model, or Claude Code's defaults).
+      const legacy = legacyModel?.trim() || null
+      const mission: Mission = {
+        ...rest,
+        models: models ?? { ...Object.fromEntries(ModelRoles.map((r) => [r, legacy])), advisor: null } as RoleModels,
+        mainBranch: mainBranch ?? rest.baseBranch,
+        queueItemId: queueItemId ?? null,
+        agents: new Map(),
+        held: []
+      }
       this.missions.set(mission.id, mission)
       this.feedSeq = Math.max(this.feedSeq, ...mission.feed.map((f) => f.id))
       for (const sa of savedAgents) {
@@ -1212,4 +1274,13 @@ function agentView(a: Agent): AgentView {
     ...(a.shutDown ? { shutDown: true } : {}),
     ...(a.dismissed ? { dismissed: true } : {})
   }
+}
+
+/** Defaults < space < mission. Legacy `model` (tests) is every role, with no advisor. */
+function resolveModels(space: Partial<RoleModels>, req: StartMissionRequest): RoleModels {
+  const legacy = req.model?.trim()
+  if (legacy) return { ...(Object.fromEntries(ModelRoles.map((r) => [r, legacy])) as RoleModels), advisor: null }
+  const merged: RoleModels = { ...DefaultRoleModels, ...space, ...req.models }
+  for (const r of ModelRoles) merged[r] = merged[r]?.trim() || null
+  return merged
 }

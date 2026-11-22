@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
-import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type SpaceView } from '../../../shared/types'
+import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type PlanUsageView, type QueueView, type SpaceView } from '../../../shared/types'
 import { isMac, onShortcut, withHint } from '../lib/shortcuts'
 import { cn, formatTokens } from '../lib/utils'
 import { AgentCard, StatusDot } from './AgentCard'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
+import { fromDraft, ModelFields, toDraft } from './ModelFields'
+import { modeOptions, PlanUsageMeter, QueuePanel } from './QueuePanel'
 
-function NewMissionForm({ space, onStarted, onCancel }: {
+function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
   space: string
+  spaceView: SpaceView | undefined
   onStarted: (missionId: string) => void
   onCancel: () => void
 }): React.JSX.Element {
   const [name, setName] = useState('')
   const [mode, setMode] = useState<PermissionMode>('acceptEdits')
   const [gating, setGating] = useState<Gating>('none')
+  const [models, setModels] = useState(toDraft({}))
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -24,7 +28,8 @@ function NewMissionForm({ space, onStarted, onCancel }: {
     setError(null)
     setBusy(true)
     try {
-      onStarted(await window.orc.startMission({ repoPath: space, name, permissionMode: mode, gating }))
+      const m = fromDraft(models)
+      onStarted(await window.orc.startMission({ repoPath: space, name, permissionMode: mode, gating, ...(Object.keys(m).length > 0 && { models: m }) }))
     } catch (err) {
       setError(String(err).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, ''))
     } finally {
@@ -49,16 +54,14 @@ function NewMissionForm({ space, onStarted, onCancel }: {
     >
       <Input autoFocus placeholder="Mission name, e.g. social feed" value={name} onChange={(e) => setName(e.target.value)} />
       <NativeSelect value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)} title="Every session in the mission uses this permission mode">
-        <option value="acceptEdits">Accept edits (ask for commands)</option>
-        <option value="auto">Auto</option>
-        <option value="manual">Ask for everything</option>
-        <option value="bypassPermissions">Bypass permissions</option>
+        {modeOptions.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
       </NativeSelect>
       <NativeSelect value={gating} onChange={(e) => setGating(e.target.value as Gating)} title="When a finished team's work merges into the mission's integration branch" data-testid="gating-select">
         <option value="none">No check: auto-merge (fastest)</option>
         <option value="plan">Plan check: approve the split, then auto-merge</option>
         <option value="checkpointed">Checkpointed: review every team's diff</option>
       </NativeSelect>
+      <ModelFields draft={models} onChange={setModels} inherited={spaceView?.models} />
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" className="h-7 flex-1" disabled={busy || !name.trim()}>Start mission</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 text-muted-foreground hover:text-foreground" onClick={onCancel}>Cancel</Button>
@@ -73,6 +76,8 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
   const [max, setMax] = useState(String(space.maxLive))
   const [records, setRecords] = useState(space.recordsDir ?? '')
   const [run, setRun] = useState(space.runCommand ?? '')
+  const [models, setModels] = useState(toDraft(space.models))
+  const [threshold, setThreshold] = useState(String(space.usageThreshold))
   return (
     <motion.form
       initial={{ opacity: 0, height: 0 }}
@@ -88,7 +93,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       className="mx-1 my-1.5 space-y-2 overflow-hidden rounded-lg border bg-card p-2.5 text-[12px]"
       onSubmit={(e) => {
         e.preventDefault()
-        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null }).then(onClose)
+        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null, models: fromDraft(models), usageThreshold: Number(threshold) || space.usageThreshold }).then(onClose)
       }}
     >
       <div className="space-y-1">
@@ -107,6 +112,11 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
         <label className="block text-[11px] leading-snug text-muted-foreground">Mission records folder (empty: The ORC's own data folder)</label>
         <Input value={records} onChange={(e) => setRecords(e.target.value)} placeholder={space.recordsDir ? '' : space.recordsPath} title={`Now: ${space.recordsPath}`} data-testid="records-dir" />
       </div>
+      <div className="space-y-1">
+        <label className="block text-[11px] leading-snug text-muted-foreground">Pause the queue at plan usage % (5-hour or weekly)</label>
+        <Input type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} data-testid="usage-threshold" />
+      </div>
+      <ModelFields draft={models} onChange={setModels} label="Models for this space's missions" />
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" className="h-7 flex-1">Save</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 text-muted-foreground hover:text-foreground" onClick={onClose}>Cancel</Button>
@@ -133,6 +143,18 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
   const [formFor, setFormFor] = useState<string | null>(null)
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [queues, setQueues] = useState<QueueView[]>([])
+  const [usage, setUsage] = useState<PlanUsageView | null>(null)
+  useEffect(() => {
+    void window.orc.listQueues().then(setQueues)
+    void window.orc.planUsage().then(setUsage)
+    const offQ = window.orc.onQueues(setQueues)
+    const offU = window.orc.onPlanUsage(setUsage)
+    return () => {
+      offQ()
+      offU()
+    }
+  }, [])
 
   // Every repository with a mission is a space, even if it was never added explicitly.
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
@@ -234,6 +256,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                 {formFor === root && (
                   <NewMissionForm
                     space={root}
+                    spaceView={space}
                     onCancel={() => setFormFor(null)}
                     onStarted={(id) => {
                       setFormFor(null)
@@ -300,10 +323,12 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
               })}
               </div>
               )}
+              {open && space && <QueuePanel root={root} queue={queues.find((q) => q.root === root)} onSelectMission={onSelectMission} />}
             </div>
           )
         })}
       </div>
+      <PlanUsageMeter usage={usage} threshold={spaces.length > 0 ? Math.min(...spaces.map((s) => s.usageThreshold)) : 80} />
     </aside>
   )
 }

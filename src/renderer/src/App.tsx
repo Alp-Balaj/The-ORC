@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
-import { shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
+import { ModelRoles, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
+import { roleLabel } from './components/ModelFields'
 import { CommandPalette } from './components/CommandPalette'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
@@ -316,12 +317,16 @@ export function App(): React.JSX.Element {
             </div>
             <div className="flex min-w-0 shrink-[4] items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
               <span className="shrink-0" title="Every session in this mission uses this permission mode">{modeLabel[mission.permissionMode] ?? mission.permissionMode}</span>
-              {mission.model && (
-                <>
-                  <span className="hidden text-faint xl:inline">·</span>
-                  <span className="hidden shrink-0 xl:inline">{mission.model}</span>
-                </>
-              )}
+              <span className="hidden text-faint xl:inline">·</span>
+              <span
+                className="hidden shrink-0 xl:inline"
+                title={ModelRoles.map((r) => `${roleLabel[r]}: ${mission.models[r] ?? (r === 'advisor' ? 'none' : 'default')}`).join('\n')}
+                data-testid="header-models"
+              >
+                {mission.models.coordinator ?? 'default'}
+                {mission.models.subagent && mission.models.subagent !== mission.models.coordinator && <span className="text-faint"> · sub {mission.models.subagent}</span>}
+                {mission.models.advisor && <span className="text-faint"> · adv {mission.models.advisor}</span>}
+              </span>
               <span className={cn('text-faint', mission.state === 'stopped' && 'max-[1399px]:hidden')}>·</span>
               <span className={cn('truncate', mission.state === 'stopped' && 'max-[1399px]:hidden')} title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</span>
             </div>
