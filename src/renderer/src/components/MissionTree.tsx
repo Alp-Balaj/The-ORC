@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ReactFlow, ReactFlowProvider, BaseEdge, Handle, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
 import { layoutStacked, stackSizes } from '../../../shared/tree-layout'
@@ -13,14 +13,6 @@ type TreeNodeData = AgentNodeData | ChipNodeData
 /** Below this zoom a node shows only a larger dot and its name. */
 const SemanticZoom = 0.6
 const finished = (s: AgentStatus): boolean => s === 'done' || s === 'exited'
-const barClass: Record<AgentStatus, string> = {
-  starting: 'border-l-muted-foreground/60',
-  working: 'border-l-working',
-  idle: 'border-l-muted-foreground',
-  'needs-you': 'border-l-needs',
-  done: 'border-l-done',
-  exited: 'border-l-exited'
-}
 // Handles are invisible anchor points; every edge names the one it uses.
 const hidden: React.CSSProperties = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 0, pointerEvents: 'none' }
 // The trunk down into a stacked column leaves the parent's bottom here (see stackSizes.trunk).
@@ -43,13 +35,33 @@ function Handles({ card }: { card: boolean }): React.JSX.Element {
   )
 }
 
+const barColor: Record<AgentView['status'], string> = {
+  starting: 'bg-faint',
+  working: 'bg-working',
+  idle: 'bg-muted-foreground',
+  'needs-you': 'bg-needs',
+  done: 'bg-done',
+  exited: 'bg-exited'
+}
+
+const labelColor: Record<AgentView['status'], string> = {
+  starting: 'text-muted-foreground',
+  working: 'text-working',
+  idle: 'text-muted-foreground',
+  'needs-you': 'text-needs',
+  done: 'text-done',
+  exited: 'text-exited-foreground'
+}
+
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element {
   const a = data.agent
   const far = useStore((s) => s.transform[2] < SemanticZoom)
   const base = cn(
-    'cursor-pointer border bg-card shadow-sm transition-colors hover:border-input',
-    data.selected && 'border-primary/70 bg-accent',
-    a.status === 'needs-you' && !data.selected && 'border-needs/50'
+    'cursor-pointer border border-border bg-card transition-colors hover:border-border-strong hover:bg-accent',
+    a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10 shadow-[0_0_0_3px] shadow-needs/15 hover:bg-needs/15',
+    a.status === 'exited' && 'opacity-60',
+    a.status === 'done' && !data.selected && 'opacity-70',
+    data.selected && 'border-border-strong bg-selected hover:bg-selected'
   )
   if (data.row) {
     return (
@@ -58,12 +70,13 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         data-agent={a.name}
         data-status={a.status}
         style={{ width: '100%', height: '100%' }}
-        className={cn(base, 'flex items-center gap-1.5 rounded-md border-l-[3px] px-2', barClass[a.status])}
+        className={cn(base, 'relative flex items-center gap-1.5 rounded-md pl-2.5 pr-2')}
       >
+        <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-md', barColor[a.status])} />
         <Handles card={false} />
         <StatusDot status={a.status} className={cn(far && 'size-3')} />
         <span className={cn('min-w-0 flex-1 truncate font-medium', far ? 'text-[15px]' : 'text-[11.5px]')}>{a.name}</span>
-        {!far && a.tokens > 0 && <span className="text-[10.5px] tabular-nums text-muted-foreground">{formatTokens(a.tokens)}</span>}
+        {!far && a.tokens > 0 && <span className="text-[10.5px] tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
       </div>
     )
   }
@@ -73,17 +86,18 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       data-agent={a.name}
       data-status={a.status}
       style={{ width: stackSizes.cardW, height: stackSizes.cardH }}
-      className={cn(base, 'rounded-lg px-2.5 py-1.5', far && 'flex items-center')}
+      className={cn(base, 'relative rounded-lg py-1.5 pl-3 pr-2', far && 'flex items-center')}
     >
+      <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-lg', barColor[a.status])} />
       <Handles card />
       <div className="flex min-w-0 items-center gap-1.5">
         <StatusDot status={a.status} className={cn(far && 'size-3.5')} />
         <span className={cn('truncate font-medium', far ? 'text-[17px]' : 'text-[12px]')}>{a.name}</span>
       </div>
       {!far && (
-        <div className="mt-0.5 flex justify-between text-[10.5px] text-muted-foreground">
-          <span>{statusLabel[a.status]}</span>
-          {a.tokens > 0 && <span className="tabular-nums">{formatTokens(a.tokens)}</span>}
+        <div className="mt-1 flex justify-between gap-2 text-[10.5px] text-muted-foreground">
+          <span className={cn('truncate', labelColor[a.status])}>{statusLabel[a.status]}</span>
+          {a.tokens > 0 && <span className="ml-auto tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
         </div>
       )}
     </div>
@@ -98,13 +112,19 @@ function ChipNode({ data }: NodeProps<Node<ChipNodeData>>): React.JSX.Element {
       data-testid="tree-chip"
       data-lead={data.lead}
       style={{ width: '100%', height: '100%' }}
-      className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-card/60 px-2 text-muted-foreground transition-colors hover:border-input hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]')}
+      className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-card/60 px-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]')}
     >
       <Handles card={false} />
       <span className="inline-block size-2 shrink-0 rounded-full bg-done/70" />
       {data.expanded ? `hide ${data.count} done` : `+${data.count} done`}
     </div>
   )
+}
+
+function edgeStroke(status: AgentStatus): React.CSSProperties | undefined {
+  if (status === 'working') return { stroke: 'var(--color-working)' }
+  if (status === 'needs-you') return { stroke: 'var(--color-needs)' }
+  return undefined
 }
 
 const nodeTypes = { agent: AgentNode, chip: ChipNode }
@@ -236,11 +256,15 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
       })
     }
     const isRow = (id: string): boolean => (placed.get(id)?.depth ?? 0) >= 2
-    const tree = (source: string, target: string, animated: boolean): Edge => (isRow(target)
-      ? { id: `tree:${source}>${target}`, source, target, sourceHandle: 'stack', targetHandle: 'in', type: 'elbow', animated }
-      : { id: `tree:${source}>${target}`, source, target, sourceHandle: 'out', targetHandle: 'in', type: 'step', animated })
-    const edges: Edge[] = shown.filter((a) => a.parent && placed.has(a.parent)).map((a) => tree(a.parent!, a.name, a.status === 'working'))
-    for (const lead of foldedBy.keys()) if (placed.has(lead)) edges.push(tree(lead, `chip:${lead}`, false))
+    const tree = (source: string, target: string, status?: AgentStatus): Edge => {
+      const animated = status === 'working'
+      const style = status && edgeStroke(status)
+      return isRow(target)
+        ? { id: `tree:${source}>${target}`, source, target, sourceHandle: 'stack', targetHandle: 'in', type: 'elbow', animated, style }
+        : { id: `tree:${source}>${target}`, source, target, sourceHandle: 'out', targetHandle: 'in', type: 'step', animated, style }
+    }
+    const edges: Edge[] = shown.filter((a) => a.parent && placed.has(a.parent)).map((a) => tree(a.parent!, a.name, a.status))
+    for (const lead of foldedBy.keys()) if (placed.has(lead)) edges.push(tree(lead, `chip:${lead}`))
     if (showMessages) {
       const end = (name: string): string => folded.get(name) ?? name
       const seen = new Set<string>()
@@ -272,7 +296,7 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
           className: cn('message', failed && 'failed'), style: { opacity: 0.55 }, animated: true,
           label: failed ? 'not sent' : undefined,
           labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 },
-          labelBgStyle: { fill: 'var(--color-panel)', fillOpacity: 0.95 },
+          labelBgStyle: { fill: 'var(--color-background)', fillOpacity: 0.95 },
           labelBgPadding: [3, 1], labelBgBorderRadius: 3
         })
       }
@@ -315,7 +339,9 @@ export function MissionTree({ agents, feed, selected, onSelect, showMessages }: 
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
-    />
+    >
+      <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--color-border)" />
+    </ReactFlow>
     </ReactFlowProvider>
   )
 }
