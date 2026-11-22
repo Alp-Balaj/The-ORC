@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ReactFlow, ReactFlowProvider, BaseEdge, Handle, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
@@ -122,24 +122,32 @@ const edgeTypes = { elbow: ElbowEdge, step: StepEdge }
 const FitPad = 12
 const FitMinZoom = 0.6
 
-/** Refits the view whenever the set of nodes changes, so a new worker is never off-screen.
+/** Refits the view whenever the set of nodes changes, so a new worker is never off-screen,
+ *  and 150ms after the panel stops changing size (not on every pixel of a drag).
  *  Never zooms below FitMinZoom: a tree taller than the panel is aligned to its top and
  *  scrolls instead. */
 function AutoFit({ shape }: { shape: string }): null {
   const { setViewport, getNodesBounds, getNodes } = useReactFlow()
   const store = useStoreApi()
+  const width = useStore((s) => s.width)
+  const height = useStore((s) => s.height)
+  const fit = useCallback((): void => {
+    const { width: W, height: H } = store.getState()
+    const b = getNodesBounds(getNodes())
+    if (!W || !H || !b.width) return
+    const zoom = Math.max(FitMinZoom, Math.min(1, (W - 2 * FitPad) / b.width, (H - 2 * FitPad) / b.height))
+    const x = (W - b.width * zoom) / 2 - b.x * zoom
+    const y = b.height * zoom + 2 * FitPad > H ? FitPad - b.y * zoom : (H - b.height * zoom) / 2 - b.y * zoom
+    void setViewport({ x, y, zoom }, { duration: 200 })
+  }, [setViewport, getNodesBounds, getNodes, store])
   useEffect(() => {
-    const t = setTimeout(() => {
-      const { width: W, height: H } = store.getState()
-      const b = getNodesBounds(getNodes())
-      if (!W || !H || !b.width) return
-      const zoom = Math.max(FitMinZoom, Math.min(1, (W - 2 * FitPad) / b.width, (H - 2 * FitPad) / b.height))
-      const x = (W - b.width * zoom) / 2 - b.x * zoom
-      const y = b.height * zoom + 2 * FitPad > H ? FitPad - b.y * zoom : (H - b.height * zoom) / 2 - b.y * zoom
-      void setViewport({ x, y, zoom }, { duration: 200 })
-    }, 30)
+    const t = setTimeout(fit, 30)
     return () => clearTimeout(t)
-  }, [shape, setViewport, getNodesBounds, getNodes, store])
+  }, [shape, fit])
+  useEffect(() => {
+    const t = setTimeout(fit, 150)
+    return () => clearTimeout(t)
+  }, [width, height, fit])
   return null
 }
 

@@ -345,77 +345,112 @@ export async function runWideTree(c: ReplayCtx, start: (repoPath: string, name: 
   const limits = { max: missions.maxAgentsPerMission, live: missions.liveLimitFor }
   missions.maxAgentsPerMission = 20
   missions.liveLimitFor = () => 50
-  const m = await start(c.sandbox, `smoke-r-wide-${stamp}`, 'none')
-  const id = (a: string): string => `${m}:${a}`
-  const hook = (a: string, e: Record<string, unknown>): void => void missions.hookEvent(id(a), { transcript_path: c.transcriptFixture, ...e } as never)
-  const tree: Record<string, string[]> = { api: ['auth', 'billing', 'search'], ui: ['dashboard', 'settings', 'onboarding'], docs: ['guide', 'changelog'] }
-  hook('coordinator', { hook_event_name: 'SessionStart' })
-  for (const [lead, workers] of Object.entries(tree)) {
-    await missions.spawnAgent(id('coordinator'), lead, `Lead the ${lead} area.`)
-    for (const w of workers) await missions.spawnAgent(id(lead), w, `Build ${w}.`)
+  try {
+    const m = await start(c.sandbox, `smoke-r-wide-${stamp}`, 'none')
+    const id = (a: string): string => `${m}:${a}`
+    const hook = (a: string, e: Record<string, unknown>): void => void missions.hookEvent(id(a), { transcript_path: c.transcriptFixture, ...e } as never)
+    const tree: Record<string, string[]> = { api: ['auth', 'billing', 'search'], ui: ['dashboard', 'settings', 'onboarding'], docs: ['guide', 'changelog'] }
+    hook('coordinator', { hook_event_name: 'SessionStart' })
+    for (const [lead, workers] of Object.entries(tree)) {
+      await missions.spawnAgent(id('coordinator'), lead, `Lead the ${lead} area.`)
+      for (const w of workers) await missions.spawnAgent(id(lead), w, `Build ${w}.`)
+    }
+    for (const a of Object.entries(tree).flat(2)) hook(a, { hook_event_name: 'SessionStart' })
+    const work = (a: string): void => hook(a, { hook_event_name: 'UserPromptSubmit', prompt: `work on ${a}` })
+    const needs = (a: string): void => hook(a, { hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission' })
+    for (const a of ['api', 'ui', 'search', 'dashboard', 'settings', 'changelog']) work(a)
+    needs('ui'); needs('settings')
+    missions.reportDone(id('auth'), 'Auth done.')
+    missions.reportDone(id('billing'), 'Billing done.')
+    await missions.gitWork
+    await missions.refreshTokens()
+    const agents = missions.views().find((v) => v.id === m)!.agents.length
+    check('wide mission has 12 agents', agents === 12, String(agents))
+
+    const missionRow = `document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(`smoke-r-wide-${stamp}`)}] button')`
+    await js(`(() => { const b = ${missionRow}; if (b && b.getAttribute('aria-expanded') !== 'true') b.click() })()`)
+    await sleep(800)
+    await js(`document.querySelector('[data-testid=tree-node][data-agent=coordinator]')?.click()`)
+    await sleep(1200)
+    const shape = (): Promise<{ nodes: number; folded: number; chips: string[] }> => js(`(() => {
+      const chips = [...document.querySelectorAll('[data-testid=tree-chip]')].map((e) => e.textContent.trim());
+      const folded = chips.reduce((s, t) => s + (/^\\+(\\d+)/.exec(t)?.[1] | 0), 0);
+      return { nodes: document.querySelectorAll('[data-testid=tree-node]').length, folded, chips } })()`)
+    const s1 = await shape()
+    check('wide tree: visible nodes + folded = agents, with a "+2 done" chip', s1.nodes + s1.folded === agents && s1.chips.join() === '+2 done', JSON.stringify(s1))
+    check('wide tree: the done workers are folded', (await js<number>(`document.querySelectorAll('[data-testid=tree-node][data-status=done]').length`)) === 0)
+    await shot('wide-tree-chip-folded')
+
+    // Rendered text size: font-size × zoom, and the on-screen height of the line box.
+    const zoomNow = (): Promise<number> => js<number>(`(() => { const m = /scale\\(([\\d.]+)\\)/.exec(document.querySelector('.react-flow__viewport')?.style.transform ?? ''); return m ? +m[1] : -1 })()`)
+    const measure = async (): Promise<string> => {
+      const r = await js<Record<string, string>>(`(() => {
+        const z = ${await zoomNow()};
+        const at = (el) => el ? (parseFloat(getComputedStyle(el).fontSize) * z).toFixed(1) + 'px (css ' + getComputedStyle(el).fontSize + ', box h ' + el.getBoundingClientRect().height.toFixed(1) + 'px)' : 'none';
+        const node = (a) => document.querySelector('[data-testid=tree-node][data-agent=' + JSON.stringify(a) + ']');
+        return { zoom: String(z), lead: at(node('api')?.querySelector('span.font-medium')), worker: at(node('search')?.querySelector('span.font-medium')),
+          leadStatus: at(node('api')?.querySelector('.text-muted-foreground span')), workerTokens: at(node('search')?.querySelector('.tabular-nums')),
+          chip: at(document.querySelector('[data-testid=tree-chip]')) } })()`)
+      return JSON.stringify(r)
+    }
+    const sizes = await measure()
+    log(`wide tree text sizes: ${sizes}`)
+
+    // Drag the tree/feed column's left edge 150px wider: the tree and the terminal refit after
+    // the drag, with no ResizeObserver loop error. Double-click resets it.
+    const panel = (): Promise<{ side: number; cols: number; zoom: number }> => js(`(() => ({
+      side: Math.round(document.querySelector('aside [data-testid=side-resize]').parentElement.getBoundingClientRect().width),
+      cols: document.querySelector('[data-testid=terminal]')?.orcTerm?.cols ?? -1,
+      zoom: +(/scale\\(([\\d.]+)\\)/.exec(document.querySelector('.react-flow__viewport')?.style.transform ?? '')?.[1] ?? -1) }))()`)
+    const before = await panel()
+    log(`side panel before drag: ${JSON.stringify(before)}`)
+    await js(`(async () => {
+      window.__orcErrors = [];
+      window.addEventListener('error', (e) => window.__orcErrors.push(String(e.message)));
+      const h = document.querySelector('[data-testid=side-resize]'); const r = h.getBoundingClientRect();
+      const x0 = r.left + r.width / 2, y = r.top + r.height / 2;
+      const ev = (t, x) => h.dispatchEvent(new PointerEvent(t, { pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, buttons: t === 'pointerup' ? 0 : 1, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+      ev('pointerdown', x0);
+      for (let i = 1; i <= 15; i++) { ev('pointermove', x0 - 10 * i); await new Promise((r) => requestAnimationFrame(r)); }
+      ev('pointerup', x0 - 150) })()`)
+    await sleep(1000)
+    const after = await panel()
+    log(`side panel after drag: ${JSON.stringify(after)}`)
+    check('dragging the column edge widens it', after.side - before.side >= 140, `${before.side} → ${after.side}`)
+    check('the terminal refits after the drag', after.cols > 0 && after.cols < before.cols, `${before.cols} → ${after.cols} cols`)
+    check('the tree refits after the drag', after.zoom > 0 && after.zoom !== before.zoom, `${before.zoom} → ${after.zoom}`)
+    await shot('side-panel-dragged')
+    await js(`document.querySelector('[data-testid=side-resize]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`)
+    await sleep(1000)
+    const reset = await panel()
+    check('double-clicking the edge resets the width', reset.side === before.side && reset.cols === before.cols, JSON.stringify(reset))
+    const roErrors = await js<string[]>(`window.__orcErrors`)
+    check('no ResizeObserver loop error while resizing', !roErrors.some((e) => /ResizeObserver/.test(e)), roErrors.join(' | '))
+
+    await js(`document.querySelector('[data-testid=tree-chip]')?.click()`)
+    await sleep(1000)
+    const s2 = await shape()
+    check('clicking the chip shows the done workers', s2.nodes === agents && s2.chips.join() === 'hide 2 done', JSON.stringify(s2))
+    await shot('wide-tree-chip-open')
+    await js(`document.querySelector('[data-testid=tree-chip]')?.click()`)
+    await sleep(800)
+    check('clicking it again folds them', (await shape()).nodes === agents - 2)
+
+    // Fit-to-view floors at 0.6: zoom out with ctrl+wheel (a pinch, to React Flow).
+    for (let i = 0; i < 20 && (await zoomNow()) >= 0.5; i++) {
+      await js(`(() => { const p = document.querySelector('.react-flow__pane'); const r = p.getBoundingClientRect();
+        p.dispatchEvent(new WheelEvent('wheel', { deltaY: 20, ctrlKey: true, bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 3 })) })()`)
+      await sleep(60)
+    }
+    await sleep(500)
+    const z = await zoomNow()
+    check('the wide tree zooms out below 0.6', z > 0 && z < 0.6, String(z))
+    const farSizes = await measure()
+    log(`wide tree text sizes zoomed out: ${farSizes}`)
+    await shot('wide-tree-zoomed-out')
+  } finally {
+    // Restored even when a step throws, so the raised limits can't leak into the rest of the run.
+    missions.maxAgentsPerMission = limits.max
+    missions.liveLimitFor = limits.live
   }
-  for (const a of Object.entries(tree).flat(2)) hook(a, { hook_event_name: 'SessionStart' })
-  const work = (a: string): void => hook(a, { hook_event_name: 'UserPromptSubmit', prompt: `work on ${a}` })
-  const needs = (a: string): void => hook(a, { hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission' })
-  for (const a of ['api', 'ui', 'search', 'dashboard', 'settings', 'changelog']) work(a)
-  needs('ui'); needs('settings')
-  missions.reportDone(id('auth'), 'Auth done.')
-  missions.reportDone(id('billing'), 'Billing done.')
-  await missions.gitWork
-  await missions.refreshTokens()
-  const agents = missions.views().find((v) => v.id === m)!.agents.length
-  check('wide mission has 12 agents', agents === 12, String(agents))
-
-  const missionRow = `document.querySelector('[data-testid=mission][data-mission=${JSON.stringify(`smoke-r-wide-${stamp}`)}] button')`
-  await js(`(() => { const b = ${missionRow}; if (b && b.getAttribute('aria-expanded') !== 'true') b.click() })()`)
-  await sleep(800)
-  await js(`document.querySelector('[data-testid=tree-node][data-agent=coordinator]')?.click()`)
-  await sleep(1200)
-  const shape = (): Promise<{ nodes: number; folded: number; chips: string[] }> => js(`(() => {
-    const chips = [...document.querySelectorAll('[data-testid=tree-chip]')].map((e) => e.textContent.trim());
-    const folded = chips.reduce((s, t) => s + (/^\\+(\\d+)/.exec(t)?.[1] | 0), 0);
-    return { nodes: document.querySelectorAll('[data-testid=tree-node]').length, folded, chips } })()`)
-  const s1 = await shape()
-  check('wide tree: visible nodes + folded = agents, with a "+2 done" chip', s1.nodes + s1.folded === agents && s1.chips.join() === '+2 done', JSON.stringify(s1))
-  check('wide tree: the done workers are folded', (await js<number>(`document.querySelectorAll('[data-testid=tree-node][data-status=done]').length`)) === 0)
-  await shot('wide-tree-chip-folded')
-
-  // Rendered text size: font-size × zoom, and the on-screen height of the line box.
-  const zoomNow = (): Promise<number> => js<number>(`(() => { const m = /scale\\(([\\d.]+)\\)/.exec(document.querySelector('.react-flow__viewport')?.style.transform ?? ''); return m ? +m[1] : -1 })()`)
-  const measure = async (): Promise<string> => {
-    const r = await js<Record<string, string>>(`(() => {
-      const z = ${await zoomNow()};
-      const at = (el) => el ? (parseFloat(getComputedStyle(el).fontSize) * z).toFixed(1) + 'px (css ' + getComputedStyle(el).fontSize + ', box h ' + el.getBoundingClientRect().height.toFixed(1) + 'px)' : 'none';
-      const node = (a) => document.querySelector('[data-testid=tree-node][data-agent=' + JSON.stringify(a) + ']');
-      return { zoom: String(z), lead: at(node('api')?.querySelector('span.font-medium')), worker: at(node('search')?.querySelector('span.font-medium')),
-        leadStatus: at(node('api')?.querySelector('.text-muted-foreground span')), workerTokens: at(node('search')?.querySelector('.tabular-nums')),
-        chip: at(document.querySelector('[data-testid=tree-chip]')) } })()`)
-    return JSON.stringify(r)
-  }
-  const sizes = await measure()
-  log(`wide tree text sizes: ${sizes}`)
-
-  await js(`document.querySelector('[data-testid=tree-chip]')?.click()`)
-  await sleep(1000)
-  const s2 = await shape()
-  check('clicking the chip shows the done workers', s2.nodes === agents && s2.chips.join() === 'hide 2 done', JSON.stringify(s2))
-  await shot('wide-tree-chip-open')
-  await js(`document.querySelector('[data-testid=tree-chip]')?.click()`)
-  await sleep(800)
-  check('clicking it again folds them', (await shape()).nodes === agents - 2)
-
-  // Fit-to-view floors at 0.6: zoom out with ctrl+wheel (a pinch, to React Flow).
-  for (let i = 0; i < 20 && (await zoomNow()) >= 0.5; i++) {
-    await js(`(() => { const p = document.querySelector('.react-flow__pane'); const r = p.getBoundingClientRect();
-      p.dispatchEvent(new WheelEvent('wheel', { deltaY: 20, ctrlKey: true, bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 3 })) })()`)
-    await sleep(60)
-  }
-  await sleep(500)
-  const z = await zoomNow()
-  check('the wide tree zooms out below 0.6', z > 0 && z < 0.6, String(z))
-  const farSizes = await measure()
-  log(`wide tree text sizes zoomed out: ${farSizes}`)
-  await shot('wide-tree-zoomed-out')
-  missions.maxAgentsPerMission = limits.max
-  missions.liveLimitFor = limits.live
 }
