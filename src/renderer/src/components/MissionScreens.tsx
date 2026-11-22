@@ -174,9 +174,9 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
             </div>
             {gateStale && <StaleNote>Older than the latest merge</StaleNote>}
             <div className="mt-2.5 flex gap-1.5">
-              <Input placeholder="e.g. pnpm test" title="Runs in the merged result" value={gateCmd} onChange={(e) => setGateCmd(e.target.value)} className="h-8 min-w-0 font-mono text-[12px]" data-testid="gate-command" />
-              <Button size="sm" variant="outline" onClick={() => space && void window.orc.setGateCommand(space.root, gateCmd || null)} disabled={!space || gateCmd === (space?.gateCommand ?? '')}>Save</Button>
-              <Button size="sm" variant="outline" disabled={!space?.gateCommand || mission.merged.length === 0} onClick={() => void window.orc.runGate(mission.id)} data-testid="run-gate"><Play /> Run</Button>
+              <Input placeholder="e.g. pnpm test" title="Runs in the merged result" value={gateCmd} onChange={(e) => setGateCmd(e.target.value)} className="h-8 min-w-0 flex-1 text-ellipsis font-mono text-[12px]" data-testid="gate-command" />
+              <Button size="sm" variant="outline" className="shrink-0" onClick={() => space && void window.orc.setGateCommand(space.root, gateCmd || null)} disabled={!space || gateCmd === (space?.gateCommand ?? '')}>Save</Button>
+              <Button size="sm" variant="outline" className="shrink-0" disabled={!space?.gateCommand || mission.merged.length === 0} onClick={() => void window.orc.runGate(mission.id)} data-testid="run-gate"><Play /> Run</Button>
             </div>
             {mission.gate ? (
               <pre className="mt-2 max-h-32 overflow-auto rounded-md border bg-background p-2 font-mono text-[11px] text-muted-foreground">{mission.gate.output || '(no output)'}</pre>
@@ -188,8 +188,8 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
           <section className="rounded-lg border bg-card p-3" data-testid="verifier-panel">
             <div className="flex items-center gap-2">
               <StatusIcon state={verifierState} />
-              <Bot className="size-3.5 text-muted-foreground" />
-              <span className="text-[13px] font-medium">Verifier</span>
+              <Bot className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate text-[13px] font-medium">Verifier</span>
               <div className="ml-auto flex items-center gap-1.5">
                 {v && (
                   <Badge variant={v.status === 'running' ? 'idle' : verifierPass ? 'working' : 'needs-you'} data-testid="verifier-status">
