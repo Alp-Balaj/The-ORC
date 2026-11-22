@@ -1,3 +1,5 @@
+import { initAccent } from './accent'
+
 export type ThemePref = 'light' | 'dark' | 'system'
 
 const KEY = 'orc-theme'
@@ -55,6 +57,7 @@ let initialised = false
 export function initTheme(): void {
   if (initialised) return
   initialised = true
+  initAccent()
   media.addEventListener('change', () => {
     if (getThemePref() === 'system') apply()
   })

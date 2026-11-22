@@ -8,6 +8,7 @@ import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScree
 import { MissionTree } from './components/MissionTree'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
+import { AccentPicker } from './components/AccentPicker'
 import { ThemeToggle } from './components/ThemeToggle'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
@@ -464,6 +465,7 @@ export function App(): React.JSX.Element {
         )}
         <span className="h-5 w-px shrink-0 bg-border" />
         <ThemeToggle className="shrink-0" />
+        <AccentPicker className="shrink-0" />
         <span className="h-5 w-px shrink-0 bg-border" />
         <Button size="icon-sm" variant="ghost" className="shrink-0" title={withHint('Keyboard shortcuts', 'shortcuts')} aria-label="Keyboard shortcuts" data-testid="open-shortcuts" onClick={() => openDialog('shortcuts')}>
           <Keyboard />
