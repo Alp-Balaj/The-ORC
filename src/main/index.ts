@@ -212,7 +212,20 @@ ipcMain.handle('missions:remove', async (_e, id: string) => {
   await appRunner.stopFor(id)
   return missions.removeMission(id)
 })
-ipcMain.handle('app:run', async (_e, id: string) => {
+/** The app saved in app-run.json that passed the checks at launch, waiting for the owner's
+ *  Start again (owner, 2026-11-22: a button instead of restarting it on its own). */
+let pendingAppRestore: { missionId: string; missionName: string } | null = null
+ipcMain.handle('app:pending-restore', () => pendingAppRestore)
+ipcMain.handle('app:restore-start', async () => {
+  if (!pendingAppRestore) return
+  await runApp(pendingAppRestore.missionId)
+})
+ipcMain.handle('app:restore-dismiss', () => {
+  pendingAppRestore = null
+  appRunner.clearSaved()
+})
+ipcMain.handle('app:run', (_e, id: string) => runApp(id))
+async function runApp(id: string): Promise<void> {
   const m = missions.views().find((x) => x.id === id)
   if (!m) throw new Error('no such mission')
   if (m.mergedToMain) throw new Error("this mission was merged to main and its worktree removed. Run the app from your own checkout.")
@@ -220,7 +233,8 @@ ipcMain.handle('app:run', async (_e, id: string) => {
   if (!command) throw new Error(`no run command for ${m.repoPath.split(/[\/]/).pop()}: set one in the space settings (the gear next to the space)`)
   const cwd = await missions.ensureIntegration(id)
   await appRunner.run(m.id, m.name, cwd, command)
-})
+  pendingAppRestore = null
+}
 ipcMain.handle('app:stop', () => appRunner.stop())
 ipcMain.handle('app:current', () => appRunner.view())
 ipcMain.handle('missions:resume', (_e, id: string) => missions.resumeMission(id))
@@ -288,8 +302,8 @@ ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
   terminals.resize(id, cols, rows)
 )
 
-/** Brings back the app the owner ran with Run app before The ORC quit, if its mission is still
- *  there, not merged to main, and the space still has a run command. */
+/** Offers to bring back (Start again) the app the owner ran with Run app before The ORC quit,
+ *  if its mission is still there, not merged to main, and the space still has a run command. */
 async function restoreAppRun(): Promise<void> {
   appRunner.file = smoke ? join(smoke, 'app-run.json') : join(app.getPath('userData'), 'app-run.json')
   const saved = appRunner.saved()
@@ -298,8 +312,7 @@ async function restoreAppRun(): Promise<void> {
     const m = missions.views().find((x) => x.id === saved.missionId)
     const command = m && !m.mergedToMain ? spaces.runCommand(m.repoPath) : null
     if (!m || !command) return await appRunner.stop() // forgets the saved run
-    const cwd = await missions.ensureIntegration(m.id)
-    await appRunner.run(m.id, m.name, cwd, command)
+    pendingAppRestore = { missionId: m.id, missionName: m.name }
   } catch (err) {
     console.error('could not restore the running app', err)
   }

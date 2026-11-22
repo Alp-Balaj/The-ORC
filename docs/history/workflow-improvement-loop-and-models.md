@@ -63,11 +63,17 @@ Team lead area: backlog queue, models per role, plan-usage budget, then six roun
    - A new space is created with the suggestion as its gate. An existing space only shows it as
      `SpaceView.suggestedGate`, with a "Use" button, until the human saves.
 6. **Run app after a restart.**
-   - **Decision:** restore it automatically, since the owner chose to run it.
-   - The running app (`missionId`, `command`) is saved to `<userData>/app-run.json` and cleared on
-     an explicit stop.
-   - After `restore()`, `index.ts` starts it again if the mission exists, isn't merged to main, and
-     the space still has a run command.
+   - **Decision (owner, follow-up):** a "Start again" prompt instead of an automatic restart.
+   - The running app (`missionId`, `command`) is saved to `<userData>/app-run.json`. It is cleared
+     on an explicit stop, and kept on quit.
+   - After `restore()`, `index.ts` checks the saved run: the mission exists, isn't merged to main,
+     and the space still has a run command. If the run is invalid, the file is deleted. If it is
+     valid, nothing is started.
+   - Instead, the bottom banner area says "<mission>'s app was running before the restart" and
+     offers Start again or ✕.
+     - **Start again** (`app:restore-start`) runs it like Run app, with the space's current run
+       command.
+     - **✕** (`app:restore-dismiss`) deletes `app-run.json`.
 
 ## Facts
 

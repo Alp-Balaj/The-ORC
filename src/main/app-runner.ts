@@ -73,6 +73,11 @@ export class AppRunner {
     }
   }
 
+  /** Forgets the saved run without touching a running app. */
+  clearSaved(): void {
+    this.persist(null)
+  }
+
   private persist(run: SavedAppRun | null): void {
     if (!this.file) return
     try {
