@@ -188,7 +188,7 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
           <section className="rounded-lg border bg-card p-3" data-testid="verifier-panel">
             <div className="flex items-center gap-2">
               <StatusIcon state={verifierState} />
-              <Bot className="size-3.5 shrink-0 text-muted-foreground" />
+              <Bot className="size-3.5 shrink-0 text-muted-foreground max-[1439px]:hidden" />
               <span className="min-w-0 truncate text-[13px] font-medium">Verifier</span>
               <div className="ml-auto flex items-center gap-1.5">
                 {v && (
