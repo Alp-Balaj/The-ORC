@@ -141,6 +141,10 @@ export interface SpaceView {
   models: Partial<RoleModels>
   /** Plan usage % (5-hour or weekly) at which this space's queue pauses. Default 80. */
   usageThreshold: number
+  /** Minutes a finished, merged lead may sit idle before The ORC stops it. 0 = off. Default 15. */
+  idleStopMinutes: number
+  /** A gate command guessed from the repo (e.g. "pnpm typecheck"), shown when gateCommand is null. */
+  suggestedGate: string | null
 }
 
 /** Who a model setting applies to. lead = team leads; subagent = the leads' Agent-tool

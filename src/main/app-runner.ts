@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { renameOver } from './rename-over.ts'
 import type { AppRunView } from '../shared/types.ts'
 import { sessionEnv } from './claude-launch.ts'
 import { bashPath } from './mission-git.ts'
@@ -18,6 +20,12 @@ export function killTree(pid: number): void {
   } catch {}
 }
 
+/** The app that was running, saved so it comes back after The ORC restarts. */
+export interface SavedAppRun {
+  missionId: string
+  command: string
+}
+
 /** Runs the app being built (the space's run command) from one mission's integration
  *  worktree. One at a time: running another mission's app first ends this one and waits for
  *  it to exit, so the new one gets the port. */
@@ -29,6 +37,8 @@ export class AppRunner {
   killTree: (pid: number) => void = killTree
   shell: () => string = bashPath
   exitWaitMs = 10_000
+  /** Where the running app is saved (`app-run.json`). Null: not saved (tests). */
+  file: string | null = null
 
   constructor(terminals: Pick<TerminalHost, 'start' | 'kill' | 'isRunning' | 'pid'>, changed: (run: AppRunView | null) => void) {
     this.terminals = terminals
@@ -49,11 +59,35 @@ export class AppRunner {
     this.terminals.start({ id: terminalId, command: this.shell(), args: ['-lc', command], cwd, env })
     this.current = { missionId, missionName, terminalId, command, cwd, status: 'running', exitCode: null, startedAt: Date.now() }
     this.changed(this.current)
+    this.persist({ missionId, command })
+  }
+
+  /** The app saved by the last run that was not stopped explicitly, if any. */
+  saved(): SavedAppRun | null {
+    if (!this.file) return null
+    try {
+      const o = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<SavedAppRun>
+      return typeof o.missionId === 'string' && typeof o.command === 'string' ? { missionId: o.missionId, command: o.command } : null
+    } catch {
+      return null
+    }
+  }
+
+  private persist(run: SavedAppRun | null): void {
+    if (!this.file) return
+    try {
+      if (!run) return rmSync(this.file, { force: true })
+      const tmp = `${this.file}.tmp`
+      writeFileSync(tmp, JSON.stringify(run))
+      renameOver(tmp, this.file)
+    } catch {}
   }
 
   /** Ends the running app and waits until its process has exited. */
   async stop(): Promise<void> {
     const run = this.current
+    // An explicit stop (or another mission's app replacing it): don't bring it back.
+    this.persist(null)
     if (!run || !this.terminals.isRunning(run.terminalId)) return
     const pid = this.terminals.pid(run.terminalId)
     if (pid) this.killTree(pid)

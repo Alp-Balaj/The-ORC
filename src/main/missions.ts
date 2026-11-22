@@ -28,6 +28,12 @@ interface Agent extends AgentView {
   /** The claude process, for orphan checks after a crash. */
   pid: number | null
   turnIdlePolls?: number
+  /** Last hook event, prompt, delivered message or human input: for the idle auto-stop. */
+  lastActivityAt: number
+  /** Last time the human typed to it. */
+  lastHumanAt: number | null
+  /** An ask_human question waiting for the human's answer (their next prompt to it). */
+  pendingQuestion: string | null
 }
 
 export interface SavedState {
@@ -39,7 +45,7 @@ export interface SavedState {
     mainBranch?: string
     queueItemId?: string | null
     model?: string | null
-    agents: (AgentView & { transcriptPath: string | null; pid: number | null; notes: string[] })[] })[]
+    agents: (AgentView & { transcriptPath: string | null; pid: number | null; notes: string[]; pendingQuestion?: string | null })[] })[]
 }
 
 interface Mission {
@@ -104,6 +110,21 @@ function parseCrossSession(prompt: string | undefined): { from: string; body: st
   return m ? { from: m[1], body: m[2] } : null
 }
 
+/** Tags Claude Code wraps around prompts it submits itself (not typed by the human). */
+const SystemTags = ['task-notification', 'system-reminder', 'cross-session-message', 'local-command-stdout', 'command-message', 'command-name', 'command-args']
+
+/** A prompt Claude Code generated (a subagent's task notification, system reminders, a
+ *  cross-session message, slash-command echoes): nothing human-typed is left once those
+ *  tag blocks are stripped. */
+export function isSystemPrompt(prompt: string | undefined): boolean {
+  const p = (prompt ?? '').trim()
+  if (!p) return false
+  if (p.startsWith('<task-notification')) return true
+  let rest = p
+  for (const t of SystemTags) rest = rest.replace(new RegExp(`<${t}(\\s[^>]*)?>[\\s\\S]*?(</${t}>|$)`, 'g'), '')
+  return rest.trim() === ''
+}
+
 export type Launcher = (args: string[]) => { command: string; args: string[] }
 
 /** Owns missions and their agents: launches sessions, maps tokens to agents,
@@ -129,6 +150,38 @@ export class Missions implements ControlHandlers {
   constructor(terminals: TerminalHost, changed: (missions: MissionView[]) => void) {
     this.terminals = terminals
     this.changed = changed
+    setInterval(() => this.checkIdleStops(), 60_000).unref?.()
+  }
+
+  /** Minutes a finished, merged lead may sit idle before The ORC stops it (0 = never).
+   *  index.ts wires this to Spaces. */
+  idleStopMinutesFor: (repo: string) => number = () => 0
+
+  /** Stops leads whose work is reported and merged and that have sat idle for the space's
+   *  idle-stop minutes, the way stop_agent does. Never the coordinator. */
+  checkIdleStops(now = Date.now()): void {
+    for (const m of this.missions.values()) {
+      if (m.state !== 'running' || m.paused) continue
+      const minutes = this.idleStopMinutesFor(m.repoPath)
+      if (!(minutes > 0)) continue
+      const window = minutes * 60_000
+      for (const a of m.agents.values()) {
+        if (a.role !== 'worker' || a.shutDown || a.status !== 'done' || a.inTurn) continue
+        if (a.merge !== 'merged' && a.merge !== 'nothing') continue
+        if (now - a.lastActivityAt < window) continue
+        if (a.lastHumanAt !== null && now - a.lastHumanAt < window) continue
+        if ([...m.agents.values()].some((x) => x.parent === a.name && x.status !== 'exited')) continue
+        this.endAgent(m, a, 'orc', `stopped: idle ${minutes} min after its work was merged`)
+      }
+    }
+  }
+
+  /** Who is calling an MCP tool: its role, space and mission. */
+  callerInfo(terminalId: string): { role: 'coordinator' | 'worker'; repoPath: string; missionName: string; missionId: string } | null {
+    const a = this.byTerminal.get(terminalId)
+    const m = a ? this.missions.get(a.missionId) : undefined
+    if (!a || !m) return null
+    return { role: a.role, repoPath: m.repoPath, missionName: m.name, missionId: m.id }
   }
 
   setControlPort(port: number): void {
@@ -599,7 +652,7 @@ export class Missions implements ControlHandlers {
 
   askHuman(callerTerminal: string, question: string): void {
     const a = this.byTerminal.get(callerTerminal)
-    this.update(callerTerminal, { status: 'needs-you', activity: 'asked you a question', question, waitingOn: 'question' })
+    this.update(callerTerminal, { status: 'needs-you', activity: 'asked you a question', question, waitingOn: 'question', pendingQuestion: question })
     if (a) this.feed(this.missions.get(a.missionId)!, { kind: 'question', from: a.name, to: 'you', text: oneLine(question) })
   }
 
@@ -612,6 +665,7 @@ export class Missions implements ControlHandlers {
     // The session's status line (plan usage): returns the text it shows, nothing else changes.
     if (e.hook_event_name === 'OrcStatusLine') return this.statusLine((e as unknown as { status?: unknown }).status)
     const mission = this.missions.get(agent.missionId)!
+    agent.lastActivityAt = Date.now()
     if (!agent.tally && typeof e.transcript_path === 'string') agent.tally = new TranscriptTally(e.transcript_path)
     const done = agent.status === 'done'
     const asking = agent.waitingOn === 'question'
@@ -628,11 +682,18 @@ export class Missions implements ControlHandlers {
         const fromName = cross ? this.agentNameFor(mission, cross.from) : null
         const isLaunch = agent.role === 'worker' && (e.prompt ?? '').trim() === agent.task.trim()
         const fromOrc = (e.prompt ?? '').startsWith('[The ORC]')
-        const human = !cross && !isLaunch && !fromOrc
+        const system = isSystemPrompt(e.prompt)
+        const human = !cross && !isLaunch && !fromOrc && !system
         if (human && agent.role === 'coordinator' && !mission.brief) mission.brief = e.prompt ?? null
+        if (human) agent.lastHumanAt = Date.now()
+        if (human && agent.pendingQuestion) {
+          this.record(mission, `Question from ${agent.name}`, `Q: ${agent.pendingQuestion}\n\nA: ${(e.prompt ?? '').trim()}`)
+          agent.pendingQuestion = null
+        }
+        const taskDone = (e.prompt ?? '').trim().startsWith('<task-notification')
         this.update(callerTerminal, {
           status: 'working',
-          activity: cross ? `message from ${fromName}` : 'thinking',
+          activity: cross ? `message from ${fromName}` : taskDone ? 'subagent finished' : 'thinking',
           question: null,
           waitingOn: null,
           ...(cross && agent.role === 'worker' ? { lastInstructionBy: 'coordinator' as const, lastInstructionAt: Date.now() } : {}),
@@ -754,6 +815,8 @@ export class Missions implements ControlHandlers {
    *  coordinator waits for the worker's UserPromptSubmit, which carries the text.) */
   noteHumanInput(terminalId: string, data: string): void {
     if (data.includes('\r')) {
+      const a = this.byTerminal.get(terminalId)
+      if (a) a.lastActivityAt = a.lastHumanAt = Date.now()
       this.update(terminalId, { lastInstructionBy: 'you', lastInstructionAt: Date.now() })
     }
   }
@@ -941,6 +1004,7 @@ export class Missions implements ControlHandlers {
   deliver(a: Agent, text: string): void {
     const line = text.replace(/\s+/g, ' ')
     if (a.status === 'exited') return
+    a.lastActivityAt = Date.now()
     if (!a.inTurn && !this.missions.get(a.missionId)?.paused && (a.status === 'idle' || a.status === 'done')) {
       this.terminals.write(a.terminalId, line)
       setTimeout(() => this.terminals.write(a.terminalId, '\r'), 500)
@@ -1032,7 +1096,10 @@ export class Missions implements ControlHandlers {
       inTurn: false,
       pid: null,
       token,
-      missionId: mission.id
+      missionId: mission.id,
+      lastActivityAt: Date.now(),
+      lastHumanAt: null,
+      pendingQuestion: null
     }
     delete (agent as Partial<typeof a>).systemPrompt
     delete (agent as Partial<typeof a>).firstPrompt
@@ -1092,7 +1159,8 @@ export class Missions implements ControlHandlers {
           ...agentView(a),
           transcriptPath: a.tally?.path ?? null,
           pid: a.pid ?? null,
-          notes: a.notes
+          notes: a.notes,
+          ...(a.pendingQuestion ? { pendingQuestion: a.pendingQuestion } : {})
         }))
       }))
     }
@@ -1119,7 +1187,7 @@ export class Missions implements ControlHandlers {
       this.missions.set(mission.id, mission)
       this.feedSeq = Math.max(this.feedSeq, ...mission.feed.map((f) => f.id))
       for (const sa of savedAgents) {
-        const { transcriptPath, pid, notes, ...view } = sa
+        const { transcriptPath, pid, notes, pendingQuestion, ...view } = sa
         const agent: Agent = {
           ...view,
           waitingOn: view.question ? 'question' : null,
@@ -1129,7 +1197,10 @@ export class Missions implements ControlHandlers {
           inTurn: false,
           token: '',
           missionId: mission.id,
-          pid: null
+          pid: null,
+          lastActivityAt: Date.now(),
+          lastHumanAt: null,
+          pendingQuestion: pendingQuestion ?? null
         }
         mission.agents.set(agent.name, agent)
         this.byTerminal.set(agent.terminalId, agent)

@@ -4,9 +4,11 @@ import { basename } from 'node:path'
 import { ModelRoles, type RoleModels, type SpaceView } from '../shared/types.ts'
 import { repoRoot } from './git-worktrees.ts'
 import { defaultRecordsDir } from './records.ts'
+import { suggestGate } from './gate-suggest.ts'
 
 export const DefaultMaxLive = 6
 export const DefaultUsageThreshold = 80
+export const DefaultIdleStopMinutes = 15
 
 /** Known roles with a non-empty string (trimmed); an explicit null is kept for advisor only
  *  ("no advisor"). Anything else is dropped. */
@@ -24,6 +26,9 @@ function cleanModels(v: unknown): Partial<RoleModels> {
 const clampThreshold = (n: unknown): number =>
   typeof n === 'number' && Number.isFinite(n) ? Math.max(1, Math.min(100, Math.round(n))) : DefaultUsageThreshold
 
+const clampIdleStop = (n: unknown): number =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.min(1440, Math.round(n))) : DefaultIdleStopMinutes
+
 interface Settings {
   gateCommand: string | null
   maxLive: number
@@ -33,6 +38,8 @@ interface Settings {
   models: Partial<RoleModels>
   /** Plan usage % at which this space's queue pauses. */
   usageThreshold: number
+  /** Minutes after which a finished lead's session is stopped. 0: never. */
+  idleStopMinutes: number
 }
 
 /** The repositories the user has opened, in order, with per-space settings. Saved to a JSON
@@ -66,7 +73,8 @@ export class Spaces {
               recordsDir: typeof dir === 'string' && dir ? dir : null,
               runCommand: typeof o.runCommand === 'string' && o.runCommand ? o.runCommand : null,
               models: cleanModels(o.models),
-              usageThreshold: clampThreshold(o.usageThreshold)
+              usageThreshold: clampThreshold(o.usageThreshold),
+              idleStopMinutes: clampIdleStop(o.idleStopMinutes)
             })
           }
         }
@@ -75,11 +83,22 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes }
+  }
+
+  /** suggestGate per root, read once. */
+  private readonly suggestions = new Map<string, string | null>()
+
+  private suggestion(root: string): string | null {
+    if (!this.suggestions.has(root)) this.suggestions.set(root, suggestGate(root))
+    return this.suggestions.get(root) ?? null
   }
 
   list(): SpaceView[] {
-    return this.roots.map((root) => ({ root, name: basename(root), ...this.get(root), recordsPath: this.recordsPath(root) }))
+    return this.roots.map((root) => {
+      const s = this.get(root)
+      return { root, name: basename(root), ...s, recordsPath: this.recordsPath(root), suggestedGate: s.gateCommand ? null : this.suggestion(root) }
+    })
   }
 
   gateCommand(root: string): string | null {
@@ -107,6 +126,10 @@ export class Spaces {
     return this.get(root).usageThreshold
   }
 
+  idleStopMinutes(root: string): number {
+    return this.get(root).idleStopMinutes
+  }
+
   update(root: string, patch: Partial<Settings>): void {
     const next = { ...this.get(root), ...patch }
     next.gateCommand = next.gateCommand?.trim() || null
@@ -115,6 +138,7 @@ export class Spaces {
     next.maxLive = Math.max(1, Math.min(50, Math.round(next.maxLive) || DefaultMaxLive))
     next.models = cleanModels(next.models)
     next.usageThreshold = clampThreshold(next.usageThreshold)
+    next.idleStopMinutes = clampIdleStop(next.idleStopMinutes)
     this.settings.set(root, next)
     this.save()
   }
@@ -132,6 +156,11 @@ export class Spaces {
       throw new Error(`${path} is not inside a git repository`)
     }
     if (!this.roots.includes(root)) {
+      // A new space starts with the suggested gate; existing ones only show it as a hint.
+      if (!this.settings.has(root)) {
+        const gate = this.suggestion(root)
+        if (gate) this.settings.set(root, { ...this.get(root), gateCommand: gate })
+      }
       this.roots.push(root)
       this.save()
     }
@@ -147,7 +176,7 @@ export class Spaces {
     if (!this.file) return
     try {
       const tmp = `${this.file}.tmp`
-      writeFileSync(tmp, JSON.stringify(this.list().map(({ name: _n, recordsPath: _p, ...rest }) => rest), null, 2))
+      writeFileSync(tmp, JSON.stringify(this.list().map(({ name: _n, recordsPath: _p, suggestedGate: _g, ...rest }) => rest), null, 2))
       renameOver(tmp, this.file)
     } catch {}
   }
