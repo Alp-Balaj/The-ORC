@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -124,13 +124,15 @@ if (smoke) {
   app.commandLine.appendSwitch('disable-background-timer-throttling')
 }
 
+const windowBackground = (): string => (nativeTheme.shouldUseDarkColors ? '#0b0b0d' : '#f7f7f8')
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1500,
     height: 920,
     title: 'The ORC',
     show: !smoke,
-    backgroundColor: '#0b0b0d',
+    backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -224,6 +226,10 @@ ipcMain.handle('terminal:replay', (_e, id: string) => terminals.replay(id))
 ipcMain.on('terminal:write', (_e, id: string, data: string) => {
   missions.noteHumanInput(id, data)
   terminals.write(id, data)
+})
+ipcMain.on('theme:set-native', (_e, pref: 'light' | 'dark' | 'system') => {
+  nativeTheme.themeSource = pref
+  for (const w of BrowserWindow.getAllWindows()) w.setBackgroundColor(windowBackground())
 })
 ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
   terminals.resize(id, cols, rows)
