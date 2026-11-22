@@ -64,7 +64,7 @@ function NewMissionForm({ space, onStarted, onCancel }: {
 function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => void }): React.JSX.Element {
   const [gate, setGate] = useState(space.gateCommand ?? '')
   const [max, setMax] = useState(String(space.maxLive))
-  const [vault, setVault] = useState(space.vaultDir ?? '')
+  const [records, setRecords] = useState(space.recordsDir ?? '')
   const [run, setRun] = useState(space.runCommand ?? '')
   return (
     <motion.form
@@ -75,7 +75,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       className="mx-1 mb-2 space-y-1.5 overflow-hidden rounded-lg border bg-card p-2 text-[12px]"
       onSubmit={(e) => {
         e.preventDefault()
-        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, vaultDir: vault || null, runCommand: run || null }).then(onClose)
+        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null }).then(onClose)
       }}
     >
       <label className="block text-muted-foreground">Run command (Run app starts it in a mission's integration branch)</label>
@@ -84,8 +84,8 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       <Input value={gate} onChange={(e) => setGate(e.target.value)} placeholder="e.g. pnpm test" />
       <label className="block text-muted-foreground">Most live agents in this space</label>
       <Input type="number" min={1} max={50} value={max} onChange={(e) => setMax(e.target.value)} data-testid="max-live" />
-      <label className="block text-muted-foreground">Mission records folder (optional, off when empty)</label>
-      <Input value={vault} onChange={(e) => setVault(e.target.value)} placeholder="/path/to/vault/Projects/Name/Missions" />
+      <label className="block text-muted-foreground">Mission records folder (empty: The ORC's own data folder)</label>
+      <Input value={records} onChange={(e) => setRecords(e.target.value)} placeholder={space.recordsDir ? '' : space.recordsPath} title={`Now: ${space.recordsPath}`} data-testid="records-dir" />
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" className="flex-1">Save</Button>
         <Button type="button" size="sm" variant="ghost" onClick={onClose}>Cancel</Button>

@@ -30,7 +30,9 @@ function world() {
     kill: (id: string) => running.delete(id), killAll: () => running.clear(), pid: () => 4242,
     isRunning: (id: string) => running.has(id), write: (id: string, data: string) => typed.push({ id, data })
   } as unknown as TerminalHost
-  return { m: new Missions(host, () => {}), launches, typed }
+  const m = new Missions(host, () => {})
+  m.verify = async () => ({ ok: true, report: 'VERDICT: PASS', promptHash: 'h' }) // never a billed claude -p
+  return { m, launches, typed }
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent(t, e as never)

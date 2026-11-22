@@ -26,6 +26,7 @@ ok('re-reading an unchanged file changes nothing', again.tokens === c.tokens)
 function world() {
   const host = { start: () => {}, kill: () => {}, killAll: () => {}, pid: () => null, isRunning: () => true, write: () => {} } as unknown as TerminalHost
   const m = new Missions(host, () => {})
+  m.verify = async () => ({ ok: true, report: 'VERDICT: PASS', promptHash: 'h' })
   const branches = new Set<string>()
   m.git = {
     ...m.git,

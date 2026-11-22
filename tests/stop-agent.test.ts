@@ -32,7 +32,9 @@ function world() {
     kill: (id: string) => { killed.push(id); running.delete(id) }, killAll: () => running.clear(), pid: () => null,
     isRunning: (id: string) => running.has(id), write: (id: string, data: string) => typed.push({ id, data })
   } as unknown as TerminalHost
-  return { m: new Missions(host, () => {}), launches, args, killed, typed }
+  const m = new Missions(host, () => {})
+  m.verify = async () => ({ ok: true, report: 'VERDICT: PASS', promptHash: 'h' }) // never a billed claude -p
+  return { m, launches, args, killed, typed }
 }
 const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent(t, e as never)
 
@@ -199,6 +201,7 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
     killAll: () => running.clear(), pid: () => null, isRunning: (id: string) => running.has(id), write: () => {}
   } as unknown as TerminalHost
   m = new Missions(host, () => {})
+  m.verify = async () => ({ ok: true, report: 'VERDICT: PASS', promptHash: 'h' })
   const id = await m.startMission({ repoPath: r, name: 'race', permissionMode: 'acceptEdits', gating: 'none' })
   await m.spawnAgent(`${id}:coordinator`, 'a', 'x')
   m.stopMission(id)

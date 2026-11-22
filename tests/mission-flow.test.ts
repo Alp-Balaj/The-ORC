@@ -19,9 +19,10 @@ function repo(name: string): string {
   writeFileSync(join(r, 'shared.txt'), 'one\ntwo\nthree\n'); g(r, 'add', '.'); g(r, 'commit', '-qm', 'base')
   return r
 }
+const launchedArgs: string[][] = []
 function world() {
   const typed: { id: string; data: string }[] = []
-  const host = { start: () => {}, kill: () => {}, killAll: () => {}, pid: () => null, isRunning: () => true, write: (id: string, data: string) => typed.push({ id, data }) } as unknown as TerminalHost
+  const host = { start: (o: { args: string[] }) => { launchedArgs.push(o.args) }, kill: () => {}, killAll: () => {}, pid: () => null, isRunning: () => true, write: (id: string, data: string) => typed.push({ id, data }) } as unknown as TerminalHost
   const m = new Missions(host, () => {})
   m.verify = async () => ({ ok: true, report: 'VERDICT: PASS\nMATCHES THE BRIEF: yes', promptHash: 'h' })
   return { m, typed }
@@ -36,10 +37,9 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   m.gateCommandFor = () => 'test -f a.txt'
   const recordsDir = join(root, 'vault', 'Missions')
   m.recordsDirFor = () => recordsDir
-  const id = await m.startMission({ repoPath: r, name: 'plan', permissionMode: 'acceptEdits' })
+  const id = await m.startMission({ repoPath: r, name: 'plan', permissionMode: 'acceptEdits', gating: 'plan' })
   const c = `${id}:coordinator`
   const v = () => m.views()[0]
-  ok('plan check is the default', v().gating === 'plan')
   hook(m, c, { hook_event_name: 'SessionStart' })
   hook(m, c, { hook_event_name: 'UserPromptSubmit', prompt: 'make a.txt and b.txt' })
   ok('the first human prompt is the brief', true)
@@ -65,6 +65,8 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   ok('agents never committed: the app did, with the mission trailer', g(r, 'log', '-1', '--format=%B', 'orc/plan/a').includes('ORC-Agent: plan/a'))
   ok('the gate ran on the merged result', v().gate?.ok === true, JSON.stringify(v().gate))
   ok('the owner checkout is untouched', !existsSync(join(r, 'a.txt')))
+  await sleep(50)
+  ok('the Verifier ran on its own once every team was merged', v().verifier?.status === 'done' && v().verifier?.integrationCommit === v().integrationCommit && v().feed.some((f) => f.kind === 'verifier'), JSON.stringify(v().verifier?.status))
   m.reportDone(`${id}:a`, 'Created a.txt (again)')
   await m.gitWork
   ok('a repeated report_done is harmless', v().agents.find((x) => x.name === 'a')!.merge === 'merged' && !v().feed.some((f) => f.kind === 'orc' && f.status === 'failed'), v().feed.filter((f) => f.kind === 'orc').map((f) => f.text).join(' | '))
@@ -84,6 +86,14 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   const note = notes.length === 1 ? readFileSync(join(recordsDir, notes[0]), 'utf8') : ''
   ok('one mission record note, dated and named', /^\d{4}-\d{2}-\d{2} - plan\.md$/.test(notes[0] ?? ''), notes.join())
   ok('the record holds brief, split, reports, Verifier and the merge with session ids', ['## Brief', 'make a.txt and b.txt', '## Approved split', '## Report from a', '## Report from b', '## Verifier report', 'Template sha256', '## Merged into main', '--resume', 'AI-generated'].every((x) => note.includes(x)), note.length + ' chars')
+  // The next mission's coordinator is pointed at this record and may read it without a prompt.
+  const next = await m.startMission({ repoPath: r, name: 'plan2', permissionMode: 'acceptEdits' })
+  ok('no check is the default', m.views().find((x) => x.id === next)!.gating === 'none')
+  const launched = launchedArgs.at(-1) ?? []
+  const settingsArg = launched[launched.indexOf('--settings') + 1] ?? ''
+  ok('a new coordinator is told about earlier mission records', (launched[launched.indexOf('--append-system-prompt') + 1] ?? '').includes(join(recordsDir, notes[0] ?? '?')))
+  ok('…and may read the records folder', settingsArg.includes(`Read(/${recordsDir.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_x, d) => '/' + d.toLowerCase())}/**)`), settingsArg.slice(0, 200))
+  m.stopMission(next)
 }
 
 // A worktree that can't be created -----------------------------------------------

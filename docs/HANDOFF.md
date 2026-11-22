@@ -1,24 +1,59 @@
 # Handoff — where the build stands
 
-_Updated 2026-11-19 ~05:00 (overnight autonomous run). Morning summary: `docs/OVERNIGHT-REPORT.md`._
+_Updated 2026-11-22._
 
 ## Next
 
-**Everything that can proceed without the owner is done.** `main` = M1–M4 plus error-handling
-hardening (`harden/errors`).
-- **Waiting on the owner:**
-  - UI polish: Mobbin research is required by their CLAUDE.md, and the tools aren't available;
-  - the items in `docs/DECISIONS-PENDING.md`;
-  - D4 (vault).
-- **Hardening verified free:**
-  - `tests/free.sh` passes;
-  - the replay passed 20 runs in a row after the tree fix (React Flow nodes now kept in state with
-    fixed sizes; the blank-tree root cause is unconfirmed);
-  - the crash tests pass (SIGKILL, normal quit, real never-prompted relaunch).
-- **Not run on the hardening commits:**
-  - The billed e2e. It is renderer and error-path work only, but the e2e's new "tree nodes
-    visible" check will first run on the next billed run.
-  - The error boundary has never been triggered by a test.
+- **No decisions are waiting on the owner.** They were all made on 2026-11-22; see
+  `docs/DECISIONS-PENDING.md` and `docs/adr/0001-unattended-merges-into-integration.md`.
+- **The owner has tested the app by hand.** The billed-test items listed before (e2e on the
+  hardening commits, team leads live, `stop_agent` live) are no longer tracked here.
+- **Open:**
+  - UI polish. The owner's CLAUDE.md asks for Mobbin research first, and the Mobbin tools are now
+    available.
+  - Capturing `ask_human` answers for the mission notes.
+  - Run app isn't restored after a restart of The ORC.
+  - A message from a sub-worker to its parent shows "last instruction: coordinator".
+
+## Owner decisions applied (branch `decisions-adr`, 2026-11-22)
+
+- **No check is the default everywhere.** `startMission` without a gating mode now gives `none`
+  (it used to give `plan`), and `coordinatorPrompt` defaults to it too. ADR 0001.
+- **The Verifier runs on its own** (`maybeAutoVerify` in `missions.ts`):
+  - **When:** after a merge, or after a report with nothing to merge, once every worker is
+    done or exited with its work merged or `nothing`. A stopped worker that never committed
+    counts as finished.
+  - **Not when:** the mission is paused, stopped or merged to main, or the integration commit
+    already has a report.
+  - **Repeat runs:** `runVerifier` keeps one run per mission. A second call (the button, a test)
+    waits for the running one.
+  - **Billing:** every place that uses fake sessions sets a fake `verify`, so none of them can
+    start a billed `claude -p`. That covers the unit tests, `ORC_SMOKE_FAKE` in `index.ts`, and
+    the replay.
+- **Mission records are on by default, and Obsidian is no longer involved.**
+  - `vault.ts` is renamed `records.ts`.
+  - **Where:** `defaultRecordsDir(<userData>/records, repo)` gives
+    `<userData>/records/<repo name>-<sha1(root)[0:6]>/`. Smoke runs use `ORC_SMOKE_OUT/records`.
+  - **Setting:** `vaultDir` is renamed `recordsDir` and is now an override. A `spaces.json` that
+    still has `vaultDir` is read as `recordsDir`. `SpaceView.recordsPath` is the folder actually
+    used, and the settings field shows it as the placeholder.
+  - **Reading past notes:** the coordinator prompt lists past notes (`pastRecords`: newest 20, this
+    mission's own note excluded). The coordinator gets a `Read(//<records dir>/**)` allow rule
+    (`readRule` in `claude-launch.ts`; Windows paths become `//c/...`). **Not checked live:** that
+    the rule lets a real session read the folder without a prompt.
+- **Resume banner.**
+  - `index.ts` keeps `resumedAtLaunch`: the missions whose agents `restore()` resumed or
+    restarted.
+  - The renderer fetches it once (`missions:resumed-at-launch`) and shows "Resumed N missions
+    after restart: …" at the bottom of the window.
+  - **Stop all** (`missions:stop-resumed`) stops those missions; ✕ only dismisses the banner.
+  - `crash.sh` checks the banner text.
+- **Tests:** `tests/free.sh` passes on Linux, including the crash tests. `mission-flow.test.ts`
+  adds four checks:
+  - the Verifier runs on its own;
+  - No check is the default;
+  - the next coordinator is told about the record;
+  - it gets the Read rule.
 
 ## Copy from a terminal (branch `terminal-copy`, 2026-11-20)
 
@@ -156,11 +191,11 @@ hardening (`harden/errors`).
   deliveries. Resume merges the held work and flushes queued notes. The human can always type.
 - **Live-agent cap** (space setting, default 6), enforced in `spawnAgent` and `startMission`.
   "Live" = the process is running and its status isn't done or exited.
-- **Vault records** (`src/main/vault.ts`, space setting "Mission records folder", off by default):
-  one append-only note per mission. It holds the brief, approved split, worker reports, Verifier
+- **Mission records** (`src/main/records.ts`; on by default since 2026-11-22, see above): one
+  append-only note per mission. It holds the brief, approved split, worker reports, Verifier
   report (with hashes), and the merge commit plus every session id.
-- **Space settings UI:** the gear on a space row holds the gate command, live cap and records
-  folder, and the row shows the live count.
+- **Space settings UI:** the gear on a space row holds the run command, gate command, live cap
+  and records folder override, and the row shows the live count.
 - **Tests:**
   - `tests/recovery.test.ts` (free, 21 checks);
   - `tests/crash.sh` (free: SIGKILL the app's process group, relaunch on the same state, fake
@@ -207,7 +242,7 @@ hardening (`harden/errors`).
 - **`verifier.ts`:** `claude -p` with `--tools Read,Grep,Glob --permission-mode dontAsk
   --no-session-persistence` and the mission's model, given the prompt on stdin. The template is
   pinned and its sha256 is recorded. The diff is fenced off as untrusted data.
-- **Gate command:** a per-space setting in `spaces.json` (see `docs/DECISIONS-PENDING.md`).
+- **Gate command:** a per-space setting in `spaces.json` (decided: see `docs/DECISIONS-PENDING.md`).
 - **UI:** `components/MissionScreens.tsx` holds `SplitPanel`, `ReviewScreen` and `MergeScreen`;
   `components/DiffView.tsx` shows diffs. The gating choice is in the New mission form.
 
@@ -373,12 +408,11 @@ Runs on Windows 11. Checked there: typecheck, all 7 unit tests, and the hidden r
   Without it a real session sits at the trust prompt and never sends SessionStart. That failure
   shows up only in the crash test's "fresh" round and in the billed tests.
 
-## Known gaps (left for later milestones)
+## Known gaps
 
-- Missions live in memory only. Closing the app kills every session (no `--resume` reattach yet, M4).
-- No commit on `report_done`, no integration branch, no merge screen (M3).
 - Messages from a sub-worker to its parent show "last instruction: coordinator" (the type only knows you/coordinator).
-- Worktrees and `orc/<mission>/<agent>` branches are never cleaned up by the app (M3: after merge).
+- `ask_human` answers aren't captured, so mission notes don't include them.
+- Run app is not restored after a restart of The ORC.
 
 ## Facts established (don't re-derive)
 

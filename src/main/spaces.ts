@@ -3,13 +3,15 @@ import { renameOver } from './rename-over.ts'
 import { basename } from 'node:path'
 import type { SpaceView } from '../shared/types.ts'
 import { repoRoot } from './git-worktrees.ts'
+import { defaultRecordsDir } from './records.ts'
 
 export const DefaultMaxLive = 6
 
 interface Settings {
   gateCommand: string | null
   maxLive: number
-  vaultDir: string | null
+  /** Where mission records go instead of the default folder. Null: the default. */
+  recordsDir: string | null
   runCommand: string | null
 }
 
@@ -20,8 +22,12 @@ export class Spaces {
   private readonly settings = new Map<string, Settings>()
   private readonly file: string | null
 
-  constructor(file: string | null) {
+  /** Base folder for the default mission records (`<userData>/records`). */
+  private readonly recordsBase: string
+
+  constructor(file: string | null, recordsBase: string) {
     this.file = file
+    this.recordsBase = recordsBase
     if (!file) return
     try {
       const saved = JSON.parse(readFileSync(file, 'utf8')) as unknown
@@ -30,12 +36,14 @@ export class Spaces {
         for (const e of saved as unknown[]) {
           if (typeof e === 'string') this.roots.push(e)
           else if (e && typeof (e as { root?: unknown }).root === 'string') {
-            const o = e as Partial<Settings> & { root: string }
+            // `vaultDir` is the setting's name before 2026-11-22.
+            const o = e as Partial<Settings> & { root: string; vaultDir?: unknown }
+            const dir = typeof o.recordsDir === 'string' ? o.recordsDir : o.vaultDir
             this.roots.push(o.root)
             this.settings.set(o.root, {
               gateCommand: typeof o.gateCommand === 'string' && o.gateCommand ? o.gateCommand : null,
               maxLive: typeof o.maxLive === 'number' && o.maxLive > 0 ? o.maxLive : DefaultMaxLive,
-              vaultDir: typeof o.vaultDir === 'string' && o.vaultDir ? o.vaultDir : null,
+              recordsDir: typeof dir === 'string' && dir ? dir : null,
               runCommand: typeof o.runCommand === 'string' && o.runCommand ? o.runCommand : null
             })
           }
@@ -45,11 +53,11 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, vaultDir: null, runCommand: null }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null }
   }
 
   list(): SpaceView[] {
-    return this.roots.map((root) => ({ root, name: basename(root), ...this.get(root) }))
+    return this.roots.map((root) => ({ root, name: basename(root), ...this.get(root), recordsPath: this.recordsPath(root) }))
   }
 
   gateCommand(root: string): string | null {
@@ -60,8 +68,9 @@ export class Spaces {
     return this.get(root).maxLive
   }
 
-  vaultDir(root: string): string | null {
-    return this.get(root).vaultDir
+  /** Where this space's mission records go: its own folder if set, else the default. */
+  recordsPath(root: string): string {
+    return this.get(root).recordsDir ?? defaultRecordsDir(this.recordsBase, root)
   }
 
   runCommand(root: string): string | null {
@@ -71,7 +80,7 @@ export class Spaces {
   update(root: string, patch: Partial<Settings>): void {
     const next = { ...this.get(root), ...patch }
     next.gateCommand = next.gateCommand?.trim() || null
-    next.vaultDir = next.vaultDir?.trim() || null
+    next.recordsDir = next.recordsDir?.trim() || null
     next.runCommand = next.runCommand?.trim() || null
     next.maxLive = Math.max(1, Math.min(50, Math.round(next.maxLive) || DefaultMaxLive))
     this.settings.set(root, next)
@@ -106,7 +115,7 @@ export class Spaces {
     if (!this.file) return
     try {
       const tmp = `${this.file}.tmp`
-      writeFileSync(tmp, JSON.stringify(this.list().map(({ name: _n, ...rest }) => rest), null, 2))
+      writeFileSync(tmp, JSON.stringify(this.list().map(({ name: _n, recordsPath: _p, ...rest }) => rest), null, 2))
       renameOver(tmp, this.file)
     } catch {}
   }

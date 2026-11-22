@@ -35,9 +35,13 @@ const missions = new Missions(terminals, (views) => {
 const appRunner = new AppRunner(terminals, (run) => send('app:changed', run))
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
 missions.liveLimitFor = (repo) => spaces.maxLive(repo)
-missions.recordsDirFor = (repo) => spaces.vaultDir(repo)
+missions.recordsDirFor = (repo) => spaces.recordsPath(repo)
 // Smoke runs that must survive a restart (the crash test) use fake sessions from the start.
-if (process.env.ORC_SMOKE_OUT && process.env.ORC_SMOKE_FAKE) missions.launcher = fakeLauncher
+if (process.env.ORC_SMOKE_OUT && process.env.ORC_SMOKE_FAKE) {
+  missions.launcher = fakeLauncher
+  // The Verifier now runs on its own; fake sessions must never start a billed claude -p.
+  missions.verify = async () => ({ ok: true, report: 'VERDICT: PASS', promptHash: 'f'.repeat(64) })
+}
 
 /** Missions survive restarts (M4). Smoke runs keep their state under ORC_SMOKE_OUT, never in
  *  the owner's userData; ORC_STATE_FILE overrides (the crash test relaunches on one file). */
@@ -111,7 +115,8 @@ app.on('second-instance', () => {
 })
 
 // Test runs never touch the owner's saved spaces.
-const spaces = new Spaces(smoke ? null : join(app.getPath('userData'), 'spaces.json'))
+// Mission records default to <userData>/records (smoke runs: their own out dir).
+const spaces = new Spaces(smoke ? null : join(app.getPath('userData'), 'spaces.json'), join(smoke ?? app.getPath('userData'), 'records'))
 if (smoke) {
   // A hidden window stops producing frames after a while; screenshots then never arrive.
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
@@ -141,7 +146,17 @@ function createWindow(): void {
   else win.loadFile(join(import.meta.dirname, '../renderer/index.html'))
 }
 
+/** Missions that restore() brought back at launch, for the "Resumed N missions" banner. */
+let resumedAtLaunch: { id: string; name: string }[] = []
 ipcMain.handle('missions:list', () => missions.views())
+ipcMain.handle('missions:resumed-at-launch', () => resumedAtLaunch)
+ipcMain.handle('missions:stop-resumed', () => {
+  for (const m of resumedAtLaunch) missions.stopMission(m.id)
+  resumedAtLaunch = []
+})
+ipcMain.handle('missions:dismiss-resumed', () => {
+  resumedAtLaunch = []
+})
 ipcMain.handle('missions:start', async (_e, req: StartMissionRequest) => {
   await spaces.add(req.repoPath)
   send('spaces:changed', spaces.list())
@@ -166,7 +181,7 @@ ipcMain.handle('app:run', async (_e, id: string) => {
 ipcMain.handle('app:stop', () => appRunner.stop())
 ipcMain.handle('app:current', () => appRunner.view())
 ipcMain.handle('missions:resume', (_e, id: string) => missions.resumeMission(id))
-ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string | null; maxLive?: number; vaultDir?: string | null; runCommand?: string | null }) => {
+ipcMain.handle('spaces:update', (_e, root: string, patch: { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null }) => {
   spaces.update(root, patch)
   send('spaces:changed', spaces.list())
 })
@@ -228,6 +243,9 @@ app.whenReady().then(async () => {
         }
       })
       if (done.length) console.log(`recovered:\n  ${done.join('\n  ')}`)
+      // The banner in the window lists the missions that came back (owner, 2026-11-22).
+      const back = new Set(done.filter((l) => /: (resumed|restarted)$/.test(l)).map((l) => l.split('/')[0]))
+      resumedAtLaunch = missions.views().filter((m) => back.has(m.name)).map((m) => ({ id: m.id, name: m.name }))
     } catch (err) {
       console.error('could not restore missions', err)
     }

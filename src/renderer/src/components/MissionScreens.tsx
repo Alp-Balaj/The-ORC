@@ -143,7 +143,7 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
               <div className="mt-1 font-mono text-[10px] text-muted-foreground" title="sha256 of the pinned template / of the full prompt">template {v.templateHash.slice(0, 12)} · prompt {v.promptHash.slice(0, 12)}</div>
             </>
           ) : (
-            <div className="text-[12px] text-muted-foreground">A one-shot, read-only Claude run that checks the combined diff against the brief and the split.</div>
+            <div className="text-[12px] text-muted-foreground">A one-shot, read-only Claude run that checks the combined diff against the brief and the split. It runs on its own once every team is merged.</div>
           )}
         </section>
       </div>

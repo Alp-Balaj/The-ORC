@@ -9,7 +9,7 @@ import type { TerminalHost } from './terminals.ts'
 import { TranscriptTally } from './tokens.ts'
 import * as missionGit from './mission-git.ts'
 import { runVerifier, templateHash } from './verifier.ts'
-import { appendRecord } from './vault.ts'
+import { appendRecord, pastRecords, recordPath } from './records.ts'
 
 interface Agent extends AgentView {
   token: string
@@ -178,7 +178,7 @@ export class Missions implements ControlHandlers {
       createdAt: Date.now(),
       agents: new Map(),
       feed: [],
-      gating: req.gating ?? 'plan',
+      gating: req.gating ?? 'none',
       split: null,
       merged: [],
       integrationCommit: null,
@@ -200,7 +200,7 @@ export class Missions implements ControlHandlers {
         task: '',
         cwd: repo,
         branch: mission.baseBranch,
-        systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating)
+        systemPrompt: coordinatorPrompt(name, sessionName, repo, mission.gating, this.pastRecordsFor(mission))
       })
     } catch (err) {
       // The coordinator never started: forget the mission so the name can be used again.
@@ -393,9 +393,33 @@ export class Missions implements ControlHandlers {
     this.feed(mission, { kind: 'gate', from: 'orc', to: null, text: `${command}: ${mission.gate.ok ? 'passed' : `failed (exit ${mission.gate.exitCode})`}`, status: mission.gate.ok ? 'ok' : 'failed' })
   }
 
-  async runVerifier(missionId: string): Promise<void> {
+  /** Verifier runs in progress, by mission: a second request waits for the running one. */
+  private verifying = new Map<string, Promise<void>>()
+
+  runVerifier(missionId: string): Promise<void> {
+    const running = this.verifying.get(missionId)
+    if (running) return running
+    const p = this.verifyNow(missionId).finally(() => this.verifying.delete(missionId))
+    this.verifying.set(missionId, p)
+    return p
+  }
+
+  /** The Verifier runs on its own once every team is finished and merged (owner, 2026-11-22):
+   *  with No check it is the only automatic review before Merge to main. Once per integration
+   *  commit; work merged later makes the report stale and it runs again when that settles. */
+  private maybeAutoVerify(mission: Mission): void {
+    if (mission.paused || mission.mergedToMain || mission.state !== 'running' || mission.merged.length === 0) return
+    if (this.verifying.has(mission.id) || mission.verifier?.integrationCommit === mission.integrationCommit) return
+    const workers = [...mission.agents.values()].filter((x) => x.role === 'worker')
+    const settled = workers.every((x) => (x.status === 'done' || x.status === 'exited') && (x.merge === 'merged' || x.merge === 'nothing' || (x.status === 'exited' && x.merge === null)))
+    if (!settled) return
+    this.feed(mission, { kind: 'orc', from: 'orc', to: null, text: 'every team is merged: running the Verifier' })
+    void this.runVerifier(mission.id).catch((err) => this.orcNote(mission, `Verifier error: ${String(err)}`))
+  }
+
+  private async verifyNow(missionId: string): Promise<void> {
     const mission = this.missions.get(missionId)
-    if (!mission || mission.merged.length === 0 || mission.verifier?.status === 'running') return
+    if (!mission || mission.merged.length === 0) return
     const diff = await this.git.combinedDiff(mission.repoPath, mission.name, mission.baseBranch)
     mission.verifier = { status: 'running', report: '', templateHash, promptHash: '', at: Date.now(), integrationCommit: mission.integrationCommit }
     this.emit()
@@ -722,6 +746,7 @@ export class Missions implements ControlHandlers {
     if (!sha && a.merge !== 'conflict' && !(await this.hasUnmergedCommits(mission, a))) {
       a.merge = mission.merged.includes(a.name) ? 'merged' : 'nothing'
       this.emit()
+      this.maybeAutoVerify(mission)
       return
     }
     a.merge = 'committed'
@@ -791,10 +816,17 @@ export class Missions implements ControlHandlers {
       if (gate) await this.runGate(mission.id, gate)
     }
     this.emit()
+    this.maybeAutoVerify(mission)
   }
 
-  /** A space's mission-records folder, or null (off). index.ts wires this to Spaces. */
+  /** A space's mission-records folder, or null (off: unit tests). index.ts wires this to Spaces. */
   recordsDirFor: (repo: string) => string | null = () => null
+
+  /** Earlier missions' record notes in this space, for the coordinator to read. */
+  private pastRecordsFor(m: Mission): string[] {
+    const dir = this.recordsDirFor(m.repoPath)
+    return dir ? pastRecords(dir, recordPath(dir, m.name, m.createdAt)) : []
+  }
 
   /** Appends to the mission's record note when the space has a records folder. Never throws. */
   private record(m: Mission, heading: string, body: string): void {
@@ -971,7 +1003,9 @@ export class Missions implements ControlHandlers {
         permissionMode: mission.permissionMode,
         model: mission.model,
         systemPrompt: o.systemPrompt,
-        firstPrompt: o.firstPrompt
+        firstPrompt: o.firstPrompt,
+        // The coordinator reads earlier missions' records, which live outside the repo.
+        readDirs: agent.role === 'coordinator' ? [this.recordsDirFor(mission.repoPath)].filter((d): d is string => !!d) : []
       })
     )
     this.terminals.start({ id: agent.terminalId, command, args, cwd: agent.cwd, env: sessionEnv() })
@@ -980,7 +1014,7 @@ export class Missions implements ControlHandlers {
   }
 
   private systemPromptFor(mission: Mission, a: Agent): string {
-    if (a.role === 'coordinator') return coordinatorPrompt(mission.name, a.sessionName, mission.repoPath, mission.gating)
+    if (a.role === 'coordinator') return coordinatorPrompt(mission.name, a.sessionName, mission.repoPath, mission.gating, this.pastRecordsFor(mission))
     const parent = a.parent ? mission.agents.get(a.parent) : null
     return workerPrompt(mission.name, a.sessionName, parent?.sessionName ?? `${mission.name}/coordinator`)
   }

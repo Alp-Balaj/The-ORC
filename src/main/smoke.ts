@@ -262,6 +262,8 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
       await js(`document.querySelector('[data-testid=agent-card][data-agent=survivor]')?.click()`)
       await sleep(1000)
       check('the UI shows the recovered worker', (await js<string>(`document.querySelector('[data-testid=terminal] .xterm-rows')?.textContent ?? ''`)).includes('resumed'))
+      const resumedBanner = await js<string>(`document.querySelector('[data-testid=resumed-banner]')?.textContent ?? ''`)
+      check('a banner says which missions were resumed', /Resumed 1 mission after restart/.test(resumedBanner) && !!m && resumedBanner.includes(m.name), resumedBanner)
       await shot('recovered')
     } else if (scenario === 'replay') {
       await runReplay({ js, shot, check, log, sleep, missions: d.missions, sandbox: Sandbox, transcriptFixture: join(d.appPath, 'tests', 'fixtures', 'transcript-worker.jsonl') })

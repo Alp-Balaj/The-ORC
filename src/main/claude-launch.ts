@@ -67,6 +67,15 @@ export interface LaunchSpec {
   model?: string | null
   systemPrompt: string
   firstPrompt?: string
+  /** Folders outside the session's cwd it may read without a prompt (mission records). */
+  readDirs?: string[]
+}
+
+/** A Read permission rule for an absolute folder. Claude Code writes absolute paths with a
+ *  leading `//`, and Windows paths in POSIX form (`C:\x` → `//c/x`). */
+export function readRule(dir: string): string {
+  const posix = dir.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_m, d: string) => `/${d.toLowerCase()}`).replace(/\/+$/, '')
+  return `Read(/${posix.startsWith('/') ? posix : `/${posix}`}/**)`
 }
 
 function hookCommand(port: number, token: string): string {
@@ -80,7 +89,7 @@ function hookCommand(port: number, token: string): string {
 export function claudeArgs(spec: LaunchSpec): string[] {
   const hook = { type: 'command', command: hookCommand(spec.controlPort, spec.token) }
   const settings = {
-    permissions: { allow: OrcTools, deny: DeniedGitWrites },
+    permissions: { allow: [...OrcTools, ...(spec.readDirs ?? []).map(readRule)], deny: DeniedGitWrites },
     hooks: Object.fromEntries(
       HookEvents.map((event) => [event, [{ matcher: '*', hooks: [hook] }]])
     )
@@ -113,7 +122,14 @@ export const SpeedRules =
   'tests or full builds unless the task explicitly asks for it. At most, run a quick check that ' +
   'what you touched compiles. Never run git commands that write. Finish as soon as it works.'
 
-export function coordinatorPrompt(mission: string, sessionName: string, repo: string, gating: Gating = 'plan'): string {
+export function coordinatorPrompt(mission: string, sessionName: string, repo: string, gating: Gating = 'none', pastRecords: string[] = []): string {
+  const past = pastRecords.length
+    ? [
+        'Records of earlier missions in this repository (newest first) say what was built before and',
+        'why. Read the ones that look related to the request before splitting the work:',
+        pastRecords.map((p) => `"${p}"`).join(', ') + '.'
+      ]
+    : []
   const gate =
     gating === 'plan'
       ? [
@@ -145,7 +161,8 @@ export function coordinatorPrompt(mission: string, sessionName: string, repo: st
     'Never commit, merge, push or manage branches: The ORC commits each team\'s work when its lead',
     'reports done and merges it into the mission\'s integration branch; the human merges to main.',
     'Messages starting with [The ORC] come from the app, not the human.',
-    'The human can type into any lead directly. If they are steering a lead, do not override them.'
+    'The human can type into any lead directly. If they are steering a lead, do not override them.',
+    ...past
   ].join(' ')
 }
 

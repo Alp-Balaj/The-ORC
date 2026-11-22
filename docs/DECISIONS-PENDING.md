@@ -3,65 +3,44 @@
 Cases where the plan as written may be wrong, or needs an ADR. The build follows the plan as
 written until you decide.
 
-## 1. Plan check lets work merge into the integration branch without a human (needs the ADR)
+**Nothing is pending.** The owner decided everything below on 2026-11-22. It stays here as the
+record of what was asked and what was decided.
 
-The plan (§ Gating) says approving it triggers an ADR, because "plan check" (the default) lets
-finished workers merge into `integration/<mission>` with no human look. That overturns kickoff §10
-("no cross-checkpoint autonomy").
+## Decided 2026-11-22
 
-**Built as written:** plan check is the default. `main` still changes only on your click, behind
-the Verifier report and the combined diff.
+### 1. Work merges into the integration branch without a human → accepted
 
-**To decide:** accept this in an ADR, or make Checkpointed the default.
+[ADR 0001](adr/0001-unattended-merges-into-integration.md). **No check is the default** everywhere:
+- the New mission form;
+- `startMission` when no gating mode is given (it used to fall back to plan check).
 
-**Update 2026-11-20 (owner):** the owner made **No check** the New-mission default, for speed. The
-ADR question now covers that default. (`startMission` without a gating still falls back to plan check.)
+Merge to main is the one human checkpoint.
 
-## 2. How approvals and conflicts reach an idle coordinator
+### 2. Mission records (D4) → yes, without Obsidian
 
-`propose_split` returns "pending" at once (as planned). Your approval then has to reach the
-coordinator. Claude Code has no CLI for sending a session a message from outside. Hook
-`additionalContext` only arrives on the session's *next* hook, and an idle coordinator has none.
+- On for every space.
+- Plain Markdown in `<userData>/records/<repo>-<hash>/`. A space can name another folder.
+- A new coordinator is given the paths of past mission notes and may read them.
+- Plan § Mission records.
 
-**Built:**
-- If the coordinator is idle, The ORC types the notice into its terminal as a prompt beginning
-  `[The ORC]`.
-- If the coordinator is busy, the notice rides on its next hook.
+### 3. Restart resumes running missions → keep it, with a banner
 
-**To decide:** whether typing into the coordinator's terminal is acceptable. It shows in the
-transcript as if you typed it, but tagged `[The ORC]`.
+- Running missions still come back on their own at launch.
+- The window then shows "Resumed N missions after restart: …", with **Stop all** and a dismiss.
+- A turn cut off by a crash still comes back idle and is not re-prompted.
 
-## 3. The gate command lives in app state, per space
+### 4. Verifier → runs on its own
 
-The plan says "run the repo's build/test gate on the merged result" but not where that command
-comes from.
+It runs once every team is finished and merged, once per integration commit. The button stays.
+See ADR 0001.
 
-**Built:** a per-space setting, saved in the app's `spaces.json`. Nothing is written into your
-repository. With no gate command set, the gate shows "not configured" and doesn't block the merge.
+### 5. `[The ORC]` notes typed into an idle coordinator's terminal → accepted
 
-## 4. Where the build differs from the plan's wording (small)
+### 6. Smaller choices → kept as built
 
-- **The Verifier runs when you press its button** on the Merge to main screen, not automatically
-  before the button appears. It is billed, and a stale report is marked as such. Making it
-  automatic is a one-line change.
-- **Conflicts go to the worker that conflicted:** the markers are left in its worktree, and its
-  coordinator is told. The plan says "a ◐ question to the coordinator, or to you". The card shows
-  the conflict in red, but the agent doesn't turn ◐.
-- **Workers merge into the integration branch in the order they report done**, not in dependency
-  order. The ORC has no dependency information between workers yet.
-- **The vault (D4)** will be built last in M4: off by default, a folder you choose per space, and
-  tested only against a folder inside orc-sandbox. D4 is still "suggested, awaiting owner", so it
-  stays off until you turn it on.
-
-## 5. Restart behaviour (M4)
-
-- **Starting The ORC resumes every mission that was running**, without asking: each live agent is
-  relaunched with `claude --resume`. This starts sessions you may not have meant to restart. The
-  alternative is a "Resume N missions?" prompt on launch. Stop a mission (or use Remove) to keep it
-  from coming back.
-- **A turn cut off by a crash is not re-prompted.** The agent comes back idle with its
-  conversation, and you, or its coordinator, tell it to continue.
-- **Pause** interrupts turns that agents start for each other while paused, but anything you type
-  yourself runs.
-- **Mission record notes** use the UTC date, and they don't include `ask_human` answers yet (those
-  are typed into terminals and The ORC doesn't capture them as answers).
+- **The gate command** is a per-space setting in the app's `spaces.json`. Nothing is written into
+  the repo.
+- **A conflict** goes back to the worker that hit it. The card shows it in red but doesn't turn ◐.
+- **Merge order** is the order teams finish, not dependency order.
+- **Pause** interrupts turns agents start for each other, but anything you type still runs.
+- **Mission notes** use the UTC date and don't include `ask_human` answers yet.

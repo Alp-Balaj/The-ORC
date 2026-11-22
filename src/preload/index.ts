@@ -9,6 +9,9 @@ function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void):
 
 const api = {
   listMissions: (): Promise<MissionView[]> => ipcRenderer.invoke('missions:list'),
+  resumedAtLaunch: (): Promise<{ id: string; name: string }[]> => ipcRenderer.invoke('missions:resumed-at-launch'),
+  stopResumed: (): Promise<void> => ipcRenderer.invoke('missions:stop-resumed'),
+  dismissResumed: (): Promise<void> => ipcRenderer.invoke('missions:dismiss-resumed'),
   startMission: (req: StartMissionRequest): Promise<string> =>
     ipcRenderer.invoke('missions:start', req),
   stopMission: (id: string): Promise<void> => ipcRenderer.invoke('missions:stop', id),
@@ -16,7 +19,7 @@ const api = {
   pauseMission: (id: string): Promise<void> => ipcRenderer.invoke('missions:pause', id),
   removeMission: (id: string): Promise<boolean> => ipcRenderer.invoke('missions:remove', id),
   resumeMission: (id: string): Promise<void> => ipcRenderer.invoke('missions:resume', id),
-  updateSpace: (root: string, patch: { gateCommand?: string | null; maxLive?: number; vaultDir?: string | null; runCommand?: string | null }): Promise<void> => ipcRenderer.invoke('spaces:update', root, patch),
+  updateSpace: (root: string, patch: { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null }): Promise<void> => ipcRenderer.invoke('spaces:update', root, patch),
   decideSplit: (id: string, approve: boolean, note: string | null): Promise<void> => ipcRenderer.invoke('missions:decide-split', id, approve, note),
   approveWorker: (id: string, agent: string): Promise<void> => ipcRenderer.invoke('missions:approve-worker', id, agent),
   stopWorker: (id: string, agent: string): Promise<void> => ipcRenderer.invoke('missions:stop-worker', id, agent),

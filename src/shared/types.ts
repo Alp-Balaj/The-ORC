@@ -123,8 +123,11 @@ export interface SpaceView {
   gateCommand: string | null
   /** Most live agents across this space's missions. */
   maxLive: number
-  /** Optional folder for mission records (the vault, D4). Off when null. */
-  vaultDir: string | null
+  /** A folder for mission records chosen in the space settings. Null: the default folder. */
+  recordsDir: string | null
+  /** Where this space's mission records actually go (recordsDir, or the default under the
+   *  app's data folder). */
+  recordsPath: string
   /** Shell command that runs the app being built (e.g. "pnpm dev"), from a mission's
    *  integration worktree. Null: no Run app. */
   runCommand: string | null
@@ -150,7 +153,7 @@ export interface StartMissionRequest {
   permissionMode: PermissionMode
   /** Passed as --model to every session in the mission (e.g. "haiku"). Default: Claude Code's own. */
   model?: string
-  /** Default: plan check. */
+  /** Default: no check. */
   gating?: Gating
 }
 

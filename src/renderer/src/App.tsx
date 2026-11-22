@@ -31,6 +31,8 @@ export function App(): React.JSX.Element {
   const [, tick] = useState(0)
   // A failed action (IPC rejected) shows here instead of disappearing into the console.
   const [actionError, setActionError] = useState<string | null>(null)
+  // Missions The ORC brought back on its own at launch (each one is live, billed sessions).
+  const [resumed, setResumed] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
     const onReject = (e: PromiseRejectionEvent): void => {
       e.preventDefault() // shown in the banner: handled, not an uncaught error
@@ -44,6 +46,7 @@ export function App(): React.JSX.Element {
     void window.orc.listMissions().then(setMissions)
     void window.orc.listSpaces().then(setSpaces)
     void window.orc.currentApp().then(setAppRun)
+    void window.orc.resumedAtLaunch().then(setResumed)
     const offA = window.orc.onApp(setAppRun)
     const offM = window.orc.onMissions(setMissions)
     const offS = window.orc.onSpaces(setSpaces)
@@ -99,6 +102,18 @@ export function App(): React.JSX.Element {
           <span className="text-destructive">Action failed:</span>
           <span className="min-w-0 break-words">{actionError}</span>
           <button className="ml-2 cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => setActionError(null)} aria-label="Dismiss">✕</button>
+        </div>
+      )}
+      {resumed.length > 0 && (
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', actionError ? 'bottom-16' : 'bottom-3', 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="resumed-banner" role="status">
+          <RotateCcw className="size-3.5 shrink-0 text-primary" />
+          <span className="min-w-0">
+            Resumed {resumed.length} mission{resumed.length === 1 ? '' : 's'} after restart: <span className="font-medium">{resumed.map((m) => m.name).join(', ')}</span>
+          </span>
+          <Button size="sm" variant="outline" className="ml-2 h-6 shrink-0 px-2 text-[11px]" data-testid="stop-resumed" title="Stop every mission listed here. Worktrees are kept, and Restart brings each one back." onClick={() => void window.orc.stopResumed().then(() => setResumed([]))}>
+            <Square /> Stop all
+          </Button>
+          <button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={() => void window.orc.dismissResumed().then(() => setResumed([]))} aria-label="Dismiss" data-testid="dismiss-resumed">✕</button>
         </div>
       )}
       {/* Header */}

@@ -35,7 +35,7 @@ Each item is tagged with where it comes from:
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
 | D1 | **Route** | (a) try stablyai's app on a real task for a day; (b) fork stablyai (MIT, ~34k files); (c) build a new, smaller, Claude-only app | **(a) first, then choose (b) or (c).** It doesn't block this plan, which describes what to build either way. Claude Code's built-in messaging (see below) removes the hardest part of (c), so (c) is now realistic. |
-| D4 | **Where the vault fits** | Mission records (the brief, the split, the merged result, the Verifier's report) written to the vault, or no vault at all | Suggested, awaiting owner: see [The vault](#the-vault-d4-suggestion). |
+| D4 | **Mission records** | Records written to the vault, or no vault at all | **Decided 2026-11-22 (owner):** records yes, without Obsidian. They're on by default in the app's data folder. See [Mission records](#mission-records-d4-decided-2026-11-22). |
 
 **Decided 2026-11-18 (owner):**
 - **Name: The ORC.** The command is `orc`, which is free on this machine; Arch's `orc` package (GStreamer's Optimized Inner Loop Runtime Compiler) installs no `orc` binary. Any Arch package needs a different package name, e.g. `the-orc`.
@@ -125,32 +125,35 @@ Agents talk with Claude Code's own `SendMessage` / `ListAgents`, addressing each
 - **`main` changes only when you press Merge to main.** That screen shows the **combined diff** of the mission, the gate results and the Verifier report.
 
 ### 8. A Verifier before merge [Orca, the idea that survives]
-- Before a mission's Merge to main is offered, the app runs **one one-shot Verifier**. It's a scoped `claude -p` run (Orca's role and prompt idea) that checks the combined diff against the coordinator's split and the original brief.
+- Once every team in a mission is finished and merged, the app runs **one one-shot Verifier** on its own (ADR 0001). It runs again if more work merges later, and you can also run it by hand. It's a scoped `claude -p` run (Orca's role and prompt idea) that checks the combined diff against the coordinator's split and the original brief.
 - This is the one place Orca's reproducibility discipline still applies: a pinned prompt, a recorded hash, a written report.
 
-### The vault (D4 suggestion)
-The vault is **optional per Space**, and it holds **records, never state**. The app's own state (sessions, tree, worktrees) stays in the app.
+### Mission records (D4, decided 2026-11-22)
+The owner said yes to mission records and dropped the dependency on Obsidian. Records hold **what was done and why, never state**: the app's own state (sessions, tree, worktrees) stays in the app.
 
-- **Writing (the app, at milestones, append-only):** one note per mission at `<vault>/7 - Dev Folder/1. Projects/<Space>/Missions/<date> - <mission>.md`. It records:
+- **Where:** on for every space, in the app's own data folder:
+  `<userData>/records/<repo name>-<short hash>/<date> - <mission>.md`. The hash keeps two repos
+  with the same name apart. Nothing is written into the repo. A space can name a different folder
+  in its settings, which is how you would point it at an Obsidian vault or a shared drive.
+- **Format:** plain Markdown with a small front-matter block. Any editor reads it.
+- **Writing (the app, at milestones, append-only):** one note per mission. It records:
   - the brief;
   - the approved split;
   - each worker's `report_done` summary;
-  - decisions taken in `ask_human` answers;
   - the Verifier report;
   - the final merge (commit SHA);
   - every session id, so a mission can be reopened with `--resume`.
-- **Reading (optional):**
-  - a mission can start **from a vault note** (a spec or roadmap written while grilling);
-  - a new coordinator is given **links to that Space's past mission notes**, so it knows what was built before and why.
+  - Not yet: decisions given in `ask_human` answers. They're typed into terminals, and the app
+    doesn't capture them.
+- **Reading:** a new coordinator's prompt lists the paths of that space's past mission notes
+  (newest 20, newest first). It is allowed to read that folder without a permission prompt.
 - **Why:**
   - transcripts aren't readable;
   - worktrees are deleted after merge;
-  - the mission note is the only lasting "what was done and why";
-  - it is August requirement #6.
+  - the mission note is the only lasting "what was done and why".
 - **Rules:**
-  - only the app writes, which avoids Obsidian Sync conflicts;
-  - append only (the vault has no history);
-  - keep to the Dev Folder conventions (date header, marked AI-generated).
+  - only the app writes;
+  - append only.
 
 ### Hierarchy: coordinator → team leads → subagents (owner, 2026-11-20)
 For speed, the coordinator spawns **team leads** (one per independent area) with `spawn_agent`. Each lead is a full session in its own worktree, as workers were, but it **manages only**: it splits its area among Claude Code **subagents** (the built-in Agent tool) that write the code in the lead's worktree, in parallel and in the foreground. The lead calls `report_done` once they have all returned; The ORC commits and merges its worktree as before. Subagents are not sessions: no terminal, no tree node, you can't type into them. Workers don't write or run tests unless the task asks (`SpeedRules` in `claude-launch.ts`).
@@ -166,14 +169,14 @@ In every mode, **Merge to main is your click**.
 
 **`propose_split` must not hold the coordinator until you click.** MCP calls can time out; check Claude Code's limit rather than assuming one. The tool returns "pending" straight away, and your approval reaches the coordinator later as a message.
 
-**This still needs an ADR.** Even plan check lets work merge into the integration branch without a human, which overturns kickoff §10 ("no cross-checkpoint autonomy"). Approving this plan triggers that ADR, as in v1. [[BF-10 - Prompt injection paths into the judges]] matters for the Verifier in §8.
+**Accepted in [ADR 0001](adr/0001-unattended-merges-into-integration.md) (2026-11-22).** Work merges into the integration branch without a human; Merge to main is the one human checkpoint, and the Verifier runs on its own before it. [[BF-10 - Prompt injection paths into the judges]] matters for the Verifier in §8.
 
 ---
 
 ## The stack (be honest about it)
 
 - **A new repo.** TypeScript throughout: **Electron + React + Vite**, with **node-pty + xterm.js** for the terminals, **shadcn/ui + Tailwind** for the look, **React Flow** for the tree, and **Motion** for animation. Electron is the safe choice on Linux/Wayland; stablyai proves it works there.
-- **What survives from Orca's .NET code:** very little *code*. The **ideas** survive: agents never commit, integration branches, the gating modes, the Verifier role and its prompt, vault records, and the denied-tools list.
+- **What survives from Orca's .NET code:** very little *code*. The **ideas** survive: agents never commit, integration branches, the gating modes, the Verifier role and its prompt, mission records, and the denied-tools list.
 - **The pinned-contract and `--safe-mode` guarantees no longer cover the sessions.** Workers are normal Claude Code: your CLAUDE.md, plugins and MCP servers load into every worker. That's the point (it's "the Claude Code I use"), but it does change what's guaranteed.
 - If D1 ends up as "fork stablyai", most of this stack comes ready-made, and the work becomes adding spaces/missions, the tree, gating and the Verifier.
 
@@ -222,7 +225,7 @@ In every mode, **Merge to main is your click**.
 
 **M4: robustness.**
 - Recovery after a crash, the live-agent cap, Pause mission.
-- The localhost token, and writing mission records to the vault.
+- The localhost token, and writing mission records.
 
 **Later:** an integration agent that resolves conflicts, GitHub/Linear as sources for missions, agents other than Claude.
 
