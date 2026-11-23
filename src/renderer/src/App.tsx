@@ -103,6 +103,8 @@ export function App(): React.JSX.Element {
   const [, tick] = useState(0)
   // A failed action (IPC rejected) shows here instead of disappearing into the console.
   const [actionError, setActionError] = useState<string | null>(null)
+  // "Merged into main; cleared N missions": shown after the open mission was cleared out.
+  const [mergeNotice, setMergeNotice] = useState<string | null>(null)
   // Missions The ORC brought back on its own at launch (each one is live, billed sessions).
   const [resumed, setResumed] = useState<{ id: string; name: string }[]>([])
   const [appRestore, setAppRestore] = useState<{ missionId: string; missionName: string } | null>(null)
@@ -334,6 +336,14 @@ export function App(): React.JSX.Element {
           </Button>
         </div>
       )}
+      {mergeNotice && (
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg', actionError ? 'bottom-16' : 'bottom-3')} data-testid="merge-notice" role="status">
+          <span className="min-w-0 break-words">{mergeNotice}</span>
+          <Button size="icon-sm" variant="ghost" className="ml-1 shrink-0" onClick={() => setMergeNotice(null)} aria-label="Dismiss">
+            <X />
+          </Button>
+        </div>
+      )}
       {resumed.length > 0 && (
         <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', actionError ? 'bottom-16' : 'bottom-3', 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="resumed-banner" role="status">
           <RotateCcw className="size-3.5 shrink-0 text-primary" />
@@ -534,7 +544,7 @@ export function App(): React.JSX.Element {
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
         {mission && <SplitPanel mission={mission} />}
         {mission && view === 'merge' ? (
-          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
+          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} onCleared={(n) => { setView('terminal'); setMissionId(null); setTerminalId(null); setMergeNotice(`Merged into main; cleared ${n} mission${n === 1 ? '' : 's'}`) }} />
         ) : view === 'app' && missionApp ? (
           <>
             <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="app-head">

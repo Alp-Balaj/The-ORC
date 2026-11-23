@@ -122,7 +122,7 @@ function StaleNote({ children }: { children: React.ReactNode }): React.JSX.Eleme
 }
 
 /** Merge to main: the mission's combined diff, the gate, the Verifier, and the button. */
-export function MergeScreen({ mission, space, onBack }: { mission: MissionView; space: SpaceView | undefined; onBack: () => void }): React.JSX.Element {
+export function MergeScreen({ mission, space, onBack, onCleared }: { mission: MissionView; space: SpaceView | undefined; onBack: () => void; onCleared?: (n: number) => void }): React.JSX.Element {
   const diff = useDiff(() => window.orc.missionDiff(mission.id), [mission.id, mission.integrationCommit])
   const [gateCmd, setGateCmd] = useState(space?.gateCommand ?? '')
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -224,8 +224,11 @@ export function MergeScreen({ mission, space, onBack }: { mission: MissionView; 
               disabled={busy || mission.merged.length === 0 || !!mission.mergedToMain}
               onClick={async () => {
                 setBusy(true)
-                setResult(await window.orc.mergeToMain(mission.id))
+                const r = await window.orc.mergeToMain(mission.id)
+                setResult(r)
                 setBusy(false)
+                // The mission is cleared out of the list: this screen goes away with it.
+                if (r.ok && r.cleared) onCleared?.(r.cleared)
               }}
               data-testid="confirm-merge"
             >
