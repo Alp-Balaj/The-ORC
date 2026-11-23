@@ -14,6 +14,7 @@ import { SPACE_SETTINGS_EVENT, SpaceSettingsModal } from './SpaceSettingsModal'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
 import { fromDraft, ModelFields, toDraft } from './ModelFields'
+import { AutopilotSwitch } from './AutopilotSwitch'
 import { modeOptions, PlanUsageMeter, QueuePanel } from './QueuePanel'
 
 function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
@@ -249,6 +250,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   {ms.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-faint">{ms.length}</span>}
                   {!open && spaceTier && spaceTier !== 'done' && <span className={cn('size-1.5 shrink-0 rounded-full', tierBg[spaceTier], tierGlow[spaceTier])} title="Something in this space needs a look" data-testid="space-marker" />}
                 </button>
+                {space && space.enrolledAt !== null && <AutopilotSwitch root={root} />}
                 {space && (
                   <span className={cn('shrink-0 px-0.5 text-[10.5px] tabular-nums text-faint', live >= space.maxLive && 'font-medium text-needs')} title="Live agents in this space / most allowed" data-testid="live-count">
                     {live}/{space.maxLive}
