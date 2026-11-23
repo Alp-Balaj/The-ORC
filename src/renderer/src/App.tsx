@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
-import { ModelRoles, missionFailure, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
-import { roleLabel } from './components/ModelFields'
+import { AlertTriangle, GitMerge, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
+import { missionFailure, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { CommandPalette } from './components/CommandPalette'
 import { Banner } from './components/Banner'
 import { EmptyState } from './components/EmptyState'
@@ -11,23 +10,14 @@ import { MissionTree } from './components/MissionTree'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
 import { PlanUsageHeader } from './components/PlanUsageHeader'
-import { AccentPicker } from './components/AccentPicker'
-import { ThemeToggle } from './components/ThemeToggle'
+import { HeaderSettingsMenu } from './components/HeaderSettingsMenu'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { ButtonGroup } from './components/ui/button-group'
 import { focusActiveTerminal, TerminalView } from './TerminalView'
 import { emitShortcut, installGlobalShortcuts, onShortcut, withHint, type ShortcutId } from './lib/shortcuts'
 import { getThemePref, setThemePref } from './lib/theme'
-import { cn, formatTokens } from './lib/utils'
-
-const modeLabel: Record<string, string> = {
-  acceptEdits: 'accept edits',
-  auto: 'auto',
-  manual: 'ask for everything',
-  bypassPermissions: 'bypass permissions',
-  dontAsk: "don't ask"
-}
+import { cn } from './lib/utils'
 
 /** Pushes arrive as fresh objects every time. Keep each mission whose content is unchanged as the
  *  same object (and the list as the same array when nothing changed), so memoized children skip
@@ -343,6 +333,9 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     document.title = needsTotal > 0 ? `(${needsTotal}) The ORC` : 'The ORC'
   }, [needsTotal])
+  const working = shown.filter((a) => a.status === 'working' || a.status === 'starting').length
+  const doneCount = shown.filter((a) => a.status === 'done' || a.merge === 'merged').length
+  const warnAt = spaces.length > 0 ? Math.min(...spaces.map((s) => s.usageThreshold)) : 80
   const needsLabel = [
     needsYou > 0 && `${needsYou} need${needsYou === 1 ? 's' : ''} you`,
     needsOther > 0 && `${needsYou > 0 ? '' : needsOther + ' '}${needsYou > 0 ? needsOther + ' ' : ''}in other mission${needsOther === 1 ? '' : 's'}`
@@ -432,21 +425,6 @@ export function App(): React.JSX.Element {
               <span className="shrink-0 text-faint">/</span>
               <span className="truncate font-semibold">{mission.name}</span>
             </div>
-            <div className="flex min-w-0 shrink-[4] items-center gap-1.5 overflow-hidden text-[11px] text-muted-foreground">
-              <span className="shrink-0" title="Every session in this mission uses this permission mode">{modeLabel[mission.permissionMode] ?? mission.permissionMode}</span>
-              <span className="hidden text-faint xl:inline">·</span>
-              <span
-                className="hidden shrink-0 xl:inline"
-                title={ModelRoles.map((r) => `${roleLabel[r]}: ${mission.models[r] ?? (r === 'advisor' ? 'none' : 'default')}`).join('\n')}
-                data-testid="header-models"
-              >
-                {mission.models.coordinator ?? 'default'}
-                {mission.models.subagent && mission.models.subagent !== mission.models.coordinator && <span className="text-faint"> · sub {mission.models.subagent}</span>}
-                {mission.models.advisor && <span className="text-faint"> · adv {mission.models.advisor}</span>}
-              </span>
-              <span className={cn('text-faint', mission.state === 'stopped' && 'max-[1399px]:hidden')}>·</span>
-              <span className={cn('truncate', mission.state === 'stopped' && 'max-[1399px]:hidden')} title="Gating mode" data-testid="gating">{{ plan: 'plan check', checkpointed: 'checkpointed', none: 'no check' }[mission.gating]}</span>
-            </div>
             {mission.state === 'stopped' && (
               <div className="flex shrink-0 items-center gap-1">
                 <Badge variant="exited">stopped</Badge>
@@ -480,10 +458,12 @@ export function App(): React.JSX.Element {
                 <Badge variant="needs-you" className="hover:bg-needs/25">{needsLabel}</Badge>
               </button>
             )}
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <span className="hidden text-[12px] tabular-nums text-faint min-[1400px]:inline" title="Tokens used by every session in this mission (input + cache writes + output)">
-                {formatTokens(mission.tokens)} tokens
+            {(working > 0 || doneCount > 0) && (
+              <span className="shrink-0 text-[12px] font-medium tabular-nums text-muted-foreground" data-testid="progress-summary" title="Agents in this mission">
+                {[working > 0 && `${working} working`, doneCount > 0 && `${doneCount} done`].filter(Boolean).join(' · ')}
               </span>
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <ButtonGroup className="h-7">
                 {missionApp && (
                   <>
@@ -569,15 +549,8 @@ export function App(): React.JSX.Element {
         ) : (
           <span className="ml-auto text-[12px] text-faint">No mission open</span>
         )}
-        <span className="h-5 w-px shrink-0 bg-border" />
-        <PlanUsageHeader warnAt={spaces.length > 0 ? Math.min(...spaces.map((s) => s.usageThreshold)) : 80} />
-        <span className="h-5 w-px shrink-0 bg-border" />
-        <ThemeToggle className="shrink-0" />
-        <AccentPicker className="shrink-0" />
-        <span className="h-5 w-px shrink-0 bg-border" />
-        <Button size="icon-sm" variant="ghost" className="shrink-0" title={withHint('Keyboard shortcuts', 'shortcuts')} aria-label="Keyboard shortcuts" data-testid="open-shortcuts" onClick={() => openDialog('shortcuts')}>
-          <Keyboard />
-        </Button>
+        <PlanUsageHeader warnAt={warnAt} warnOnly className="max-[1099px]:hidden" />
+        <HeaderSettingsMenu mission={mission} warnAt={warnAt} onShortcuts={() => openDialog('shortcuts')} />
       </header>
 
       {sidebarOpen && <Sidebar
