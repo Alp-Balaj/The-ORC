@@ -59,7 +59,8 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
   const base = cn(
     'cursor-pointer border border-border bg-card transition-colors hover:border-border-strong hover:bg-accent',
     a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10 shadow-[0_0_0_3px] shadow-needs/15 hover:bg-needs/15',
-    a.status === 'exited' && 'opacity-60',
+    a.status === 'exited' && a.exitKind !== 'crashed' && 'opacity-60',
+    a.exitKind === 'crashed' && !data.selected && 'border-destructive/50',
     a.status === 'done' && !data.selected && 'opacity-70',
     data.selected && 'border-border-strong bg-selected hover:bg-selected'
   )
@@ -72,9 +73,9 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         style={{ width: '100%', height: '100%' }}
         className={cn(base, 'relative flex items-center gap-1.5 rounded-md pl-2.5 pr-2')}
       >
-        <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-md', barColor[a.status])} />
+        <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-md', a.exitKind === 'crashed' ? 'bg-destructive' : barColor[a.status])} />
         <Handles card={false} />
-        <StatusDot status={a.status} className={cn(far && 'size-3')} />
+        <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} className={cn(far && 'size-3')} />
         <span className={cn('min-w-0 flex-1 truncate font-medium', far ? 'text-[15px]' : 'text-[11.5px]')}>{a.name}</span>
         {!far && a.tokens > 0 && <span className="text-[10.5px] tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
       </div>
@@ -88,15 +89,15 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       style={{ width: stackSizes.cardW, height: stackSizes.cardH }}
       className={cn(base, 'relative rounded-lg py-1.5 pl-3 pr-2', far && 'flex items-center')}
     >
-      <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-lg', barColor[a.status])} />
+      <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-lg', a.exitKind === 'crashed' ? 'bg-destructive' : barColor[a.status])} />
       <Handles card />
       <div className="flex min-w-0 items-center gap-1.5">
-        <StatusDot status={a.status} className={cn(far && 'size-3.5')} />
+        <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} className={cn(far && 'size-3.5')} />
         <span className={cn('truncate font-medium', far ? 'text-[17px]' : 'text-[12px]')}>{a.name}</span>
       </div>
       {!far && (
         <div className="mt-1 flex justify-between gap-2 text-[10.5px] text-muted-foreground">
-          <span className={cn('truncate', labelColor[a.status])}>{statusLabel[a.status]}</span>
+          <span className={cn('truncate', a.exitKind === 'crashed' ? 'text-destructive' : labelColor[a.status])}>{a.exitKind === 'crashed' ? 'crashed' : statusLabel[a.status]}</span>
           {a.tokens > 0 && <span className="ml-auto tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
         </div>
       )}

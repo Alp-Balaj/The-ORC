@@ -51,8 +51,8 @@ const cardClass: Record<AgentStatus, string> = {
   exited: 'border-transparent bg-transparent hover:border-border hover:bg-card'
 }
 
-export function StatusDot({ status, className }: { status: AgentStatus; className?: string }): React.JSX.Element {
-  return <span className={cn('inline-block size-2 shrink-0 rounded-full', dotClass[status], className)} />
+export function StatusDot({ status, crashed, className }: { status: AgentStatus; crashed?: boolean; className?: string }): React.JSX.Element {
+  return <span className={cn('inline-block size-2 shrink-0 rounded-full', crashed ? 'bg-destructive' : dotClass[status], className)} />
 }
 
 export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }: {
@@ -67,6 +67,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
 }): React.JSX.Element {
   const [confirming, setConfirming] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const crashed = a.exitKind === 'crashed'
   return (
     <motion.div
       layout
@@ -80,16 +81,17 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
       onClick={onSelect}
       className={cn(
         'group relative cursor-pointer rounded-lg border px-2.5 py-2 transition-colors',
-        selected ? 'border-ring/50 bg-selected' : cardClass[a.status]
+        selected ? 'border-ring/50 bg-selected' : crashed ? 'border-destructive/40 bg-card hover:border-destructive/60' : cardClass[a.status]
       )}
     >
+      {crashed && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-destructive" />}
       {a.status === 'needs-you' && !selected && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-needs" />}
       {/* Dimming sits on this wrapper: motion owns the root's inline opacity. */}
-      <div className={cn('min-w-0 transition-opacity', !selected && (a.status === 'done' || a.status === 'exited') && 'opacity-70 group-hover:opacity-100')}>
+      <div className={cn('min-w-0 transition-opacity', !selected && !crashed && (a.status === 'done' || a.status === 'exited') && 'opacity-70 group-hover:opacity-100')}>
       <div className="flex min-w-0 items-center gap-2">
-        <StatusDot status={a.status} />
+        <StatusDot status={a.status} crashed={crashed} />
         <span className={cn('min-w-0 truncate text-[13px] font-medium', a.status === 'idle' || a.status === 'starting' ? 'text-muted-foreground' : 'text-foreground')}>{a.name}</span>
-        <span className={cn('ml-auto shrink-0 text-[11px]', labelClass[a.status])}>{statusLabel[a.status]}</span>
+        <span className={cn('ml-auto shrink-0 text-[11px]', crashed ? 'font-medium text-destructive' : labelClass[a.status])} title={crashed ? `Its process exited with code ${a.exitCode}` : undefined}>{crashed ? 'crashed' : statusLabel[a.status]}</span>
         {onStop && !confirming && (
           <button
             data-testid="stop-worker"

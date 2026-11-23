@@ -295,6 +295,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                 const expanded = active && !closedMissions.has(m.id)
                 const agents = shownAgents(m)
                 const needs = agents.filter((a) => a.status === 'needs-you').length
+                const failed = m.agents.some((a) => a.exitKind === 'crashed' || a.merge === 'conflict')
                 const working = agents.some((a) => a.status === 'working')
                 return (
                   <div key={m.id} className="min-w-0" data-testid="mission" data-mission={m.name}>
@@ -321,7 +322,9 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                         <MonitorPlay className="size-3 shrink-0 text-working" aria-label="Its app is running" data-testid="app-running-marker" />
                       )}
                       <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                        {needs > 0 ? (
+                        {failed ? (
+                          <span title="A crash or merge conflict needs attention" className="flex items-center" data-testid="mission-error-dot"><StatusDot status="exited" crashed className="size-2 shadow-[0_0_0_3px] shadow-destructive/20" /></span>
+                        ) : needs > 0 ? (
                           <span className="rounded-full bg-needs px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-background shadow-[0_0_0_3px] shadow-needs/20" title={`${needs} agent${needs === 1 ? '' : 's'} need${needs === 1 ? 's' : ''} you`}>{needs}</span>
                         ) : working ? (
                           <span title="working" className="flex items-center"><StatusDot status="working" className="size-1.5" /></span>
