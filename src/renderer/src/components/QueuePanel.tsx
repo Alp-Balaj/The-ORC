@@ -87,9 +87,9 @@ export function QueuePanel({ root, queue, onSelectMission }: {
             <span className="size-1.5 rounded-full bg-needs" title="Queue paused" />
           ) : null}
         </button>
-        {pending > 0 && (running ? (
-          <Button size="xs" variant="ghost" className="h-5 px-1.5" title="Pause the queue. The running mission keeps going; the next task waits." data-testid="queue-pause" onClick={() => run(window.orc.queuePause(root))}>
-            <Pause /> Pause
+        {(pending > 0 || running || !!queue?.pausedReason) && (running ? (
+          <Button size="xs" variant="ghost" className="h-5 px-1.5" title="Stop the queue from starting new tasks. Missions already running keep going. Stays stopped, even if the queue is cleared or new tasks are added, until you press Resume." data-testid="queue-pause" onClick={() => run(window.orc.queuePause(root))}>
+            <Pause /> Stop
           </Button>
         ) : (
           <Button size="xs" variant="ghost" className="h-5 px-1.5 text-foreground" title={`Start the queue (${modeOptions.find((m) => m.value === permissionMode)?.label})`} data-testid="queue-start" onClick={() => run(window.orc.queueStart(root, permissionMode))}>
