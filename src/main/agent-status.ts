@@ -8,11 +8,17 @@ export function readAgentStates(): Promise<Map<string, string>> {
     execFile('claude', ['agents', '--json'], { timeout: 10_000, env: sessionEnv() }, (err, stdout) => {
       const states = new Map<string, string>()
       if (!err) {
+        let parsed: { sessionId?: string; status?: string; state?: string }[] = []
         try {
-          for (const a of JSON.parse(stdout) as { sessionId?: string; status?: string; state?: string }[]) {
-            if (a.sessionId) states.set(a.sessionId, a.status ?? a.state ?? 'unknown')
-          }
-        } catch {}
+          parsed = JSON.parse(stdout)
+        } catch (e) {
+          // Malformed or partial CLI output is safe to ignore: it yields an empty states map and
+          // the poller simply retries on its next tick. Anything but a parse error is a real bug.
+          if (!(e instanceof SyntaxError)) throw e
+        }
+        for (const a of parsed) {
+          if (a.sessionId) states.set(a.sessionId, a.status ?? a.state ?? 'unknown')
+        }
       }
       resolve(states)
     })
