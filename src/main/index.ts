@@ -14,6 +14,7 @@ import { startStatusPoller } from './agent-status.ts'
 import { runSmoke } from './smoke.ts'
 import { fakeLauncher } from './smoke-replay.ts'
 import { Spaces } from './spaces.ts'
+import { createStarterClaudeMd, scanRepo } from './onboarding.ts'
 import { Notifier } from './notifications.ts'
 import { TerminalHost } from './terminals.ts'
 import { AppRunner } from './app-runner.ts'
@@ -448,6 +449,29 @@ ipcMain.handle('spaces:add', async (_e, path: string) => {
 })
 ipcMain.handle('spaces:remove', (_e, root: string) => {
   spaces.remove(root)
+  send('spaces:changed', spaces.list())
+})
+// Onboarding: only roots already in the space list are accepted.
+const knownSpace = (root: string): void => {
+  if (!spaces.list().some((s) => s.root === root)) throw new Error(`${root} is not a space in The ORC`)
+}
+ipcMain.handle('onboarding:scan', (_e, root: string) => {
+  knownSpace(root)
+  const s = spaces.list().find((x) => x.root === root)
+  return scanRepo(root, s?.suggestedGate ?? s?.gateCommand ?? null)
+})
+ipcMain.handle('onboarding:create-claude-md', (_e, root: string) => {
+  knownSpace(root)
+  return createStarterClaudeMd(root)
+})
+ipcMain.handle('onboarding:enroll', (_e, root: string) => {
+  knownSpace(root)
+  spaces.enroll(root)
+  send('spaces:changed', spaces.list())
+})
+ipcMain.handle('onboarding:reset', (_e, root: string) => {
+  knownSpace(root)
+  spaces.unenroll(root)
   send('spaces:changed', spaces.list())
 })
 ipcMain.handle('dialog:pick-repo', async () => {

@@ -47,7 +47,13 @@ interface Settings {
   maxParallel: number
   /** Desktop notifications (and the needs-you badge) for this space's missions. */
   notifications: boolean
+  /** Onboarding finished for this space (epoch ms), or null: not enrolled yet. */
+  enrolledAt: number | null
 }
+
+/** A saved enrolledAt: numbers and null are kept; anything else (no key: saved before
+ *  onboarding existed) counts as enrolled now. */
+const cleanEnrolledAt = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : v === null ? null : Date.now())
 
 /** The repositories the user has opened, in order, with per-space settings. Saved to a JSON
  *  file so they come back after a restart. `file: null` keeps them in memory (tests). */
@@ -68,13 +74,18 @@ export class Spaces {
       // v1 saved plain paths; v2 saves objects.
       if (Array.isArray(saved)) {
         for (const e of saved as unknown[]) {
-          if (typeof e === 'string') this.roots.push(e)
+          // Plain paths are v1 spaces saved before onboarding existed: enrolled.
+          if (typeof e === 'string') {
+            this.roots.push(e)
+            this.settings.set(e, { ...this.get(e), enrolledAt: Date.now() })
+          }
           else if (e && typeof (e as { root?: unknown }).root === 'string') {
             // `vaultDir` is the setting's name before 2026-11-22.
             const o = e as Partial<Settings> & { root: string; vaultDir?: unknown }
             const dir = typeof o.recordsDir === 'string' ? o.recordsDir : o.vaultDir
             this.roots.push(o.root)
             this.settings.set(o.root, {
+              enrolledAt: cleanEnrolledAt(o.enrolledAt),
               gateCommand: typeof o.gateCommand === 'string' && o.gateCommand ? o.gateCommand : null,
               maxLive: typeof o.maxLive === 'number' && o.maxLive > 0 ? o.maxLive : DefaultMaxLive,
               recordsDir: typeof dir === 'string' && dir ? dir : null,
@@ -92,7 +103,7 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes, maxParallel: DefaultMaxParallel, notifications: true }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes, maxParallel: DefaultMaxParallel, notifications: true, enrolledAt: null }
   }
 
   /** suggestGate per root, read once. */
@@ -162,6 +173,14 @@ export class Spaces {
     this.save()
   }
 
+  enroll(root: string): void {
+    this.update(root, { enrolledAt: Date.now() })
+  }
+
+  unenroll(root: string): void {
+    this.update(root, { enrolledAt: null })
+  }
+
   setGateCommand(root: string, command: string | null): void {
     this.update(root, { gateCommand: command })
   }
@@ -180,6 +199,8 @@ export class Spaces {
         const gate = this.suggestion(root)
         if (gate) this.settings.set(root, { ...this.get(root), gateCommand: gate })
       }
+      // In-memory spaces (tests, smoke) skip onboarding; saved ones start unenrolled.
+      if (this.file === null) this.update(root, { enrolledAt: Date.now() })
       this.roots.push(root)
       this.save()
     }

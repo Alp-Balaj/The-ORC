@@ -167,6 +167,37 @@ export interface SpaceView {
   notifications: boolean
   /** A gate command guessed from the repo (e.g. "pnpm typecheck"), shown when gateCommand is null. */
   suggestedGate: string | null
+  /** Onboarding finished for this repo (epoch ms), or null: The ORC has not enrolled it yet.
+   *  Spaces saved before onboarding existed count as enrolled. */
+  enrolledAt: number | null
+}
+
+/** What onboarding found in a repo (read-only scan, `onboarding:scan`). */
+export interface EnrollmentScan {
+  root: string
+  name: string
+  isGitRepo: boolean
+  /** Checked-out branch, null when detached or not a repo. */
+  branch: string | null
+  /** origin's default branch, else main/master if present, else null. */
+  defaultBranch: string | null
+  /** Changed files from `git status --porcelain` (staged, unstaged and untracked). */
+  dirtyFiles: string[]
+  hasCommits: boolean
+  /** 'pnpm' | 'npm' | 'yarn' | 'bun' | 'cargo' | 'go' | 'pip' | 'uv' ... or null if unknown. */
+  packageManager: string | null
+  hasClaudeMd: boolean
+  hasClaudeDir: boolean
+  /** Which of .claude/settings.json and .claude/settings.local.json exist. */
+  claudeSettings: string[]
+  /** Suggested gate command, if any. */
+  suggestedGate: string | null
+  /** Git-write rules The ORC puts in permissions.deny of every session (DeniedGitWrites). */
+  denyRules: string[]
+  /** Permission mode the main session always uses. */
+  mainPermissionMode: PermissionMode
+  /** Default mode the new-mission form starts with. */
+  missionPermissionMode: PermissionMode
 }
 
 /** Who a model setting applies to. lead = team leads; subagent = the leads' Agent-tool
