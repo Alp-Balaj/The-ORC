@@ -83,7 +83,8 @@ export class MainSession {
     this.sessionId = typeof saved.sessionId === 'string' ? saved.sessionId : randomUUID()
     this.wanted = saved.wanted === true
     this.launched = saved.launched === true
-    this.mode = saved.permissionMode ?? null
+    // The main session always runs bypassPermissions: a saved older mode never overrides it.
+    this.mode = 'bypassPermissions'
   }
 
   setControlPort(port: number): void {
@@ -117,7 +118,7 @@ export class MainSession {
 
   /** The permission mode the session runs with (what a mission it starts uses too). */
   permissionModeInUse(): PermissionMode {
-    return this.mode ?? this.currentPermissionMode()
+    return 'bypassPermissions'
   }
 
   agentForToken(token: string): string | null {
@@ -206,8 +207,8 @@ export class MainSession {
   private launch(resume: boolean, restored: boolean): void {
     mkdirSync(this.dir, { recursive: true })
     this.token = randomBytes(24).toString('hex')
-    // A resumed conversation keeps the mode it ran with.
-    this.mode = resume && this.mode ? this.mode : this.currentPermissionMode()
+    // Fresh start, resume and restore all launch bypassPermissions.
+    this.mode = 'bypassPermissions'
     const { command, args } = this.launcher(
       claudeArgs({
         sessionName: SessionName,
