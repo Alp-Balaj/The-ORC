@@ -171,6 +171,15 @@ function missionsText(): string {
   const views = missions.views()
   const out: string[] = []
   if (!views.length) out.push('No missions yet.')
+  else {
+    // Every coordinator in one place: the SendMessage targets, with each one's live state.
+    out.push(`Coordinators you can SendMessage (${views.length}, one per mission, all spaces):`)
+    for (const m of views) {
+      const c = m.agents.find((x) => x.role === 'coordinator')
+      out.push(c ? `- ${c.sessionName} | mission ${m.name} (${m.state}) | ${c.status}: ${c.activity} | session ${c.sessionId}` : `- ${m.name}/coordinator | mission ${m.name} (${m.state}) | not running`)
+    }
+    out.push('')
+  }
   for (const m of views) {
     out.push(`## ${m.name} (${m.state}${m.paused ? ', paused' : ''}${m.integrating ? ', integrating' : ''})`)
     out.push(`space: ${m.repoPath} | base: ${m.baseBranch} | main branch: ${m.mainBranch}`)
