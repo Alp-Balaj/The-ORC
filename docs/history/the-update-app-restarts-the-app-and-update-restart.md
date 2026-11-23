@@ -1,0 +1,4 @@
+# Update app now restarts into the new build
+
+- `src/main/app-update.ts`: after `orc-app.sh rebuild` succeeds, if `app.getAppPath()` equals the stable copy dir (`$ORC_APP_DIR` or `~/.local/share/the-orc/app`, not smoke), it spawns a detached `bash` that waits for this pid to exit (single-instance lock), then `exec`s `node_modules/.bin/electron .` in the stable dir, and calls `app.quit()` (300 ms later, so the IPC reply lands). The normal quit path (before-quit save, window-all-closed shutdown) runs; missions resume on launch. Returns `'Restarting'`; otherwise `'Updated'` (dev / Run app copies keep the old message).
+- IPC `app-update:can-restart` (preload `canRestartOnUpdate`) tells the renderer if it is the stable copy; button reads "Update & restart" and confirms via `window.confirm` when missions are running.

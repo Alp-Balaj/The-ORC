@@ -5,8 +5,7 @@
 #
 #   scripts/orc-app.sh            start the stable copy (builds it the first time)
 #   scripts/orc-app.sh update     move it to the latest local main, rebuild, start
-#   scripts/orc-app.sh rebuild    same as update but does not start it (used by the app's Update app button;
-#                                 a running copy keeps its old code until it is restarted)
+#   scripts/orc-app.sh rebuild    same as update but does not start it (the Update app button runs it; when the app is this stable copy it then relaunches itself)
 #
 # The copy is a detached git worktree at $ORC_APP_DIR (default ~/.local/share/the-orc/app). It
 # uses the same app data as `pnpm dev` (~/.config/the-orc), so spaces and missions carry over.
