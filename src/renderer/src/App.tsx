@@ -113,6 +113,7 @@ export function App(): React.JSX.Element {
   // Keyboard: the quick switcher or the cheat sheet (one at a time), and whether the sidebar shows.
   const [dialog, setDialog] = useState<'palette' | 'shortcuts' | null>(null)
   const dialogFromTerminal = useRef(false)
+  const jumpRef = useRef<() => void>(() => {})
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try {
       return localStorage.getItem('orc-sidebar') !== 'closed'
@@ -269,6 +270,9 @@ export function App(): React.JSX.Element {
         selectAgent(`${mission.id}:coordinator`)
         focusActiveTerminal()
         return
+      case 'jumpNeedsYou':
+        jumpRef.current()
+        return
       case 'focusTerminal':
         setView('terminal')
         focusActiveTerminal()
@@ -324,6 +328,30 @@ export function App(): React.JSX.Element {
 
   const side = useSideWidth()
   const needsYou = mission?.agents.filter((a) => a.status === 'needs-you').length ?? 0
+  // Needs-you agents across all missions, this mission's first: the header chip and its shortcut jump to the first.
+  const needsList = missions
+    .flatMap((m) => m.agents.filter((a) => a.status === 'needs-you').map((a) => ({ m, a })))
+    .sort((x, y) => Number(y.m.id === mission?.id) - Number(x.m.id === mission?.id))
+  const needsOther = needsList.length - needsYou
+  const needsTotal = needsList.length
+  const needsLabel = [
+    needsYou > 0 && `${needsYou} need${needsYou === 1 ? 's' : ''} you`,
+    needsOther > 0 && `${needsYou > 0 ? '' : needsOther + ' '}${needsYou > 0 ? needsOther + ' ' : ''}in other mission${needsOther === 1 ? '' : 's'}`
+  ].filter(Boolean).join(' · ')
+  const jumpNeedsYou = (): void => {
+    const first = needsList[0]
+    if (!first) return
+    selectAgent(first.a.terminalId)
+    if (first.a.merge === 'review') setView({ review: first.a.name })
+    else focusActiveTerminal()
+  }
+  jumpRef.current = jumpNeedsYou
+  const [ring, setRing] = useState(0)
+  const prevNeeds = useRef<number | null>(null)
+  useEffect(() => {
+    if (prevNeeds.current !== null && needsTotal > prevNeeds.current) setRing((n) => n + 1)
+    prevNeeds.current = needsTotal
+  }, [needsTotal])
 
   return (
     <div className="relative grid h-full grid-rows-[44px_minmax(0,1fr)]" style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr) ${side.width}px` }}>
@@ -439,7 +467,19 @@ export function App(): React.JSX.Element {
               </div>
             )}
             {mission.paused && <Badge variant="needs-you" className="shrink-0" data-testid="paused-badge">paused</Badge>}
-            {needsYou > 0 && <Badge variant="needs-you" className="shrink-0">{needsYou} need{needsYou === 1 ? 's' : ''} you</Badge>}
+            {needsTotal > 0 && (
+              <button
+                key={ring}
+                type="button"
+                data-testid="needs-you-chip"
+                onClick={jumpNeedsYou}
+                title="Jump to the first agent that needs you (Ctrl+Shift+J)"
+                aria-label={`Jump to the first agent that needs you: ${needsLabel}`}
+                className={cn('shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring', ring > 0 && 'animate-orc-ring')}
+              >
+                <Badge variant="needs-you" className="hover:bg-needs/25">{needsLabel}</Badge>
+              </button>
+            )}
             <div className="ml-auto flex shrink-0 items-center gap-2">
               <span className="hidden text-[12px] tabular-nums text-faint min-[1400px]:inline" title="Tokens used by every session in this mission (input + cache writes + output)">
                 {formatTokens(mission.tokens)} tokens

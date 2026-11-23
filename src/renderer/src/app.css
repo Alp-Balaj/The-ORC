@@ -134,3 +134,7 @@
 
 @keyframes orc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .animate-orc-pulse { animation: orc-pulse 1.6s ease-in-out infinite; }
+
+/* One-shot ring when the needs-you count rises; skipped for reduced motion. */
+@keyframes orc-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-needs) 55%, transparent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+@media (prefers-reduced-motion: no-preference) { .animate-orc-ring { animation: orc-ring 900ms ease-out 1; } }
