@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification } from 'electron'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import type { AutopilotPatch, MissionView, PermissionMode, StartMissionRequest } from '../shared/types.ts'
-import { MainSessionTerminalId } from '../shared/types.ts'
+import { isMainSessionTerminal, mainSessionTerminalId } from '../shared/types.ts'
 import type { SpacePatch } from '../preload/index.ts'
 import { ControlServer } from './control-server.ts'
 import { HistoryIndex } from './history-index.ts'
@@ -51,7 +51,7 @@ const terminals = new TerminalHost(
   (id, data) => queueData(id, data),
   (id, code) => {
     missions.terminalExited(id, code)
-    mainSession.terminalExited(id, code)
+    for (const m of mainSessions.values()) m.terminalExited(id, code)
     appRunner.terminalExited(id, code)
     flushData()
     send('terminal:exit', id, code)
@@ -168,14 +168,49 @@ function historyIdx(): HistoryIndex {
   historyIndex ??= new HistoryIndex(join(smoke ?? app.getPath('userData'), 'history-index.sqlite'))
   return historyIndex
 }
-/** The read-only overview the main session gets from list_missions. */
-function missionsText(): string {
-  const views = missions.views()
+/** The per-repo main sessions, created on first use (keyed by repo root). */
+const mainSessions = new Map<string, MainSession>()
+function mainFor(repoPath: string): MainSession {
+  let m = mainSessions.get(repoPath)
+  if (!m) {
+    const space = spaces.list().find((s) => s.root === repoPath)
+    m = new MainSession({
+      terminals,
+      repoPath,
+      repoName: space?.name ?? basename(repoPath),
+      dataDir: smoke ?? app.getPath('userData'),
+      permissionMode: () => 'bypassPermissions',
+      changed: (v) => send('main:changed', v)
+    })
+    m.statusLine = (s) => planUsage.update(s)
+    if (process.env.ORC_SMOKE_OUT && process.env.ORC_SMOKE_FAKE) m.launcher = fakeLauncher
+    m.setControlPort(controlPort)
+    mainSessions.set(repoPath, m)
+  }
+  return m
+}
+let controlPort = 0
+function mainAgentForToken(t: string): string | null {
+  for (const m of mainSessions.values()) {
+    const id = m.agentForToken(t)
+    if (id) return id
+  }
+  return null
+}
+/** The main session behind a terminal id, if it is one. */
+function mainByTerminal(c: string): MainSession | null {
+  if (!isMainSessionTerminal(c)) return null
+  for (const m of mainSessions.values()) if (m.terminalId === c) return m
+  return null
+}
+/** The read-only overview a repo's main session gets from list_missions: only that repo. */
+function missionsText(repoPath: string): string {
+  const views = missions.views().filter((m) => m.repoPath === repoPath)
   const out: string[] = []
   if (!views.length) out.push('No missions yet.')
   else {
     // Every coordinator in one place: the SendMessage targets, with each one's live state.
-    out.push(`Coordinators you can SendMessage (${views.length}, one per mission, all spaces):`)
+    out.push(`Coordinators you can SendMessage (${views.length}, one per mission):`)
     for (const m of views) {
       const c = m.agents.find((x) => x.role === 'coordinator')
       out.push(c ? `- ${c.sessionName} | mission ${m.name} (${m.state}) | ${c.status}: ${c.activity} | session ${c.sessionId}` : `- ${m.name}/coordinator | mission ${m.name} (${m.state}) | not running`)
@@ -199,14 +234,12 @@ function missionsText(): string {
     }
     out.push('')
   }
-  const spaceList = spaces.list()
-  out.push(`Spaces (${spaceList.length}):`)
-  for (const s of spaceList) out.push(`- ${s.name}: ${s.root}`)
+  out.push(`Repo: ${repoPath}`)
   return out.join('\n')
 }
 let hooksLogFailed = false
 const control = new ControlServer({
-  agentForToken: (t) => missions.agentForToken(t) ?? mainSession.agentForToken(t),
+  agentForToken: (t) => missions.agentForToken(t) ?? mainAgentForToken(t),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
   reportDone: (c, s) => missions.reportDone(c, s),
   askHuman: (c, q) => missions.askHuman(c, q),
@@ -214,11 +247,8 @@ const control = new ControlServer({
   proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
   integrateMission: (c) => missions.integrateMission(c),
   searchHistory: (c, query, limit) => {
-    if (c === MainSessionTerminalId) {
-      // The main session oversees every space: search each space's records and docs.
-      const parts = spaces.list().map((s) => `### ${s.name} (${s.root})\n${historyIdx().search({ recordsDir: s.recordsPath, repoRoot: s.root, query, limit: limit ?? undefined })}`)
-      return parts.length ? parts.join('\n\n') : 'search_history: no spaces yet.'
-    }
+    const main = mainByTerminal(c)
+    if (main) return historyIdx().search({ recordsDir: spaces.recordsPath(main.repoPath), repoRoot: main.repoPath, query, limit: limit ?? undefined })
     const m = missions.views().find((v) => v.agents.some((a) => a.terminalId === c))
     if (!m) return 'search_history: unknown caller (no mission found for this session).'
     return historyIdx().search({ recordsDir: spaces.recordsPath(m.repoPath), repoRoot: m.repoPath, query, limit: limit ?? undefined })
@@ -233,14 +263,18 @@ const control = new ControlServer({
     return `Added ${tasks.length} task${tasks.length === 1 ? '' : 's'} to the queue of ${info.repoPath}: ${titles}. The human starts the queue from the sidebar (or it continues if running).`
   },
   listMissions: (c) => {
-    if (c !== MainSessionTerminalId) return 'list_missions: refused. Only the main session lists missions.'
-    return missionsText()
+    const main = mainByTerminal(c)
+    if (!main) return 'list_missions: refused. Only a repo\'s main session lists missions.'
+    return missionsText(main.repoPath)
   },
   startMission: async (c, repoPath, name, brief) => {
-    if (c !== MainSessionTerminalId) return 'start_mission: refused. Only the main session starts missions.'
-    if (!spaces.list().some((s) => s.root === repoPath)) return `start_mission: refused. ${repoPath} is not a space in The ORC (list_missions shows the spaces).`
+    const main = mainByTerminal(c)
+    if (!main) return 'start_mission: refused. Only a repo\'s main session starts missions.'
+    // Kept compatible: the repo path is still accepted, but only this session's own repo.
+    if (repoPath && repoPath !== main.repoPath) return `start_mission: refused. This main session only starts missions in its own repo (${main.repoPath}), not ${repoPath}.`
+    repoPath = main.repoPath
     try {
-      const id = await missions.startMission({ repoPath, name, brief, permissionMode: mainSession.permissionModeInUse() })
+      const id = await missions.startMission({ repoPath, name, brief, permissionMode: main.permissionModeInUse() })
       return `Started mission "${name}" (id ${id}) in ${repoPath}. Its coordinator "${name}/coordinator" starts with the brief.`
     } catch (err) {
       return `start_mission: ${err instanceof Error ? err.message : String(err)}`
@@ -258,7 +292,7 @@ const control = new ControlServer({
         console.error('could not append to', hooksLog, err)
       }
     }
-    return c === MainSessionTerminalId ? mainSession.hookEvent(e) : missions.hookEvent(c, e)
+    return mainByTerminal(c)?.hookEvent(e) ?? (isMainSessionTerminal(c) ? null : missions.hookEvent(c, e))
   }
 })
 
@@ -300,15 +334,6 @@ autopilots = new Autopilots({
   file: smoke ? null : join(app.getPath('userData'), 'autopilot.json')
 })
 const autopilot = autopilots
-/** The app-level main session: one interactive claude above every mission. Not in missions.views(). */
-const mainSession = new MainSession({
-  terminals,
-  dataDir: smoke ?? app.getPath('userData'),
-  permissionMode: () => 'bypassPermissions',
-  changed: (v) => send('main:changed', v)
-})
-mainSession.statusLine = (s) => planUsage.update(s)
-if (process.env.ORC_SMOKE_OUT && process.env.ORC_SMOKE_FAKE) mainSession.launcher = fakeLauncher
 if (smoke) {
   // A hidden window stops producing frames after a while; screenshots then never arrive.
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
@@ -352,9 +377,12 @@ function createWindow(): void {
 /** Missions that restore() brought back at launch, for the "Resumed N missions" banner. */
 let resumedAtLaunch: { id: string; name: string }[] = []
 ipcMain.handle('missions:list', () => missions.views())
-ipcMain.handle('main:get', () => mainSession.view())
-ipcMain.handle('main:start', () => mainSession.start())
-ipcMain.handle('main:stop', () => mainSession.stop())
+const knownRepo = (repoPath: string): boolean => spaces.list().some((s) => s.root === repoPath)
+ipcMain.handle('main:get', (_e, repoPath: string) => mainFor(repoPath).view())
+ipcMain.handle('main:start', (_e, repoPath: string) => {
+  if (knownRepo(repoPath)) mainFor(repoPath).start()
+})
+ipcMain.handle('main:stop', (_e, repoPath: string) => mainSessions.get(repoPath)?.stop())
 ipcMain.handle('missions:resumed-at-launch', () => resumedAtLaunch)
 ipcMain.handle('missions:stop-resumed', () => {
   for (const m of resumedAtLaunch) missions.stopMission(m.id)
@@ -521,7 +549,8 @@ async function restoreAppRun(): Promise<void> {
 app.whenReady().then(async () => {
   const port = await control.listen()
   missions.setControlPort(port)
-  mainSession.setControlPort(port)
+  controlPort = port
+  for (const m of mainSessions.values()) m.setControlPort(port)
   // Recovery before anything else: reattach the missions that were running.
   if (existsSync(stateFile())) {
     try {
@@ -545,14 +574,14 @@ app.whenReady().then(async () => {
     }
   }
   // The main session comes back only if it was running when The ORC last quit.
-  mainSession.restore()
+  for (const sp of spaces.list()) mainFor(sp.root).restore()
   queue.onMissions(missions.views())
   await restoreAppRun()
   startStatusPoller(
-    () => [...missions.liveSessionIds(), ...mainSession.liveSessionIds()],
+    () => [...missions.liveSessionIds(), ...[...mainSessions.values()].flatMap((m) => m.liveSessionIds())],
     (s) => {
       missions.reconcile(s)
-      mainSession.reconcile(s)
+      for (const m of mainSessions.values()) m.reconcile(s)
     }
   )
   setInterval(() => void missions.refreshTokens(), 5000).unref()

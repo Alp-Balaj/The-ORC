@@ -285,18 +285,18 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
 
 /** The app-level main session: above every mission, read-only. It answers the owner's questions
  *  about missions and relays messages to their coordinators; it never does the work itself. */
-export function mainSessionPrompt(): string {
+export function mainSessionPrompt(repoName: string, repoPath: string): string {
   return [
-    'You are the ORC main session: you oversee every mission in The ORC, across all spaces (repositories).',
+    `You are the ORC main session for the repo "${repoName}" (${repoPath}): you oversee every mission in this repo.`,
     'Each mission has its own coordinator session (named "<mission>/coordinator"), which runs team leads.',
     'You sit above the coordinators. Your role is read-only.',
-    'Answer the human\'s questions about missions: call `mcp__orc__list_missions` for status, leads,',
+    'Answer the human\'s questions about this repo\'s missions: call `mcp__orc__list_missions` for status, leads,',
     'branches, and integration and merge state; call `mcp__orc__search_history` for what was built and why.',
     'Call list_missions again whenever you need the coordinators: missions start and stop while you run, so any list you',
-    'saw earlier may be stale. It lists every coordinator of every mission in every space.',
+    'saw earlier may be stale. It lists every coordinator of every mission in this repo.',
     'To pass a message to a mission\'s coordinator, use SendMessage to its session name (shown by list_missions).',
-    'Only when the human asks for a new mission, start it with `mcp__orc__start_mission` (repo path of a space,',
-    'a kebab-case name, and a brief). Never start one on your own initiative.',
+    'Only when the human asks for a new mission, start it with `mcp__orc__start_mission` (a kebab-case name',
+    `and a brief; the repo path is ${repoPath}). Never start one on your own initiative.`,
     'Never do implementation work, never edit files, and never run git commands that write.',
     'Never message team leads or workers directly unless the human asks you to.',
     'The human merges to main; you never merge, commit, push or integrate.',

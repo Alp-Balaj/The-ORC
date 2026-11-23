@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CircleCheck, GitMerge, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
-import { MainSessionTerminalId, missionFailure, shownAgents, type AgentView, type AppRunView, type MainSessionView, type MissionView, type SpaceView } from '../../shared/types'
+import { isMainSessionTerminal, missionFailure, shownAgents, type AgentView, type AppRunView, type MainSessionView, type MissionView, type SpaceView } from '../../shared/types'
 import { CommandPalette } from './components/CommandPalette'
 import { Banner } from './components/Banner'
 import { EmptyState } from './components/EmptyState'
@@ -107,9 +107,12 @@ export function App(): React.JSX.Element {
   const [appRestore, setAppRestore] = useState<{ missionId: string; missionName: string } | null>(null)
   const [appRestoreBusy, setAppRestoreBusy] = useState(false)
   const [appRestoreError, setAppRestoreError] = useState<string | null>(null)
-  // The app-level main session (above all missions). Selecting it shows its terminal in place of a mission.
-  const [main, setMain] = useState<MainSessionView | null>(null)
-  const [mainSelected, setMainSelected] = useState(false)
+  // Each space has its own main session (above that repo's missions). Selecting one shows its terminal in place of a mission.
+  const [mains, setMains] = useState<Record<string, MainSessionView>>({})
+  const [mainRoot, setMainRoot] = useState<string | null>(null)
+  const main = mainRoot ? mains[mainRoot] ?? null : null
+  const mainSelected = mainRoot !== null
+  const mainTid = main?.terminalId ?? ''
   // Keyboard: the quick switcher or the cheat sheet (one at a time), and whether the sidebar shows.
   const [dialog, setDialog] = useState<'palette' | 'shortcuts' | 'accounts' | null>(null)
   const dialogFromTerminal = useRef(false)
@@ -148,16 +151,19 @@ export function App(): React.JSX.Element {
     const offS = window.orc.onSpaces(setSpaces)
     const offN = window.orc.onNotifySelect((_m, tid) => {
       setView('terminal')
-      if (tid === MainSessionTerminalId) {
-        setMainSelected(true)
+      if (isMainSessionTerminal(tid)) {
+        setMains((cur) => {
+          const hit = Object.values(cur).find((v) => v.terminalId === tid)
+          if (hit) setMainRoot(hit.repoPath)
+          return cur
+        })
         return
       }
-      setMainSelected(false)
+      setMainRoot(null)
       setTerminalId(tid)
       setMissionId(tid.split(':')[0])
     })
-    void window.orc.mainSession().then(setMain)
-    const offMain = window.orc.onMainSession(setMain)
+    const offMain = window.orc.onMainSession((v) => setMains((cur) => ({ ...cur, [v.repoPath]: v })))
     return () => {
       offM()
       offS()
@@ -166,6 +172,13 @@ export function App(): React.JSX.Element {
       offMain()
     }
   }, [])
+
+  // Every space's main session view, for the sidebar rows.
+  useEffect(() => {
+    for (const sp of spaces) {
+      void window.orc.mainSession(sp.root).then((v) => setMains((cur) => (cur[v.repoPath] ? cur : { ...cur, [v.repoPath]: v })))
+    }
+  }, [spaces])
 
   // Re-renders every 10s so "x ago" labels stay current. Hidden windows need no refresh: the
   // clock stops with the window and catches up as soon as it is shown again.
@@ -197,34 +210,35 @@ export function App(): React.JSX.Element {
   // The main session's graph: it at the top, every mission's coordinator under it (live: missions push).
   const mainGraph = useMemo<AgentView[]>(() => {
     const blank: Pick<AgentView, 'lastInstructionBy' | 'lastInstructionAt' | 'task' | 'question' | 'doneSummary' | 'tokens' | 'contextTokens' | 'merge' | 'conflictFiles' | 'branch' | 'cwd'> = { lastInstructionBy: null, lastInstructionAt: null, task: '', question: null, doneSummary: null, tokens: 0, contextTokens: 0, merge: null, conflictFiles: [], branch: null, cwd: '' }
-    const root: AgentView = { ...blank, name: 'main', sessionName: main?.sessionName ?? 'orc-main', role: 'coordinator', parent: null, status: !main || main.status === 'off' ? 'exited' : main.status, activity: main?.activity ?? '', sessionId: '', terminalId: MainSessionTerminalId, startedAt: 0 }
-    const coords = missions.flatMap((m) => m.agents.filter((a) => a.role === 'coordinator').map((a) => ({ ...a, name: a.sessionName, parent: 'main' })))
+    const root: AgentView = { ...blank, name: 'main', sessionName: main?.sessionName ?? 'orc-main', role: 'coordinator', parent: null, status: !main || main.status === 'off' ? 'exited' : main.status, activity: main?.activity ?? '', sessionId: '', terminalId: mainTid, startedAt: 0 }
+    const coords = missions.filter((m) => m.repoPath === mainRoot).flatMap((m) => m.agents.filter((a) => a.role === 'coordinator').map((a) => ({ ...a, name: a.sessionName, parent: 'main' })))
     return [root, ...coords]
-  }, [missions, main])
+  }, [missions, main, mainRoot, mainTid])
   const agent = shown.find((a) => a.terminalId === terminalId) ?? shown.find((a) => a.role === 'coordinator') ?? null
 
   useEffect(() => {
-    window.orc.setSelection(mainSelected ? null : mission?.id ?? null, mainSelected ? MainSessionTerminalId : agent?.terminalId ?? null)
-  }, [mainSelected, mission?.id, agent?.terminalId])
+    window.orc.setSelection(mainSelected ? null : mission?.id ?? null, mainSelected ? mainTid : agent?.terminalId ?? null)
+  }, [mainSelected, mainTid, mission?.id, agent?.terminalId])
 
   // Stable (they only call setters), so the memoized tree skips renders on unrelated updates.
   const selectMission = useCallback((id: string): void => {
-    setMainSelected(false)
+    setMainRoot(null)
     setView('terminal')
     setMissionId(id)
     setTerminalId(`${id}:coordinator`)
   }, [])
   const selectAgent = useCallback((tid: string): void => {
-    setMainSelected(false)
+    setMainRoot(null)
     setView('terminal')
     setTerminalId(tid)
     setMissionId(tid.split(':')[0])
   }, [])
   // Starting it on first select: a session nobody has started yet opens straight into a live terminal.
-  const selectMain = (): void => {
-    setMainSelected(true)
+  const selectMain = (root: string): void => {
+    setMainRoot(root)
     setView('terminal')
-    if (!main || main.status === 'off') void window.orc.startMainSession()
+    const v = mains[root]
+    if (!v || v.status === 'off') void window.orc.startMainSession(root)
   }
   const mainRunning = !!main && main.status !== 'off' && main.status !== 'exited'
   const space = mission ? spaces.find((s) => s.root === mission.repoPath) : undefined
@@ -259,7 +273,7 @@ export function App(): React.JSX.Element {
   // Missions in this repo whose work is on the ORC branch, waiting for Merge to main.
   const onOrc = mission ? missions.filter((m) => m.repoPath === mission.repoPath && isOnOrc(m)).length : 0
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
-  const currentRoot = mission?.repoPath ?? roots[0] ?? null
+  const currentRoot = mainRoot ?? mission?.repoPath ?? roots[0] ?? null
 
   const openDialog = (d: 'palette' | 'shortcuts' | 'accounts'): void => {
     if (dialog === d) return closeDialog()
@@ -471,15 +485,15 @@ export function App(): React.JSX.Element {
           <>
             <div className="flex min-w-0 items-center gap-1.5 text-[13px]" data-testid="header-main">
               <span className="shrink-0 font-semibold">Main session</span>
-              <span className="truncate text-muted-foreground">oversees all missions</span>
+              <span className="truncate text-muted-foreground">oversees {main?.repoName ?? 'this repo'}</span>
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-2">
               {mainRunning ? (
-                <Button size="sm" variant="ghost-destructive" className="text-xs" data-testid="main-stop" title="End the main session. Its conversation is kept, so Resume brings it back." onClick={() => void window.orc.stopMainSession()}>
+                <Button size="sm" variant="ghost-destructive" className="text-xs" data-testid="main-stop" title="End the main session. Its conversation is kept, so Resume brings it back." onClick={() => mainRoot && void window.orc.stopMainSession(mainRoot)}>
                   <Square /> Stop
                 </Button>
               ) : (
-                <Button size="sm" variant="outline" className="text-xs" data-testid="main-start" onClick={() => void window.orc.startMainSession()}>
+                <Button size="sm" variant="outline" className="text-xs" data-testid="main-start" onClick={() => mainRoot && void window.orc.startMainSession(mainRoot)}>
                   <Play /> {main?.status === 'exited' ? 'Resume' : 'Start'}
                 </Button>
               )}
@@ -640,8 +654,8 @@ export function App(): React.JSX.Element {
         appRun={appRun}
         selectedMission={mainSelected ? null : mission?.id ?? null}
         selectedTerminal={mainSelected ? null : agent?.terminalId ?? null}
-        main={main}
-        mainSelected={mainSelected}
+        mains={mains}
+        mainRoot={mainRoot}
         onSelectMain={selectMain}
         onSelectMission={selectMission}
         onSelectAgent={selectAgent}
@@ -685,15 +699,15 @@ export function App(): React.JSX.Element {
                 <span className="shrink-0 font-medium text-foreground">{main.sessionName}</span>
                 <span className="min-w-0 truncate text-[11px] text-faint">{main.activity || (mainRunning ? '' : 'Ended. Resume to continue its conversation.')}</span>
               </div>
-              <TerminalView key={MainSessionTerminalId} id={MainSessionTerminalId} />
+              <TerminalView key={main.terminalId} id={main.terminalId} />
             </>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center" data-testid="main-empty">
               <div className="text-sm font-medium">Main session</div>
               <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-                One Claude Code session above all your missions. It sees every space and mission, and it does not own any of them.
+                One Claude Code session above {main?.repoName ?? 'this repo'}'s missions. It sees only this repo's missions, queue and docs, and it does not own any of them.
               </p>
-              <Button size="sm" data-testid="main-start-empty" onClick={() => void window.orc.startMainSession()}>
+              <Button size="sm" data-testid="main-start-empty" onClick={() => mainRoot && void window.orc.startMainSession(mainRoot)}>
                 <Play /> Start main session
               </Button>
             </div>
@@ -754,7 +768,7 @@ export function App(): React.JSX.Element {
       <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mainSelected && !mission && 'pointer-events-none opacity-40')} aria-disabled={!mainSelected && !mission}>
         {side.handle}
         <div className="panel-title flex h-8 items-center justify-between border-b px-3">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-faint">{mainSelected ? 'All coordinators' : 'Mission tree'}</span>
+          <span className="text-[11px] font-medium uppercase tracking-wide text-faint">{mainSelected ? 'Repo coordinators' : 'Mission tree'}</span>
           <Button
             size="sm"
             variant="ghost"
@@ -768,7 +782,7 @@ export function App(): React.JSX.Element {
         </div>
         <div className="h-[46%] min-h-45 border-b" data-testid="tree">
           {mainSelected ? (
-            <MissionTree agents={mainGraph} feed={[]} selected={null} onSelect={(tid) => { if (tid !== MainSessionTerminalId) selectAgent(tid) }} showMessages={false} />
+            <MissionTree agents={mainGraph} feed={[]} selected={null} onSelect={(tid) => { if (tid !== mainTid) selectAgent(tid) }} showMessages={false} />
           ) : mission ? (
             <MissionTree agents={shown} feed={mission.feed} selected={agent?.terminalId ?? null} onSelect={selectAgent} showMessages={showMessages} />
           ) : (
