@@ -423,7 +423,7 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {/* Header */}
-      <header className={cn('flex min-w-0 items-center gap-3 border-b bg-background px-3', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="header">
+      <header className={cn('accent-hairline flex min-w-0 items-center gap-3 border-b bg-background px-3', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="header">
         <div className="flex w-[276px] shrink-0 items-center gap-2">
           <div className="grid h-6 w-9 place-items-center rounded-md bg-primary/15 text-[10.5px] font-black tracking-tight text-primary">ORC</div>
           <span className="font-semibold tracking-tight">The ORC</span>
@@ -673,7 +673,7 @@ export function App(): React.JSX.Element {
       {/* Tree + feed */}
       <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mission && 'pointer-events-none opacity-40')} aria-disabled={!mission}>
         {side.handle}
-        <div className="flex h-8 items-center justify-between border-b px-3">
+        <div className="panel-title flex h-8 items-center justify-between border-b px-3">
           <span className="text-[11px] font-medium uppercase tracking-wide text-faint">Mission tree</span>
           <Button
             size="sm"
@@ -693,7 +693,7 @@ export function App(): React.JSX.Element {
             <div className="p-4 text-[12px] text-muted-foreground">A node appears whenever an agent spawns a worker.</div>
           )}
         </div>
-        <div className="flex h-8 items-center border-b px-3 text-[11px] font-medium uppercase tracking-wide text-faint">Feed</div>
+        <div className="panel-title flex h-8 items-center border-b px-3 text-[11px] font-medium uppercase tracking-wide text-faint">Feed</div>
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="feed">
           <Feed feed={mission?.feed ?? []} />
         </div>
