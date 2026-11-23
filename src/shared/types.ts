@@ -168,6 +168,8 @@ export interface SpaceView {
   maxParallel: number
   /** Desktop notifications and the needs-you badge for this space's missions. Default on. */
   notifications: boolean
+  /** Verified queue missions are integrated into the ORC branch automatically. Default on. */
+  autoIntegrate: boolean
   /** A gate command guessed from the repo (e.g. "pnpm typecheck"), shown when gateCommand is null. */
   suggestedGate: string | null
   /** Onboarding finished for this repo (epoch ms), or null: The ORC has not enrolled it yet.
