@@ -253,13 +253,13 @@ export function PlanUsageMeter({ usage, threshold }: { usage: PlanUsageView | nu
   return (
     <div className="border-t px-3 py-2" title={title} data-testid="plan-usage">
       <div className={cn('flex items-center gap-1.5 text-[11px] tabular-nums', hot ? 'text-needs' : 'text-muted-foreground')}>
-        <span className="text-faint">Plan</span>
+        <span className={hot ? undefined : 'font-medium text-primary'}>Plan</span>
         {usage.fiveHour && <span>5h {pct(five)}%</span>}
         {usage.fiveHour && usage.sevenDay && <span className="text-faint">·</span>}
         {usage.sevenDay && <span>wk {pct(week)}%</span>}
       </div>
       <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
-        <div className={cn('h-full rounded-full transition-[width]', hot ? 'bg-needs' : 'bg-muted-foreground/60')} style={{ width: `${Math.min(100, top)}%` }} />
+        <div className={cn('h-full rounded-full transition-[width]', hot ? 'bg-needs' : 'bg-primary')} style={{ width: `${Math.min(100, top)}%` }} />
       </div>
     </div>
   )
