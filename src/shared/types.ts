@@ -76,6 +76,8 @@ export interface GateView {
   exitCode: number | null
   output: string
   at: number
+  /** True only for the transient placeholder while the gate command runs. */
+  running?: boolean
 }
 
 export interface VerifierView {
@@ -298,7 +300,7 @@ export function missionFailure(m: MissionView): Failure | null {
   if (crashed) return { kind: 'crash', agent: crashed, text: `${crashed.name} crashed${crashed.exitCode != null ? ` (exit ${crashed.exitCode})` : ''}: its session ended unexpectedly` }
   const conflict = m.agents.find((a) => a.merge === 'conflict' && a.status !== 'exited') ?? m.agents.find((a) => a.merge === 'conflict')
   if (conflict) return { kind: 'conflict', agent: conflict, text: `${conflict.name} conflicts with merged work${conflict.conflictFiles.length ? ` in ${conflict.conflictFiles.length} file${conflict.conflictFiles.length === 1 ? '' : 's'}` : ''}` }
-  if (m.gate && !m.gate.ok && m.gate.output !== 'running…' && !m.mergedToMain) return { kind: 'gate', text: `The gate failed (exit ${m.gate.exitCode}): ${m.gate.command}` }
+  if (m.gate && !m.gate.ok && !m.gate.running && !m.mergedToMain) return { kind: 'gate', text: `The gate failed (exit ${m.gate.exitCode}): ${m.gate.command}` }
   return null
 }
 

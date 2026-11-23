@@ -142,9 +142,9 @@ export function MergeScreen({ mission, space, onBack, onRemoved }: { mission: Mi
 
   const v = mission.verifier
   const stale = v && v.integrationCommit !== mission.integrationCommit
-  const gateStale = mission.gate && mission.gate.output !== 'running…' && mission.integrationCommit && mission.gate.at < (mission.feed.findLast((f) => f.kind === 'merge')?.at ?? 0)
+  const gateStale = mission.gate && !mission.gate.running && mission.integrationCommit && mission.gate.at < (mission.feed.findLast((f) => f.kind === 'merge')?.at ?? 0)
 
-  const gateRunning = mission.gate?.output === 'running…'
+  const gateRunning = mission.gate?.running
   const gateState = !mission.gate ? 'idle' : gateRunning ? 'running' : mission.gate.ok ? 'pass' : 'fail'
   const gateText = !mission.gate ? (space?.gateCommand ? 'not run' : 'none configured') : gateRunning ? 'running' : mission.gate.ok ? 'passed' : `failed (exit ${mission.gate.exitCode})`
   const verdict = v ? (/VERDICT:\s*(\w+)/.exec(v.report)?.[1] ?? v.status) : null

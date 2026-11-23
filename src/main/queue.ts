@@ -201,7 +201,7 @@ export class Queues {
       }
       item.status = 'running'
       q.acks[item.id] = {
-        gateAt: m.gate && !m.gate.ok ? m.gate.at : null,
+        gateAt: m.gate && !m.gate.ok && !m.gate.running ? m.gate.at : null,
         verifierAt: m.verifier && m.verifier.status !== 'running' ? m.verifier.at : null,
         questions: m.agents.filter((a) => a.question).map((a) => `${a.name}:${a.question}`),
         stopped: m.state === 'stopped',
@@ -264,7 +264,7 @@ export class Queues {
       }
     }
     if (m.integrateError && m.integrateError.at !== ack?.integrateErrorAt) return `couldn't integrate into the ORC branch — ${m.integrateError.message}`
-    if (m.gate && !m.gate.ok && m.gate.at !== ack?.gateAt) return `gate failed: ${m.gate.command} (exit ${m.gate.exitCode ?? '?'})`
+    if (m.gate && !m.gate.ok && !m.gate.running && m.gate.at !== ack?.gateAt) return `gate failed: ${m.gate.command} (exit ${m.gate.exitCode ?? '?'})`
     const asked = m.agents.find((a) => a.question && !ack?.questions.includes(`${a.name}:${a.question}`))
     if (asked) return `${asked.name} asked: ${asked.question}`
     if (m.state === 'stopped' && !ack?.stopped) return 'mission stopped'
