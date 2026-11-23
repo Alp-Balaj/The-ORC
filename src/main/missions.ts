@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
+import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type IntegratedView, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
 import { claudeArgs, coordinatorPrompt, ownerStatusLine, mergerPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
 import * as gitOps from './git-worktrees.ts'
@@ -42,7 +42,9 @@ export interface SavedState {
   version: 1
   savedAt: number
   /** models/mainBranch/queueItemId are missing in states saved before 2026-11-22 (which had `model`). */
-  missions: (Omit<Mission, 'agents' | 'held' | 'models' | 'mainBranch' | 'queueItemId'> & {
+  missions: (Omit<Mission, 'agents' | 'held' | 'models' | 'mainBranch' | 'queueItemId' | 'integrated' | 'integrateError'> & {
+    integrated?: Mission['integrated']
+    integrateError?: Mission['integrateError']
     models?: RoleModels
     mainBranch?: string
     queueItemId?: string | null
@@ -68,7 +70,7 @@ interface Mission {
   baseBranch: string
   permissionMode: StartMissionRequest['permissionMode']
   models: RoleModels
-  /** The branch Merge to main targets (baseBranch, unless stacked on another mission). */
+  /** The owner's branch Merge to main brings the ORC branch into. */
   mainBranch: string
   queueItemId: string | null
   state: 'running' | 'stopped'
@@ -82,6 +84,8 @@ interface Mission {
   gate: GateView | null
   verifier: VerifierView | null
   mergedToMain: { commit: string; at: number } | null
+  integrated: IntegratedView | null
+  integrateError: { message: string; files: string[]; at: number } | null
   /** The human's first prompt to the coordinator: what the Verifier checks against. */
   brief: string | null
   /** Pause mission: no spawns, merges or deliveries; mid-turn agents were sent Esc. */
@@ -157,7 +161,7 @@ export class Missions implements ControlHandlers {
   launcher: Launcher = (args) => ({ command: 'claude', args })
   /** Git operations. Tests swap in fakes. */
   git: Pick<typeof gitOps, 'addWorktree' | 'branchesUnder' | 'currentBranch' | 'repoRoot'> &
-    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'mergeToMain' | 'cleanupMission' | 'branchDiff' | 'prepareConflict' | 'startConflictMerge' | 'landMerge' | 'concludeMerge' | 'discardMerge'> = { ...gitOps, ...missionGit }
+    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'ensureOrcBranch' | 'integrateIntoOrc' | 'mergeOrcToMain' | 'orcDiff' | 'cleanupMission' | 'branchDiff' | 'prepareConflict' | 'startConflictMerge' | 'landMerge' | 'concludeMerge' | 'discardMerge'> = { ...gitOps, ...missionGit }
 
   private readonly terminals: TerminalHost
   private readonly changed: (missions: MissionView[]) => void
@@ -227,6 +231,8 @@ export class Missions implements ControlHandlers {
         gate: m.gate,
         verifier: m.verifier,
         mergedToMain: m.mergedToMain,
+        integrated: m.integrated,
+        integrateError: m.integrateError,
         paused: m.paused
       }
     })
@@ -246,7 +252,9 @@ export class Missions implements ControlHandlers {
     if ((await this.git.branchesUnder(repo, `orc/${name}/`)).length > 0) {
       throw new Error(`a mission named "${name}" ran in this repository before (its orc/${name}/… branches still exist). Pick another name.`)
     }
-    const baseBranch = req.baseBranch ?? (await this.git.currentBranch(repo))
+    // Every mission starts from the repo's ORC branch, so it builds on the work integrated so far.
+    const mainBranch = req.mainBranch ?? (await this.git.currentBranch(repo))
+    const baseBranch = req.baseBranch ?? (await this.git.ensureOrcBranch(repo, mainBranch), missionGit.OrcBranch)
     const mission: Mission = {
       id: randomUUID(),
       name,
@@ -254,7 +262,7 @@ export class Missions implements ControlHandlers {
       baseBranch,
       permissionMode: req.permissionMode,
       models: resolveModels(this.spaceModelsFor(repo), req),
-      mainBranch: req.mainBranch ?? baseBranch,
+      mainBranch,
       queueItemId: req.queueItemId ?? null,
       state: 'running',
       createdAt: Date.now(),
@@ -267,6 +275,8 @@ export class Missions implements ControlHandlers {
       gate: null,
       verifier: null,
       mergedToMain: null,
+      integrated: null,
+      integrateError: null,
       brief: req.brief?.trim() || null,
       paused: false,
       held: []
@@ -528,6 +538,11 @@ export class Missions implements ControlHandlers {
     const verdict = /VERDICT:\s*(\w+)/.exec(r.report)?.[1] ?? (r.ok ? 'done' : 'failed')
     this.record(mission, 'Verifier report', `${r.report}\n\nTemplate sha256 \`${templateHash}\`, prompt sha256 \`${r.promptHash}\`.`)
     this.feed(mission, { kind: 'verifier', from: 'verifier', to: null, text: `verdict: ${verdict}`, status: verdict === 'PASS' ? 'ok' : 'failed' })
+    // A queued mission whose Verifier passed goes onto the ORC branch on its own, so the next one
+    // builds on it. Work merged meanwhile makes this report stale: the next run integrates that.
+    if (mission.queueItemId && (verdict === 'PASS' || verdict === 'CONCERNS') && mission.verifier.integrationCommit === mission.integrationCommit) {
+      await this.integrate(mission.id)
+    }
   }
 
   /** How the Verifier runs. Tests swap in a fake. */
@@ -540,21 +555,44 @@ export class Missions implements ControlHandlers {
    *  this to the plan-usage tracker. */
   statusLine: (status: unknown) => string | null = () => null
 
-  /** The human pressed Merge to main. */
-  async mergeToMain(missionId: string): Promise<{ ok: boolean; message: string; cleared?: number }> {
+  /** Integrates the mission into its repo's ORC branch (the human pressed Integrate, or the
+   *  queue's Verifier passed). The mission keeps running; Merge to main later brings it to main. */
+  async integrate(missionId: string): Promise<{ ok: boolean; message: string; files?: string[] }> {
     const mission = this.missions.get(missionId)
     if (!mission) return { ok: false, message: 'no such mission' }
+    if (mission.mergedToMain) return { ok: false, message: 'This mission is already in main.' }
     if (mission.merged.length === 0) return { ok: false, message: 'Nothing is merged into the integration branch yet.' }
-    const r = await this.git.mergeToMain(mission.repoPath, mission.name, mission.mainBranch)
-    if (!r.ok) {
-      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merge to ${mission.mainBranch} refused: ${oneLine(r.reason)}`, status: 'failed' })
-      return { ok: false, message: r.reason }
+    const integrationCommit = mission.integrationCommit
+    let r: missionGit.IntegrateResult
+    try {
+      r = await this.git.integrateIntoOrc(mission.repoPath, mission.name, mission.mainBranch)
+    } catch (err) {
+      const message = String((err as Error).message ?? err)
+      mission.integrateError = { message, files: [], at: Date.now() }
+      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `integrating into ${missionGit.OrcBranch} failed: ${oneLine(message)}`, status: 'failed' })
+      return { ok: false, message }
+    }
+    if (r.kind === 'conflict') {
+      const message = `Conflicts with work already on ${missionGit.OrcBranch} in ${r.files.join(', ')}. Nothing was integrated.`
+      mission.integrateError = { message, files: r.files, at: Date.now() }
+      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `integrating into ${missionGit.OrcBranch} refused: conflict in ${r.files.join(', ')}`, status: 'failed' })
+      return { ok: false, message, files: r.files }
     }
     const at = Date.now()
-    mission.mergedToMain = { commit: r.commit, at }
-    this.record(mission, `Merged into ${mission.mainBranch}`, `Commit \`${r.commit}\`.\n\nSessions (reopen with \`claude --resume <id>\`):\n${[...mission.agents.values()].map((x) => `- ${x.sessionName}: \`${x.sessionId}\``).join('\n')}`)
-    this.feed(mission, { kind: 'main', from: 'you', to: null, text: `merged into ${mission.mainBranch} at ${r.commit.slice(0, 8)}`, status: 'ok' })
-    // A stacked mission's merge also brings in the missions it was stacked on.
+    const commit = r.kind === 'merged' ? r.commit : (mission.integrated?.commit ?? integrationCommit ?? '')
+    // A mission stacked on another one (before the ORC branch existed) brings that one in too.
+    for (const m of [mission, ...this.stackChain(mission)]) {
+      m.integrated = { commit, at, integrationCommit: m.integrationCommit }
+      m.integrateError = null
+      if (m !== mission) this.feed(m, { kind: 'main', from: 'you', to: null, text: `integrated into ${missionGit.OrcBranch} with ${mission.name}`, status: 'ok' })
+    }
+    this.record(mission, `Integrated into ${missionGit.OrcBranch}`, `Commit \`${commit}\`.`)
+    this.feed(mission, { kind: 'main', from: 'you', to: null, text: r.kind === 'merged' ? `integrated into ${missionGit.OrcBranch} at ${commit.slice(0, 8)}` : `already on ${missionGit.OrcBranch}`, status: 'ok' })
+    return { ok: true, message: r.kind === 'merged' ? `Integrated into ${missionGit.OrcBranch} at ${commit.slice(0, 8)}.` : `Already on ${missionGit.OrcBranch}.` }
+  }
+
+  /** Legacy stacked missions this one was based on (their work is in its integration branch). */
+  private stackChain(mission: Mission): Mission[] {
     const chain: Mission[] = []
     for (let base = mission.baseBranch; ;) {
       const p = [...this.missions.values()].find((x) => x.repoPath === mission.repoPath && !x.mergedToMain && !chain.includes(x) && x !== mission && missionGit.integrationBranch(x.name) === base)
@@ -562,27 +600,52 @@ export class Missions implements ControlHandlers {
       chain.push(p)
       base = p.baseBranch
     }
-    for (const p of chain) {
-      p.mergedToMain = { commit: r.commit, at }
-      this.record(p, `Merged into ${p.mainBranch}`, `With ${mission.name}, commit \`${r.commit}\`.`)
-      this.feed(p, { kind: 'main', from: 'you', to: null, text: `merged into ${p.mainBranch} with ${mission.name} at ${r.commit.slice(0, 8)}`, status: 'ok' })
+    return chain
+  }
+
+  /** Missions whose latest work is on the repo's ORC branch and not yet in main. */
+  private integratedIn(repo: string): Mission[] {
+    return [...this.missions.values()].filter((m) => m.repoPath === repo && !m.mergedToMain && !!m.integrated && m.integrated.integrationCommit === m.integrationCommit)
+  }
+
+  /** What Merge to main would bring: main...ORC branch. */
+  async orcDiff(repo: string): Promise<DiffView | null> {
+    const main = this.integratedIn(repo)[0]?.mainBranch ?? (await this.git.currentBranch(repo))
+    return this.git.orcDiff(repo, main)
+  }
+
+  /** The human pressed Merge to main: everything on the repo's ORC branch goes into main. Missions
+   *  fully on the ORC branch are then ended and cleared out; the rest keep running. */
+  async mergeToMain(repo: string): Promise<{ ok: boolean; message: string; cleared?: number; files?: string[] }> {
+    const done = this.integratedIn(repo)
+    const main = done[0]?.mainBranch ?? (await this.git.currentBranch(repo))
+    const r = await this.git.mergeOrcToMain(repo, main)
+    if (!r.ok) {
+      for (const m of done) this.feed(m, { kind: 'main', from: 'you', to: null, text: `merge to ${main} refused: ${oneLine(r.reason)}`, status: 'failed' })
+      return { ok: false, message: r.reason, files: r.files }
     }
-    // Missions stacked on a branch that is about to be deleted: its content is in main now.
-    const gone = new Set([mission, ...chain].map((x) => missionGit.integrationBranch(x.name)))
-    for (const x of this.missions.values()) if (gone.has(x.baseBranch) && !x.mergedToMain) x.baseBranch = x.mainBranch
-    let keptNote = ''
-    for (const m of [mission, ...chain]) {
-      const kept = await this.endMerged(m)
-      if (m === mission && kept.length) keptNote = ` Kept (not merged): ${kept.map((x) => `${x.name} on ${x.branch}`).join(', ')}.`
+    const at = Date.now()
+    for (const m of done) {
+      m.mergedToMain = { commit: r.commit, at }
+      this.record(m, `Merged into ${main}`, `With the ORC branch, commit \`${r.commit}\`.\n\nSessions (reopen with \`claude --resume <id>\`):\n${[...m.agents.values()].map((x) => `- ${x.sessionName}: \`${x.sessionId}\``).join('\n')}`)
+      this.feed(m, { kind: 'main', from: 'you', to: null, text: `merged into ${main} at ${r.commit.slice(0, 8)}`, status: 'ok' })
+    }
+    // Legacy missions stacked on a branch that is about to be deleted: its content is in main now.
+    const gone = new Set(done.map((x) => missionGit.integrationBranch(x.name)))
+    for (const x of this.missions.values()) if (gone.has(x.baseBranch) && !x.mergedToMain) x.baseBranch = missionGit.OrcBranch
+    const kept: string[] = []
+    for (const m of done) {
+      const k = await this.endMerged(m)
+      kept.push(...k.map((x) => `${m.name}/${x.name} on ${x.branch}`))
     }
     // Clear out every mission in this repo whose work is now in main (the record notes were written above).
-    // endMerged stopped the ones just merged; earlier merged ones are already stopped. Running ones stay.
     let cleared = 0
     for (const x of [...this.missions.values()]) {
-      if (x.repoPath === mission.repoPath && x.mergedToMain && x.state === 'stopped' && this.removeMission(x.id)) cleared++
+      if (x.repoPath === repo && x.mergedToMain && x.state === 'stopped' && this.removeMission(x.id)) cleared++
     }
+    const keptNote = kept.length ? ` Kept (not merged): ${kept.join(', ')}.` : ''
     const clearedNote = cleared ? ` Cleared ${cleared} merged mission${cleared === 1 ? '' : 's'}.` : ''
-    return { ok: true, cleared, message: `Merged into ${mission.mainBranch} at ${r.commit.slice(0, 8)}. Merged workers' worktrees and branches removed.${keptNote}${clearedNote}` }
+    return { ok: true, cleared, message: `Merged ${missionGit.OrcBranch} into ${main} at ${r.commit.slice(0, 8)}.${keptNote}${clearedNote}` }
   }
 
   /** The work is in main: end the sessions, then remove merged workers' worktrees and branches
@@ -1329,7 +1392,7 @@ export class Missions implements ControlHandlers {
         id: m.id, name: m.name, repoPath: m.repoPath, baseBranch: m.baseBranch, permissionMode: m.permissionMode,
         models: m.models, mainBranch: m.mainBranch, queueItemId: m.queueItemId, state: m.state, createdAt: m.createdAt, feed: m.feed.slice(-MaxFeed), gating: m.gating,
         split: m.split, merged: m.merged, integrationCommit: m.integrationCommit, gate: m.gate,
-        verifier: m.verifier?.status === 'running' ? null : m.verifier, mergedToMain: m.mergedToMain, brief: m.brief, paused: m.paused, recorded: m.recorded,
+        verifier: m.verifier?.status === 'running' ? null : m.verifier, mergedToMain: m.mergedToMain, integrated: m.integrated, integrateError: m.integrateError, brief: m.brief, paused: m.paused, recorded: m.recorded,
         agents: [...m.agents.values()].map((a) => ({
           ...agentView(a),
           transcriptPath: a.tally?.path ?? null,
@@ -1348,7 +1411,7 @@ export class Missions implements ControlHandlers {
     if (saved?.version !== 1) return log
     for (const sm of saved.missions) {
       if (this.missions.has(sm.id)) continue
-      const { agents: savedAgents, model: legacyModel, models, mainBranch, queueItemId, ...rest } = sm
+      const { agents: savedAgents, model: legacyModel, models, mainBranch, queueItemId, integrated, integrateError, ...rest } = sm
       // Saved before per-role models: keep what it ran with (one model, or Claude Code's defaults).
       const legacy = legacyModel?.trim() || null
       const mission: Mission = {
@@ -1356,6 +1419,8 @@ export class Missions implements ControlHandlers {
         models: models ?? { ...Object.fromEntries(ModelRoles.map((r) => [r, legacy])), advisor: null } as RoleModels,
         mainBranch: mainBranch ?? rest.baseBranch,
         queueItemId: queueItemId ?? null,
+        integrated: integrated ?? null,
+        integrateError: integrateError ?? null,
         agents: new Map(),
         held: []
       }

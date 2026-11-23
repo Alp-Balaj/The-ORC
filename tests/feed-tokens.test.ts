@@ -32,6 +32,7 @@ function world() {
     ...m.git,
     repoRoot: async (p: string) => p,
     currentBranch: async () => 'main',
+    ensureOrcBranch: async () => '',
     branchesUnder: async (_r: string, prefix: string) => [...branches].filter((b) => b.startsWith(prefix)),
     addWorktree: async (repo: string, mission: string, agent: string) => {
       branches.add(`orc/${mission}/${agent}`)

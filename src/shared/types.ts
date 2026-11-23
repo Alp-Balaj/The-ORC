@@ -100,8 +100,8 @@ export interface MissionView {
   permissionMode: PermissionMode
   /** Resolved model per role for this mission (defaults < space < mission). */
   models: RoleModels
-  /** The branch Merge to main fast-forwards. Equals baseBranch, except for a stacked (queued)
-   *  mission, whose baseBranch is the previous queued mission's integration branch. */
+  /** The owner's branch Merge to main brings the ORC branch into (baseBranch is the ORC branch,
+   *  or, for missions started before it existed, main or a stacked mission's integration branch). */
   mainBranch: string
   /** Set when this mission was started by a space's backlog queue. */
   queueItemId: string | null
@@ -118,7 +118,18 @@ export interface MissionView {
   gate: GateView | null
   verifier: VerifierView | null
   mergedToMain: { commit: string; at: number } | null
+  /** Integrated into the repo's ORC branch: at which commit there, from which integration commit
+   *  (newer work merged into the mission since is not on the ORC branch yet). */
+  integrated: IntegratedView | null
+  /** The last integration into the ORC branch that failed (a conflict), until one succeeds. */
+  integrateError: { message: string; files: string[]; at: number } | null
   paused: boolean
+}
+
+export interface IntegratedView {
+  commit: string
+  at: number
+  integrationCommit: string | null
 }
 
 /** A repository the user has opened. Missions belong to the space of their repo. */
@@ -223,9 +234,9 @@ export interface StartMissionRequest {
   models?: Partial<RoleModels>
   /** Default: no check. */
   gating?: Gating
-  /** Branch to base the mission on (stacked queue missions). Default: the checkout's branch. */
+  /** Branch to base the mission on. Default: the repo's ORC branch (created from the checkout's branch). */
   baseBranch?: string
-  /** Branch Merge to main targets. Default: baseBranch. */
+  /** Branch Merge to main targets. Default: the checkout's branch. */
   mainBranch?: string
   /** Typed into the coordinator as its first prompt, and kept as the mission's brief. */
   brief?: string

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { MissionView, PermissionMode, PlanUsageView, QueueItem, QueueView, StartMissionRequest } from '../shared/types.ts'
-import { integrationBranch } from './mission-git.ts'
 import { overThreshold } from './plan-usage.ts'
 import { renameOver } from './rename-over.ts'
 
@@ -13,6 +12,8 @@ interface Ack {
   verifierAt: number | null
   questions: string[]
   stopped: boolean
+  /** A failed integration into the ORC branch the owner resumed past (optional: older saves). */
+  integrateErrorAt?: number | null
 }
 
 interface QueueState extends QueueView {
@@ -50,12 +51,16 @@ const nameSlug = (s: string): string =>
 
 const MaxTimer = 2 ** 31 - 1
 
-/** Per-space backlog queues: each item becomes its own mission, started up to maxParallel at a time,
- *  each on the base branch (maxParallel 1: stacked on the previous one, started when it is verified PASS). Any red flag pauses the queue (never the
+/** Per-space backlog queues: each item becomes its own mission, started up to maxParallel at a time
+ *  from the repo's ORC branch. An item is done once its Verifier passed and Missions integrated it
+ *  into the ORC branch, so the next one builds on it. Any red flag pauses the queue (never the
  *  running mission). */
 export class Queues {
   private queues = new Map<string, QueueState>()
   private starting = new Set<string>()
+  /** Missions this queue started that no missions update has shown yet (updates are batched):
+   *  missing from the list, they are new, not removed. */
+  private unseen = new Set<string>()
   private views: MissionView[] = []
   /** No decisions before the first missions list (restore may still be running). */
   private ready = false
@@ -172,6 +177,7 @@ export class Queues {
       item.reason = null
       const m = this.views.find((v) => v.id === item.missionId)
       if (!m) {
+        if (item.missionId && this.unseen.has(item.missionId)) { item.status = 'running'; continue }
         // Never started (startMission failed): try again. Its mission was removed: move on.
         if (item.missionId) item.status = 'done'
         else item.status = 'queued'
@@ -182,7 +188,8 @@ export class Queues {
         gateAt: m.gate && !m.gate.ok ? m.gate.at : null,
         verifierAt: m.verifier && m.verifier.status !== 'running' ? m.verifier.at : null,
         questions: m.agents.filter((a) => a.question).map((a) => `${a.name}:${a.question}`),
-        stopped: m.state === 'stopped'
+        stopped: m.state === 'stopped',
+        integrateErrorAt: m.integrateError?.at ?? null
       }
     }
     this.changed()
@@ -203,6 +210,7 @@ export class Queues {
 
   onMissions(views: MissionView[]): void {
     this.views = views
+    for (const v of views) this.unseen.delete(v.id)
     this.ready = true
     for (const q of this.queues.values()) this.evaluate(q)
   }
@@ -239,6 +247,7 @@ export class Queues {
         if (!verdictPasses(verdict)) return `Verifier: ${verdict ?? 'no verdict'} — ${firstProblem(v.report)}`
       }
     }
+    if (m.integrateError && m.integrateError.at !== ack?.integrateErrorAt) return `couldn't integrate into the ORC branch — ${m.integrateError.message}`
     if (m.gate && !m.gate.ok && m.gate.at !== ack?.gateAt) return `gate failed: ${m.gate.command} (exit ${m.gate.exitCode ?? '?'})`
     const asked = m.agents.find((a) => a.question && !ack?.questions.includes(`${a.name}:${a.question}`))
     if (asked) return `${asked.name} asked: ${asked.question}`
@@ -255,11 +264,13 @@ export class Queues {
 
   private finished(m: MissionView, ack: Ack | undefined): boolean {
     if (m.mergedToMain) return true
+    if (m.integrated && m.integrated.integrationCommit === m.integrationCommit) return true
     // A stopped mission the owner resumed past will never be verified: move on.
     if (m.state === 'stopped' && ack?.stopped) return true
     const v = m.verifier
     if (!v || v.status === 'running' || v.integrationCommit !== m.integrationCommit) return false
-    if (v.status === 'done' && verdictPasses(verdictOf(v.report))) return true
+    // Passed: done once Missions has integrated it (or the owner resumed past a failed integration).
+    if (v.status === 'done' && verdictPasses(verdictOf(v.report))) return !!m.integrateError && m.integrateError.at === ack?.integrateErrorAt
     return v.at === ack?.verifierAt
   }
 
@@ -272,13 +283,22 @@ export class Queues {
     let changed = false
     for (const item of q.items.filter((i) => i.status === 'running')) {
       const m = this.views.find((v) => v.id === item.missionId)
-      const flag = !m ? 'mission removed' : m.mergedToMain ? null : this.redFlag(m, q.acks[item.id])
+      // Gone: removed by the owner, or cleared out after Merge to main (which can land before the
+      // queue ever sees the mission as merged). Either way there is nothing left to wait for.
+      if (!m) {
+        if (item.missionId && this.unseen.has(item.missionId)) continue
+        item.status = 'done'
+        item.reason = null
+        changed = true
+        continue
+      }
+      const flag = m.mergedToMain ? null : this.redFlag(m, q.acks[item.id])
       if (flag) {
         item.status = 'paused'
         item.reason = flag
         flagged ??= flag
         changed = true
-      } else if (m && this.finished(m, q.acks[item.id])) {
+      } else if (this.finished(m, q.acks[item.id])) {
         item.status = 'done'
         item.reason = this.concerns(m)
         changed = true
@@ -294,22 +314,10 @@ export class Queues {
     if (q.items.filter((i) => i.status === 'running').length >= max) return
     const next = q.items.find((i) => i.status === 'queued')
     if (!next) return
-    void this.startItem(q, next, max === 1)
+    void this.startItem(q, next)
   }
 
-  /** Base and main branch for the next item: on top of the last finished item's mission. */
-  private stackOn(q: QueueState): { baseBranch?: string; mainBranch?: string } {
-    const prev = q.items
-      .filter((i) => i.status === 'done' && i.missionId)
-      .map((i) => this.views.find((v) => v.id === i.missionId))
-      .filter((m): m is MissionView => !!m)
-      .sort((a, b) => b.createdAt - a.createdAt)[0]
-    if (!prev) return {}
-    const baseBranch = prev.mergedToMain ? prev.mainBranch : prev.integrationCommit ? integrationBranch(prev.name) : prev.baseBranch
-    return { baseBranch, mainBranch: prev.mainBranch }
-  }
-
-  private async startItem(q: QueueState, item: QueueItem, stack: boolean): Promise<void> {
+  private async startItem(q: QueueState, item: QueueItem): Promise<void> {
     this.starting.add(q.root)
     let started = false
     try {
@@ -326,9 +334,9 @@ export class Queues {
             permissionMode: q.permissionMode,
             gating: 'none',
             brief,
-            ...(stack ? this.stackOn(q) : {}),
             queueItemId: item.id
           })
+          this.unseen.add(id)
           item.status = 'running'
           item.missionId = id
           item.missionName = name

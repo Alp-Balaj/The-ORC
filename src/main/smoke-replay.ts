@@ -234,10 +234,24 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   check('the Verifier verdict shows', /PASS/.test(await waitText('[data-testid=verifier-status]', /PASS/)))
   await shot('replay-merge-screen')
   await js(`document.querySelector('[data-testid=confirm-merge]')?.click()`)
+  check('Integrate puts the mission on the ORC branch', /On the ORC branch|Integrated into/.test(await waitText('[data-testid=merge-result]', /ORC branch|orc-integration/)) && !!view(m3).integrated)
+  // Merge to main: the whole ORC branch, from the header.
+  await js(`document.querySelector('[data-testid=open-main-merge]')?.click()`)
+  let orcFiles = ''
+  for (const end = Date.now() + 5000; Date.now() < end && !orcFiles.includes('doc.txt'); await sleep(250)) {
+    orcFiles = await js<string>(`[...document.querySelectorAll('[data-testid=diff-file]')].map(e => e.textContent).join()`)
+  }
+  check('the Merge to main screen shows the ORC branch diff', orcFiles.includes('doc.txt'), orcFiles)
+  await shot('replay-main-merge-screen')
   // A successful merge clears the mission out, so its merge screen (and result text) goes with it.
+  // Click again until something happens: a click landing mid re-render can be lost.
   const m3Gone = (): boolean => !missions.views().some((v) => v.id === m3)
+  for (const end = Date.now() + 15_000; Date.now() < end && !m3Gone(); await sleep(1000)) {
+    if (await js<boolean>(`!!document.querySelector('[data-testid=main-merge-result]')`)) break
+    await js(`document.querySelector('[data-testid=confirm-main-merge]:not([disabled])')?.click()`)
+  }
   for (const end = Date.now() + 10_000; Date.now() < end && !m3Gone(); await sleep(250));
-  check('Merge to main fast-forwards space-b main', existsSync(join(spaceB, 'doc.txt')))
+  check('Merge to main brings the ORC branch into space-b main', existsSync(join(spaceB, 'doc.txt')))
   check('…and the merged mission is cleared out', m3Gone())
   await openMission(m2)
   await sleep(600)

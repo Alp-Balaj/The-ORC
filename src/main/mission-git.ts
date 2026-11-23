@@ -255,7 +255,11 @@ export interface CombinedDiff {
 
 /** Everything the mission would bring to `base`: base...integration. */
 export async function combinedDiff(repo: string, mission: string, base: string): Promise<CombinedDiff> {
-  const head = integrationBranch(mission)
+  return rangeDiff(repo, base, integrationBranch(mission))
+}
+
+/** base...head: what head would bring to base. */
+async function rangeDiff(repo: string, base: string, head: string): Promise<CombinedDiff> {
   const numstat = (await git(repo, ['diff', '--numstat', `${base}...${head}`])).stdout
   const files = numstat.split('\n').filter(Boolean).map((l) => {
     const [a, r, ...p] = l.split('\t')
@@ -266,20 +270,92 @@ export async function combinedDiff(repo: string, mission: string, base: string):
   return { base, head, files, patch: patch.length > 400_000 ? `${patch.slice(0, 400_000)}\n… (truncated)` : patch, commits }
 }
 
-export type MainMergeResult = { ok: true; commit: string } | { ok: false; reason: string }
+export type MainMergeResult = { ok: true; commit: string } | { ok: false; reason: string; files?: string[] }
 
-/** Fast-forwards the owner's checkout of `base` to the integration branch. Refuses rather
- *  than guesses: the checkout must be on `base`, clean, and `base` must not have moved. */
-export async function mergeToMain(repo: string, mission: string, base: string): Promise<MainMergeResult> {
+// The ORC branch ---------------------------------------------------------------
+// One per repository. Every mission starts from it and is integrated back into it; Merge to
+// main brings everything on it into the owner's main. Missions can then run in parallel: each
+// integration is a real merge into the ORC branch, never a fast-forward of main.
+
+/** Not "orc": worker branches live under orc/…, and git can't have both orc and orc/x. */
+export const OrcBranch = 'orc-integration'
+/** Mission names are [a-z0-9-], so "_orc" can never collide with one. */
+export const orcPath = (repo: string): string => join(repo, '.orc', 'worktrees', '_orc')
+
+const isAncestor = async (cwd: string, a: string, b: string): Promise<boolean> =>
+  (await git(cwd, ['merge-base', '--is-ancestor', a, b], { allowFail: true })).code === 0
+
+/** Call only inside serialized(). Creates the ORC branch from `main` and its worktree the first
+ *  time; afterwards fast-forwards it when the owner committed to `main` and it has nothing new. */
+async function ensureOrcLocked(repo: string, main: string): Promise<string> {
+  const path = orcPath(repo)
+  const exists = (await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${OrcBranch}`], { allowFail: true })).code === 0
+  if (!existsSync(path)) {
+    await ensureOrcExcluded(repo)
+    await git(repo, ['worktree', 'prune'], { allowFail: true })
+    if (exists) await git(repo, ['worktree', 'add', '-q', path, OrcBranch])
+    else await git(repo, ['worktree', 'add', '-q', '-b', OrcBranch, path, main])
+    await shareCodegraph(repo, path)
+  }
+  // A merge left half-done (a crash) would make every later merge fail.
+  if ((await git(path, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFail: true })).code === 0) await git(path, ['merge', '--abort'], { allowFail: true })
+  if (await isAncestor(path, 'HEAD', main)) await git(path, ['merge', '--ff-only', '-q', main], { allowFail: true })
+  return path
+}
+
+/** The ORC branch, up to date with `main` when that needs no merge. */
+export async function ensureOrcBranch(repo: string, main: string): Promise<string> {
+  return serialized(repo, () => ensureOrcLocked(repo, main))
+}
+
+export type IntegrateResult =
+  | { kind: 'merged'; commit: string }
+  | { kind: 'up-to-date' }
+  | { kind: 'conflict'; files: string[] }
+
+/** Merges a mission's integration branch into the ORC branch. A conflict is aborted cleanly and
+ *  reported with its files; the ORC worktree is never left mid-merge. */
+export async function integrateIntoOrc(repo: string, mission: string, main: string): Promise<IntegrateResult> {
   return serialized(repo, async () => {
-    const head = integrationBranch(mission)
+    const wt = await ensureOrcLocked(repo, main)
+    const branch = integrationBranch(mission)
+    if (await isAncestor(wt, branch, 'HEAD')) return { kind: 'up-to-date' as const }
+    const r = await git(wt, [...(await identityArgs(wt)), 'merge', '--no-ff', '--no-verify', '-m', `Integrate ${mission} into the ORC branch`, branch], { allowFail: true })
+    if (r.code === 0) return { kind: 'merged' as const, commit: (await git(wt, ['rev-parse', 'HEAD'])).stdout }
+    const files = (await git(wt, ['diff', '--name-only', '--diff-filter=U'], { allowFail: true })).stdout.split('\n').filter(Boolean)
+    await git(wt, ['merge', '--abort'], { allowFail: true })
+    if (files.length === 0) throw new GitError(`merge of ${branch} into ${OrcBranch} failed: ${r.stderr}`, r.stderr, r.code)
+    return { kind: 'conflict' as const, files }
+  })
+}
+
+/** Everything the ORC branch would bring to `main`. */
+export async function orcDiff(repo: string, main: string): Promise<CombinedDiff> {
+  const exists = (await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${OrcBranch}`], { allowFail: true })).code === 0
+  if (!exists) return { base: main, head: OrcBranch, files: [], patch: '', commits: 0 }
+  return rangeDiff(repo, main, OrcBranch)
+}
+
+/** Brings the ORC branch into the owner's checkout of `main`. The checkout must be on `main`
+ *  and clean. If the owner committed to `main` since, `main` is first merged into the ORC branch
+ *  (in its own worktree); a conflict there is aborted and reported, and nothing changes. */
+export async function mergeOrcToMain(repo: string, main: string): Promise<MainMergeResult> {
+  return serialized(repo, async () => {
     const current = (await git(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout
-    if (current !== base) return { ok: false as const, reason: `Your checkout is on "${current}", not "${base}". Switch to ${base} first.` }
+    if (current !== main) return { ok: false as const, reason: `Your checkout is on "${current}", not "${main}". Switch to ${main} first.` }
     const dirty = (await git(repo, ['status', '--porcelain', '--untracked-files=no'])).stdout
-    if (dirty) return { ok: false as const, reason: `Your checkout of ${base} has uncommitted changes:\n${dirty}` }
-    const ff = await git(repo, ['merge-base', '--is-ancestor', base, head], { allowFail: true })
-    if (ff.code !== 0) return { ok: false as const, reason: `${base} has moved since the mission started; the integration branch no longer fast-forwards. Merge ${base} into ${head} first.` }
-    const r = await git(repo, ['merge', '--ff-only', '-q', head], { allowFail: true })
+    if (dirty) return { ok: false as const, reason: `Your checkout of ${main} has uncommitted changes:\n${dirty}` }
+    const wt = await ensureOrcLocked(repo, main)
+    if (await isAncestor(repo, OrcBranch, main)) return { ok: false as const, reason: `Nothing on ${OrcBranch} that isn't on ${main} already.` }
+    if (!(await isAncestor(repo, main, OrcBranch))) {
+      const r = await git(wt, [...(await identityArgs(wt)), 'merge', '--no-ff', '--no-verify', '-m', `Catch the ORC branch up with ${main}`, main], { allowFail: true })
+      if (r.code !== 0) {
+        const files = (await git(wt, ['diff', '--name-only', '--diff-filter=U'], { allowFail: true })).stdout.split('\n').filter(Boolean)
+        await git(wt, ['merge', '--abort'], { allowFail: true })
+        return { ok: false as const, files, reason: files.length ? `${main} has commits that conflict with the ORC branch in ${files.join(', ')}. Nothing was merged.` : `git refused to merge ${main} into ${OrcBranch}: ${r.stderr || 'unknown error'}` }
+      }
+    }
+    const r = await git(repo, ['merge', '--ff-only', '-q', OrcBranch], { allowFail: true })
     if (r.code !== 0) return { ok: false as const, reason: `git refused the merge: ${r.stderr || 'unknown error'}` }
     return { ok: true as const, commit: (await git(repo, ['rev-parse', 'HEAD'])).stdout }
   })

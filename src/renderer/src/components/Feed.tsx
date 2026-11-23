@@ -39,7 +39,7 @@ const verb: Record<FeedEntry['kind'], string> = {
   conflict: 'conflict',
   gate: 'gate',
   verifier: 'verifier',
-  main: 'merge to main',
+  main: 'ORC branch',
   orc: 'the ORC'
 }
 

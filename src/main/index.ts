@@ -316,10 +316,12 @@ ipcMain.handle('missions:run-gate', (_e, id: string) => {
   return m ? missions.runGate(id, spaces.gateCommand(m.repoPath)) : undefined
 })
 ipcMain.handle('missions:run-verifier', (_e, id: string) => missions.runVerifier(id))
-ipcMain.handle('missions:merge-to-main', async (_e, id: string) => {
-  // Its worktree is removed after the merge; on Windows a running app would hold it open.
-  await appRunner.stopFor(id)
-  return missions.mergeToMain(id)
+ipcMain.handle('missions:integrate', (_e, id: string) => missions.integrate(id))
+ipcMain.handle('orc:diff', (_e, repo: string) => missions.orcDiff(repo))
+ipcMain.handle('orc:merge-to-main', async (_e, repo: string) => {
+  // Merged missions' worktrees are removed after the merge; on Windows a running app would hold one open.
+  for (const m of missions.views()) if (m.repoPath === repo && m.integrated && !m.mergedToMain) await appRunner.stopFor(m.id)
+  return missions.mergeToMain(repo)
 })
 ipcMain.handle('spaces:set-gate', (_e, root: string, command: string | null) => {
   spaces.setGateCommand(root, command)

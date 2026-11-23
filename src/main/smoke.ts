@@ -455,8 +455,14 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
           check('the Verifier produced a report', verified && view()?.verifier?.status === 'done', (view()?.verifier?.report ?? '').split('\n')[0])
           await shot('merge-screen')
           await js(`document.querySelector('[data-testid=confirm-merge]')?.click()`)
-          await waitFor('merged to main', () => !!view()?.mergedToMain, 1000, 30_000)
-          check('Merge to main put a.txt and b.txt on main', !!view()?.mergedToMain && ['a.txt', 'b.txt'].every((f) => existsSync(join(mv.repoPath, f))))
+          await waitFor('integrated into the ORC branch', () => !!view()?.integrated, 1000, 30_000)
+          check('Integrate put the mission on the ORC branch', !!view()?.integrated)
+          await js(`document.querySelector('[data-testid=open-main-merge]')?.click()`)
+          await sleep(1200)
+          await js(`document.querySelector('[data-testid=confirm-main-merge]')?.click()`)
+          // A successful Merge to main clears the mission out.
+          await waitFor('merged to main', () => !view() || !!view()?.mergedToMain, 1000, 30_000)
+          check('Merge to main put a.txt and b.txt on main', ['a.txt', 'b.txt'].every((f) => existsSync(join(mv.repoPath, f))))
           await shot('merged-to-main')
         }
       }

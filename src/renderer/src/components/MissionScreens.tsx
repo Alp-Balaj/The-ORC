@@ -121,8 +121,12 @@ function StaleNote({ children }: { children: React.ReactNode }): React.JSX.Eleme
   return <div className="mt-1.5 flex items-center gap-1 text-[11px] text-needs"><AlertTriangle className="size-3" /> {children}</div>
 }
 
-/** Merge to main: the mission's combined diff, the gate, the Verifier, and the button. */
-export function MergeScreen({ mission, space, onBack, onCleared }: { mission: MissionView; space: SpaceView | undefined; onBack: () => void; onCleared?: (n: number) => void }): React.JSX.Element {
+/** The ORC branch's name in git (mission-git.ts OrcBranch). */
+export const OrcBranch = 'orc-integration'
+
+/** Integrate: the mission's combined diff, the gate, the Verifier, and the button that merges it
+ *  into the repo's ORC branch. Merge to main (OrcMergeScreen) later brings the ORC branch to main. */
+export function MergeScreen({ mission, space, onBack }: { mission: MissionView; space: SpaceView | undefined; onBack: () => void }): React.JSX.Element {
   const diff = useDiff(() => window.orc.missionDiff(mission.id), [mission.id, mission.integrationCommit])
   const [gateCmd, setGateCmd] = useState(space?.gateCommand ?? '')
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -140,6 +144,8 @@ export function MergeScreen({ mission, space, onBack, onCleared }: { mission: Mi
   const verifierPass = !!v && /VERDICT:\s*PASS/.test(v.report)
   const verifierState = !v ? 'idle' : v.status === 'running' ? 'running' : verifierPass ? 'pass' : 'warn'
   const unmerged = mission.agents.filter((a) => a.role === 'worker' && a.merge !== 'merged')
+  const integrated = !!mission.integrated && mission.integrated.integrationCommit === mission.integrationCommit
+  const newSince = !!mission.integrated && !integrated
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="merge-screen">
@@ -147,7 +153,7 @@ export function MergeScreen({ mission, space, onBack, onCleared }: { mission: Mi
         <Button size="sm" variant="ghost" onClick={onBack}><ArrowLeft /> Terminal</Button>
         <div className="min-w-0 flex-1 pt-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[15px] font-semibold">Merge {mission.name} into {mission.baseBranch}</span>
+            <span className="text-[15px] font-semibold">Integrate {mission.name} into the ORC branch</span>
             <Badge variant="outline">integration/{mission.name}</Badge>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
@@ -221,27 +227,117 @@ export function MergeScreen({ mission, space, onBack, onCleared }: { mission: Mi
             </ul>
             <Button
               className="mt-3 w-full"
-              disabled={busy || mission.merged.length === 0 || !!mission.mergedToMain}
+              disabled={busy || mission.merged.length === 0 || !!mission.mergedToMain || integrated}
               onClick={async () => {
                 setBusy(true)
-                const r = await window.orc.mergeToMain(mission.id)
-                setResult(r)
+                setResult(await window.orc.integrate(mission.id))
                 setBusy(false)
-                // The mission is cleared out of the list: this screen goes away with it.
-                if (r.ok && r.cleared) onCleared?.(r.cleared)
               }}
               data-testid="confirm-merge"
             >
-              <GitMerge /> Merge to {mission.baseBranch}
+              {busy ? <Loader2 className="animate-spin" /> : <GitMerge />} {integrated ? 'Integrated' : newSince ? 'Integrate new work' : 'Integrate'}
             </Button>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-faint">Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.</p>
+            <p className="mt-2 text-[11.5px] leading-relaxed text-faint">
+              Merges this mission into <span className="font-mono">{OrcBranch}</span>, where every mission's work collects. The mission keeps running. Merge to main in the header then brings the ORC branch into {mission.mainBranch}.
+            </p>
             {unmerged.length > 0 && (
-              <p className="mt-1.5 text-[11.5px] leading-relaxed text-needs" data-testid="unmerged-warning">Not merged, kept as they are: {unmerged.map((a) => a.name).join(', ')}.</p>
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-needs" data-testid="unmerged-warning">Not merged into the mission yet, so not integrated: {unmerged.map((a) => a.name).join(', ')}.</p>
             )}
-            {(result || mission.mergedToMain) && (
-              <p className={cn('mt-1.5 text-[12px]', result && !result.ok ? 'text-destructive' : 'text-working')} data-testid="merge-result">
-                {result?.message ?? `Merged at ${mission.mergedToMain!.commit.slice(0, 8)}.`}
+            {newSince && !result && (
+              <p className="mt-1.5 text-[12px] text-needs" data-testid="integrate-stale">Work merged since the last integration is not on the ORC branch yet.</p>
+            )}
+            {(result || integrated || mission.integrateError) && (
+              <p className={cn('mt-1.5 text-[12px]', (result ? !result.ok : !integrated && !!mission.integrateError) ? 'text-destructive' : 'text-working')} data-testid="merge-result">
+                {result?.message ?? (integrated ? `On the ORC branch at ${mission.integrated!.commit.slice(0, 8)}.` : mission.integrateError!.message)}
               </p>
+            )}
+          </section>
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+/** Merge to main: everything on the repo's ORC branch, and the missions it holds. */
+export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: string; missions: MissionView[]; onBack: () => void; onCleared?: (n: number) => void }): React.JSX.Element {
+  const inRepo = missions.filter((m) => m.repoPath === repo && !m.mergedToMain)
+  const ready = inRepo.filter((m) => m.integrated && m.integrated.integrationCommit === m.integrationCommit)
+  const pending = inRepo.filter((m) => m.merged.length > 0 && !ready.includes(m))
+  const main = ready[0]?.mainBranch ?? inRepo[0]?.mainBranch ?? 'main'
+  const diff = useDiff(() => window.orc.orcDiff(repo), [repo, ready.map((m) => m.integrated!.commit).join()])
+  const [result, setResult] = useState<{ ok: boolean; message: string; files?: string[] } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const nothing = !!diff && diff.files.length === 0 && diff.commits === 0
+
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="orc-merge-screen">
+      <div className="flex items-start gap-2 px-4 pt-3 pb-2.5">
+        <Button size="sm" variant="ghost" onClick={onBack}><ArrowLeft /> Terminal</Button>
+        <div className="min-w-0 flex-1 pt-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[15px] font-semibold">Merge the ORC branch into {main}</span>
+            <Badge variant="outline">{OrcBranch}</Badge>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <DiffStats diff={diff} />
+            <span className="truncate text-[12px] text-muted-foreground">{ready.length} mission{ready.length === 1 ? '' : 's'} integrated</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4">
+        <DiffArea diff={diff} empty={`Nothing on ${OrcBranch} that isn't in ${main}. Integrate a mission first.`} />
+
+        <aside className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto min-[1440px]:w-[310px]">
+          <section className="rounded-lg border border-border bg-card p-3" data-testid="orc-missions">
+            <div className="text-[13px] font-medium">On the ORC branch</div>
+            {ready.length === 0 ? (
+              <p className="mt-2 text-[12px] text-muted-foreground">No mission integrated yet. Open a mission's Integrate screen, or let the queue integrate missions as their Verifier passes.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-[12px]">
+                {ready.map((m) => (
+                  <li key={m.id} className="flex items-center gap-2"><StatusIcon state="pass" /><span className="min-w-0 truncate" title={m.name}>{m.name}</span></li>
+                ))}
+              </ul>
+            )}
+            {pending.length > 0 && (
+              <>
+                <div className="mt-3 text-[12px] text-muted-foreground">Not integrated (stay out of {main}):</div>
+                <ul className="mt-1 space-y-1 text-[12px]">
+                  {pending.map((m) => (
+                    <li key={m.id} className="flex items-center gap-2" title={m.integrateError?.message}>
+                      <StatusIcon state={m.integrateError ? 'fail' : m.integrated ? 'warn' : 'idle'} />
+                      <span className="min-w-0 truncate">{m.name}</span>
+                      <span className="ml-auto shrink-0 text-faint">{m.integrateError ? 'conflict' : m.integrated ? 'new work' : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+
+          <section className="rounded-lg border border-ring/40 bg-card p-3">
+            <div className="flex items-center gap-2 text-[13px] font-medium"><GitMerge className="size-4 text-faint" /> Merge to {main}</div>
+            <Button
+              className="mt-3 w-full"
+              disabled={busy || nothing}
+              onClick={async () => {
+                setBusy(true)
+                const r = await window.orc.mergeToMain(repo)
+                setResult(r)
+                setBusy(false)
+                // The merged missions are cleared out of the list.
+                if (r.ok) onCleared?.(r.cleared ?? 0)
+              }}
+              data-testid="confirm-main-merge"
+            >
+              {busy ? <Loader2 className="animate-spin" /> : <GitMerge />} Merge to {main}
+            </Button>
+            <p className="mt-2 text-[11.5px] leading-relaxed text-faint">
+              Brings {OrcBranch} into your checkout of {main}. If {main} has new commits, they are merged into the ORC branch first. Ends the integrated missions and removes their worktrees.
+            </p>
+            {result && (
+              <p className={cn('mt-1.5 text-[12px]', result.ok ? 'text-working' : 'text-destructive')} data-testid="main-merge-result">{result.message}</p>
             )}
           </section>
         </aside>

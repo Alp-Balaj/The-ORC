@@ -31,7 +31,12 @@ const api = {
   missionDiff: (id: string): Promise<DiffView | null> => ipcRenderer.invoke('missions:diff', id),
   runGate: (id: string): Promise<void> => ipcRenderer.invoke('missions:run-gate', id),
   runVerifier: (id: string): Promise<void> => ipcRenderer.invoke('missions:run-verifier', id),
-  mergeToMain: (id: string): Promise<{ ok: boolean; message: string; cleared?: number }> => ipcRenderer.invoke('missions:merge-to-main', id),
+  /** Integrates a mission into its repo's ORC branch. */
+  integrate: (id: string): Promise<{ ok: boolean; message: string; files?: string[] }> => ipcRenderer.invoke('missions:integrate', id),
+  /** What Merge to main would bring: main...ORC branch. */
+  orcDiff: (repo: string): Promise<DiffView | null> => ipcRenderer.invoke('orc:diff', repo),
+  /** Merges the repo's ORC branch into main and clears out the missions now in main. */
+  mergeToMain: (repo: string): Promise<{ ok: boolean; message: string; cleared?: number; files?: string[] }> => ipcRenderer.invoke('orc:merge-to-main', repo),
   setGateCommand: (root: string, command: string | null): Promise<void> => ipcRenderer.invoke('spaces:set-gate', root, command),
   pickRepo: (): Promise<string | null> => ipcRenderer.invoke('dialog:pick-repo'),
   listSpaces: (): Promise<SpaceView[]> => ipcRenderer.invoke('spaces:list'),

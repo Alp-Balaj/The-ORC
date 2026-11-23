@@ -4,7 +4,7 @@ import { ModelRoles, shownAgents, type AppRunView, type MissionView, type SpaceV
 import { roleLabel } from './components/ModelFields'
 import { CommandPalette } from './components/CommandPalette'
 import { Feed } from './components/Feed'
-import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
+import { MergeScreen, OrcMergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
@@ -96,7 +96,7 @@ export function App(): React.JSX.Element {
   const [missionId, setMissionId] = useState<string | null>(null)
   const [terminalId, setTerminalId] = useState<string | null>(null)
   const [showMessages, setShowMessages] = useState(true)
-  const [view, setView] = useState<'terminal' | 'merge' | 'app' | { review: string }>('terminal')
+  const [view, setView] = useState<'terminal' | 'merge' | 'main-merge' | 'app' | { review: string }>('terminal')
   // The app being built, running from one mission's integration branch (one at a time).
   const [appRun, setAppRun] = useState<AppRunView | null>(null)
   const [appBusy, setAppBusy] = useState(false)
@@ -220,6 +220,9 @@ export function App(): React.JSX.Element {
       ? `Stops ${appRun.missionName}'s app, then runs "${space.runCommand}" from this mission's integration branch`
       : `Runs "${space.runCommand}" from this mission's integration branch`
   const canMerge = !!mission && (mission.merged.length > 0 || !!mission.mergedToMain)
+  const isOnOrc = (m: MissionView): boolean => !m.mergedToMain && !!m.integrated && m.integrated.integrationCommit === m.integrationCommit
+  // Missions in this repo whose work is on the ORC branch, waiting for Merge to main.
+  const onOrc = mission ? missions.filter((m) => m.repoPath === mission.repoPath && isOnOrc(m)).length : 0
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
   const currentRoot = mission?.repoPath ?? roots[0] ?? null
 
@@ -282,7 +285,7 @@ export function App(): React.JSX.Element {
         openDialog(id)
         return
       case 'mergeScreen':
-        if (canMerge) setView('merge')
+        if (mission) setView('main-merge')
         return
       case 'toggleSidebar':
         setSidebarOpen((v) => !v)
@@ -547,13 +550,25 @@ export function App(): React.JSX.Element {
               </div>
               <Button
                 size="sm"
+                variant="outline"
                 className="ml-1 text-[12px]"
                 disabled={!canMerge}
                 onClick={() => setView('merge')}
                 data-testid="open-merge"
-                title={mission.merged.length ? withHint('Review the combined diff, gate and Verifier, then merge', 'mergeScreen') : 'Nothing merged into the integration branch yet'}
+                aria-label="Integrate into the ORC branch"
+                title={mission.merged.length ? 'Review the combined diff, gate and Verifier, then integrate this mission into the ORC branch' : 'Nothing merged into the integration branch yet'}
               >
-                <GitMerge /> Merge to main
+                <GitMerge /> <span className="max-[1599px]:hidden">{mission.integrated ? (isOnOrc(mission) ? 'Integrated' : 'Integrate new work') : 'Integrate'}</span>
+              </Button>
+              <Button
+                size="sm"
+                className="text-[12px]"
+                disabled={onOrc === 0}
+                onClick={() => setView('main-merge')}
+                data-testid="open-main-merge"
+                title={onOrc ? withHint(`Merge the ORC branch (${onOrc} integrated mission${onOrc === 1 ? '' : 's'}) into ${mission.mainBranch}`, 'mergeScreen') : 'No mission integrated into the ORC branch yet'}
+              >
+                <GitMerge /> Merge to main{onOrc > 0 && <span className="rounded bg-primary-foreground/20 px-1 font-mono text-[11px]" data-testid="orc-count">{onOrc}</span>}
               </Button>
             </div>
           </>
@@ -587,7 +602,19 @@ export function App(): React.JSX.Element {
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
         {mission && <SplitPanel mission={mission} />}
         {mission && view === 'merge' ? (
-          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} onCleared={(n) => { setView('terminal'); setMissionId(null); setTerminalId(null); setMergeNotice(`Merged into main; cleared ${n} mission${n === 1 ? '' : 's'}`) }} />
+          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
+        ) : mission && view === 'main-merge' ? (
+          <OrcMergeScreen
+            repo={mission.repoPath}
+            missions={missions}
+            onBack={() => setView('terminal')}
+            onCleared={(n) => {
+              setView('terminal')
+              // The open mission went to main with the rest: it is cleared out.
+              if (isOnOrc(mission)) { setMissionId(null); setTerminalId(null) }
+              setMergeNotice(`Merged the ORC branch into ${mission.mainBranch}; cleared ${n} mission${n === 1 ? '' : 's'}`)
+            }}
+          />
         ) : view === 'app' && missionApp ? (
           <>
             <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="app-head">

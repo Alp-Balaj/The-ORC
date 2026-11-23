@@ -75,11 +75,16 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   ok('combined diff shows both files', d?.files.map((f) => f.path).sort().join() === 'a.txt,b.txt')
   await m.runVerifier(id)
   ok('verifier report recorded with hashes', v().verifier?.status === 'done' && v().verifier!.templateHash.length === 64)
+  ok('the mission started from the ORC branch', v().baseBranch === 'orc-integration' && v().mainBranch === 'main')
+  ok('a hand-started mission is not integrated on its own', v().integrated === null)
+  const integ = await m.integrate(id)
+  ok('integrate puts the mission on the ORC branch', integ.ok && v().integrated?.integrationCommit === v().integrationCommit && v().state === 'running', integ.message)
+  ok('…not on main', !existsSync(join(r, 'a.txt')))
   writeFileSync(join(r, 'shared.txt'), 'dirty\n')
-  const refused = await m.mergeToMain(id)
+  const refused = await m.mergeToMain(r)
   ok('merge to main refuses a dirty checkout, says why', !refused.ok && /uncommitted/.test(refused.message))
   g(r, 'checkout', '-q', '--', 'shared.txt')
-  const merged = await m.mergeToMain(id)
+  const merged = await m.mergeToMain(r)
   ok('merge to main fast-forwards and cleans up', merged.ok && existsSync(join(r, 'a.txt')) && existsSync(join(r, 'b.txt')) && !existsSync(wa.cwd) && g(r, 'branch', '--list', 'orc/*', 'integration/*') === '', merged.message)
   ok('merged mission cleared out after merge', !m.views().some((x) => x.id === id) && /Cleared 1 merged mission/.test(merged.message), merged.message)
   const { readdirSync } = await import('node:fs')
@@ -167,7 +172,8 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   const wd = v().agents.find((x) => x.name === 'done-one')!, wbz = v().agents.find((x) => x.name === 'busy-one')!
   writeFileSync(join(wd.cwd, 'd.txt'), 'd\n'); m.reportDone(wd.terminalId, 'd'); await m.gitWork
   writeFileSync(join(wbz.cwd, 'wip.txt'), 'unsaved work\n')
-  const res = await m.mergeToMain(id)
+  await m.integrate(id)
+  const res = await m.mergeToMain(r)
   ok('merge to main with an unfinished worker succeeds and names it', res.ok && /busy-one/.test(res.message), res.message)
   ok('the unfinished worker keeps its worktree, file and branch', existsSync(join(wbz.cwd, 'wip.txt')) && g(r, 'branch', '--list', wbz.branch!) !== '')
   ok('the merged worker is cleaned up', !existsSync(wd.cwd) && g(r, 'branch', '--list', wd.branch!) === '')
@@ -193,6 +199,30 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   m.reportDone(wa.terminalId, 'a v2'); await m.gitWork
   m.approveWorker(id, 'a'); await m.gitWork
   ok('approve merges it', v().merged.join() === 'a')
+}
+
+// Parallel missions: both integrate, one Merge to main takes both ------------------------
+{
+  const r = repo('parallel')
+  const { m } = world()
+  const run = async (name: string, file: string, queued: boolean): Promise<string> => {
+    const id = await m.startMission({ repoPath: r, name, permissionMode: 'acceptEdits', ...(queued ? { queueItemId: `q-${name}` } : {}) })
+    await m.spawnAgent(`${id}:coordinator`, 'w', 'x')
+    const w = m.views().find((x) => x.id === id)!.agents.find((x) => x.name === 'w')!
+    writeFileSync(join(w.cwd, file), `${name}\n`); m.reportDone(w.terminalId, name); await m.gitWork
+    return id
+  }
+  const a = await run('par-a', 'a.txt', true)
+  const b = await run('par-b', 'b.txt', true)
+  const c = await run('par-c', 'c.txt', false)
+  await m.runVerifier(a); await m.runVerifier(b)
+  const view = (id: string) => m.views().find((x) => x.id === id)
+  ok('queued missions integrate on their own once the Verifier passes', !!view(a)?.integrated && !!view(b)?.integrated, `${!!view(a)?.integrated} ${!!view(b)?.integrated}`)
+  ok('both are on the ORC branch', ['a.txt', 'b.txt'].every((f) => g(r, 'ls-tree', '--name-only', 'orc-integration', f) === f))
+  const res = await m.mergeToMain(r)
+  ok('one Merge to main brings every integrated mission to main', res.ok && existsSync(join(r, 'a.txt')) && existsSync(join(r, 'b.txt')) && /Cleared 2/.test(res.message), res.message)
+  ok('the mission not integrated keeps running and stays out of main', view(c)?.state === 'running' && !existsSync(join(r, 'c.txt')))
+  ok('…and can still be integrated afterwards', (await m.integrate(c)).ok && g(r, 'ls-tree', '--name-only', 'orc-integration', 'c.txt') === 'c.txt')
 }
 
 rmSync(root, { recursive: true, force: true })
