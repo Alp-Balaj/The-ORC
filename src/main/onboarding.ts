@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { access, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { EnrollmentScan } from '../shared/types.ts'
 import { DeniedGitWrites } from './claude-launch.ts'
@@ -103,12 +103,37 @@ export async function scanRepo(root: string, suggestedGate: string | null): Prom
   }
 }
 
+/** A test command that actually exists for a JS project, or null (package.json scripts, then known test configs). */
+async function detectTestCommand(root: string, pm: string | null): Promise<string | null> {
+  if (pm !== 'npm' && pm !== 'pnpm' && pm !== 'yarn' && pm !== 'bun') return null
+  let pkg: { scripts?: Record<string, unknown> } | null = null
+  try {
+    pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+  } catch {
+    return null
+  }
+  const script = pkg?.scripts?.test
+  if (typeof script === 'string' && script.trim() && !/no test specified/i.test(script)) return `${pm} test`
+  const runner = pm === 'npm' ? 'npx' : pm === 'bun' ? 'bunx' : `${pm} exec`
+  const configs: [string, string][] = [
+    ['vitest', 'vitest run'],
+    ['jest', 'jest'],
+    ['playwright', 'playwright test']
+  ]
+  for (const [tool, cmd] of configs) {
+    for (const ext of ['ts', 'js', 'mjs', 'mts', 'cjs']) {
+      if (await exists(join(root, `${tool}.config.${ext}`))) return `${runner} ${cmd}`
+    }
+  }
+  return null
+}
+
 /** Writes a starter CLAUDE.md. Never overwrites: returns false if one already exists. */
 export async function createStarterClaudeMd(root: string): Promise<boolean> {
   const name = basename(root)
   const pm = await detectPackageManager(root)
   const install = pm === 'cargo' ? 'cargo build' : pm === 'go' ? 'go build ./...' : pm ? `${pm} install` : 'TODO: install command'
-  const test = pm === 'cargo' ? 'cargo test' : pm === 'go' ? 'go test ./...' : pm ? `${pm} test` : 'TODO: test command'
+  const test = pm === 'cargo' ? 'cargo test' : pm === 'go' ? 'go test ./...' : (await detectTestCommand(root, pm)) ?? 'TODO: test command'
   const content = [
     `# ${name}`,
     '',
