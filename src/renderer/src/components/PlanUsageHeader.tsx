@@ -24,7 +24,7 @@ function Meter({ label, w, warnAt, now, compact }: { label: string; w: PlanUsage
   const t = tone(p, warnAt)
   return (
     <div className="flex items-center gap-1.5 text-[11px] tabular-nums" data-testid={`plan-usage-${label}`}>
-      <span className="text-faint">{label}</span>
+      <span className="w-5 shrink-0 text-faint">{label}</span>
       <div className={cn('h-1.5 overflow-hidden rounded-full bg-muted', compact ? 'w-8' : 'w-14')} role="meter" aria-valuenow={p} aria-valuemin={0} aria-valuemax={100} aria-label={`${label} plan usage`}>
         <div className={cn('h-full rounded-full transition-[width]', barColor[t])} style={{ width: `${Math.min(100, p)}%` }} />
       </div>
