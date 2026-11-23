@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
+import { ChevronDown, CircleCheck, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
 import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type PlanUsageView, type QueueView, type SpaceView } from '../../../shared/types'
 import { isMac, onShortcut, withHint } from '../lib/shortcuts'
+import { missionReady } from '../lib/ready'
 import { cn, formatTokens } from '../lib/utils'
 import { missionAttention, tierBg, tierGlow, topTier } from '../lib/attention'
 import { AgentCard, StatusDot } from './AgentCard'
@@ -324,6 +325,8 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                       <span className="ml-auto flex shrink-0 items-center gap-1.5">
                         {att.tier === 'error' || att.tier === 'needs' ? (
                           <span className={cn('rounded-full px-1.5 text-[11px] font-semibold leading-[18px] tabular-nums text-background', tierBg[att.tier], tierGlow[att.tier])} title={att.title} data-testid="attention-pill" data-tier={att.tier}>{att.tier === 'error' ? att.errors : att.needs}</span>
+                        ) : missionReady(m) ? (
+                          <CircleCheck className="size-3.5 text-done" aria-label="Ready to integrate" data-testid="mission-ready"><title>Ready to integrate</title></CircleCheck>
                         ) : att.tier === 'ready' || att.tier === 'working' ? (
                           <span title={att.tier === 'ready' ? att.title : 'working'} className="flex items-center"><span className={cn('size-1.5 rounded-full', tierBg[att.tier], att.tier === 'working' && 'animate-orc-pulse')} /></span>
                         ) : null}
