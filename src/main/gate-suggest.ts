@@ -8,7 +8,9 @@ export function suggestGate(root: string): string | null {
   let scripts: unknown
   try {
     scripts = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts?: unknown }).scripts
-  } catch {
+  } catch (err) {
+    // No package.json is normal (not a Node project); anything else is worth a log line.
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') console.error(`gate-suggest: could not read package.json in ${root}; no gate suggested:`, err)
     return null
   }
   if (!scripts || typeof scripts !== 'object' || typeof (scripts as Record<string, unknown>).typecheck !== 'string') return null
