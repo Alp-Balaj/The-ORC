@@ -792,9 +792,10 @@ export class Missions implements ControlHandlers {
   }
 
   /** The branch the human merges to, and the remote it would be pushed to (null: no remote). */
-  async pushTarget(repo: string): Promise<{ branch: string; remote: string | null }> {
+  async pushTarget(repo: string): Promise<{ branch: string; remote: string | null; ahead: number | null }> {
     const branch = this.integratedIn(repo)[0]?.mainBranch ?? (await this.git.currentBranch(repo))
-    return { branch, remote: await missionGit.pushRemote(repo) }
+    const remote = await missionGit.pushRemote(repo)
+    return { branch, remote, ahead: remote ? await missionGit.aheadOfRemote(repo, branch, remote) : null }
   }
 
   /** The human pressed Push to GitHub: pushes the main branch (never forced). */

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowUpDown, ChevronDown, CircleCheck, ChevronRight, Compass, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, CircleCheck, ChevronRight, Compass, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, Upload, X } from 'lucide-react'
 import { shownAgents, type AppRunView, type Gating, type MainSessionView, type MissionView, type PermissionMode, type PlanUsageView, type QueueView, type SpaceView } from '../../../shared/types'
 import { isMac, onShortcut, withHint } from '../lib/shortcuts'
 import { missionReady } from '../lib/ready'
@@ -16,6 +16,43 @@ import { Input, NativeSelect } from './ui/input'
 import { fromDraft, ModelFields, toDraft } from './ModelFields'
 import { AutopilotSwitch } from './AutopilotSwitch'
 import { modeOptions, PlanUsageMeter, QueuePanel } from './QueuePanel'
+
+/** Push the repo's main branch when it has a remote and commits the remote lacks. Human click only; never forced. */
+function SpacePush({ root, refreshKey }: { root: string; refreshKey: string }): React.JSX.Element | null {
+  const [target, setTarget] = useState<{ branch: string; remote: string | null; ahead: number | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    let live = true
+    void window.orc.pushTarget(root).then((t) => { if (live) setTarget(t) }).catch(() => { if (live) setTarget(null) })
+    return () => { live = false }
+  }, [root, refreshKey, tick])
+  useEffect(() => {
+    const on = (): void => setTick((n) => n + 1)
+    window.addEventListener('focus', on)
+    return () => window.removeEventListener('focus', on)
+  }, [])
+  if (!target?.remote || !target.ahead) return null
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      className={cn('h-6 w-auto shrink-0 gap-1 px-1.5 text-[10.5px] tabular-nums', result && !result.ok ? 'text-destructive hover:text-destructive' : 'text-primary hover:text-primary')}
+      disabled={busy}
+      title={`Push ${target.branch} to ${target.remote} (${target.ahead} unpushed commit${target.ahead === 1 ? '' : 's'}). Never forced.${result && !result.ok ? `\nLast try: ${result.message}` : ''}`}
+      data-testid="space-push"
+      onClick={async () => {
+        setBusy(true)
+        setResult(await window.orc.pushToRemote(root))
+        setBusy(false)
+        setTick((n) => n + 1)
+      }}
+    >
+      <Upload className="size-3.5" />{busy ? '…' : target.ahead}
+    </Button>
+  )
+}
 
 function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
   space: string
@@ -250,6 +287,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   {ms.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-faint">{ms.length}</span>}
                   {!open && spaceTier && spaceTier !== 'done' && <span className={cn('size-1.5 shrink-0 rounded-full', tierBg[spaceTier], tierGlow[spaceTier])} title="Something in this space needs a look" data-testid="space-marker" />}
                 </button>
+                <SpacePush root={root} refreshKey={ms.map((m) => m.mergedToMain?.commit ?? '').join()} />
                 {space && space.enrolledAt !== null && <AutopilotSwitch root={root} />}
                 {space && (
                   <span className={cn('shrink-0 px-0.5 text-[10.5px] tabular-nums text-faint', live >= space.maxLive && 'font-medium text-needs')} title="Live agents in this space / most allowed" data-testid="live-count">
