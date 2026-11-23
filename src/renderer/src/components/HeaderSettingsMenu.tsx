@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Keyboard, SlidersHorizontal, UserRound } from 'lucide-react'
+import { Keyboard, Settings2, SlidersHorizontal, UserRound } from 'lucide-react'
 import { ModelRoles, type MissionView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { withHint } from '../lib/shortcuts'
 import { roleLabel } from './ModelFields'
 import { AccentPicker } from './AccentPicker'
+import { openSpaceSettings } from './SpaceSettingsModal'
 import { PlanUsageHeader } from './PlanUsageHeader'
 import { ThemeToggle } from './ThemeToggle'
 import { Button } from './ui/button'
@@ -105,6 +106,11 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
             <Button variant="ghost" size="sm" className="w-full justify-start text-[12px] text-muted-foreground" data-testid="open-accounts" onClick={() => { setOpen(false); onAccounts() }}>
               <UserRound /> Accounts
             </Button>
+            {mission && (
+              <Button variant="ghost" size="sm" className="w-full justify-start text-[12px] text-muted-foreground" title="Settings for this mission's space" data-testid="open-space-settings" onClick={() => { setOpen(false); openSpaceSettings(mission.repoPath) }}>
+                <Settings2 /> Space settings
+              </Button>
+            )}
           </div>
         </div>
       )}
