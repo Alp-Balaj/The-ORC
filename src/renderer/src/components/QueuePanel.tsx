@@ -4,7 +4,6 @@ import { ChevronDown, ChevronRight, Circle, CircleCheck, CirclePause, GripVertic
 import type { PermissionMode, PlanUsageView, QueueItem, QueueView } from '../../../shared/types'
 import { cn } from '../lib/utils'
 import { Button } from './ui/button'
-import { AutopilotSwitch } from './AutopilotSwitch'
 import { Input, NativeSelect } from './ui/input'
 
 export const modeOptions: { value: PermissionMode; label: string; short: string }[] = [
@@ -70,7 +69,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
   const dragFrom = items.findIndex((i) => i.id === drag)
 
   return (
-    <div className="ml-2.5 mt-0.5 border-l border-border pl-1.5" data-testid="queue" data-running={running}>
+    <div className="ml-2.5 mt-0.5 border-l border-border/50 pl-1.5" data-testid="queue" data-running={running}>
       <div className="group/q flex h-7 items-center gap-1 rounded-md px-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent">
         <button className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left hover:text-foreground" onClick={() => setOpen(!open)} aria-expanded={open} data-testid="queue-toggle">
           {open ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
@@ -78,12 +77,11 @@ export function QueuePanel({ root, queue, onSelectMission }: {
           <span className="font-medium">Queue</span>
           {pending > 0 && <span className="text-[11px] tabular-nums text-faint">{pending}</span>}
           {running ? (
-            <span className="text-[10.5px] text-working">running</span>
+            <span className="size-1.5 rounded-full bg-working animate-orc-pulse" title="Queue running" />
           ) : queue?.pausedReason ? (
-            <span className="text-[10.5px] text-needs">paused</span>
+            <span className="size-1.5 rounded-full bg-needs" title="Queue paused" />
           ) : null}
         </button>
-        <AutopilotSwitch root={root} showLabel />
         {pending > 0 && (running ? (
           <Button size="xs" variant="ghost" className="h-5 px-1.5" title="Pause the queue. The running mission keeps going; the next task waits." data-testid="queue-pause" onClick={() => run(window.orc.queuePause(root))}>
             <Pause /> Pause
@@ -168,7 +166,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
                         </button>
                       )}
                     </div>
-                    {(it.status === 'running' || it.status === 'done') && it.missionName && (
+                    {(it.status === 'running' || it.status === 'done') && it.missionName && it.missionName.toLowerCase().replace(/[^a-z0-9]+/g, '') !== it.title.toLowerCase().replace(/[^a-z0-9]+/g, '') && (
                       <div className="truncate pl-4.5 text-[10.5px] text-faint">{it.missionName}</div>
                     )}
                     {it.reason && <div className="pl-4.5 text-[10.5px] leading-snug text-needs">{it.reason}</div>}
