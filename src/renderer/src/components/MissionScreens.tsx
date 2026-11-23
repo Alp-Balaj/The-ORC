@@ -13,6 +13,11 @@ export function SplitPanel({ mission }: { mission: MissionView }): React.JSX.Ele
   const [note, setNote] = useState('')
   const s = mission.split
   if (!s || s.status !== 'pending') return null
+  const decide = (approve: boolean): void => {
+    const trimmed = note.trim()
+    if (note && !trimmed) console.debug('[split] approval note was blank after trimming; sending null instead of whitespace')
+    void window.orc.decideSplit(mission.id, approve, trimmed || null)
+  }
   return (
     <div className="border-b border-needs/30 bg-needs/5 px-4 py-3" data-testid="split-panel">
       <div className="flex items-center gap-2 text-[13px] font-semibold">
@@ -31,8 +36,8 @@ export function SplitPanel({ mission }: { mission: MissionView }): React.JSX.Ele
       </ul>
       <div className="mt-3 flex items-center gap-1.5 pl-6">
         <Input placeholder="Note for the coordinator (optional)" value={note} onChange={(e) => setNote(e.target.value)} className="max-w-md flex-1" data-testid="split-note" />
-        <Button size="sm" variant="ghost-destructive" onClick={() => void window.orc.decideSplit(mission.id, false, note || null)} data-testid="reject-split"><X /> Reject</Button>
-        <Button size="sm" onClick={() => void window.orc.decideSplit(mission.id, true, note || null)} data-testid="approve-split"><Check /> Approve</Button>
+        <Button size="sm" variant="ghost-destructive" onClick={() => decide(false)} data-testid="reject-split"><X /> Reject</Button>
+        <Button size="sm" onClick={() => decide(true)} data-testid="approve-split"><Check /> Approve</Button>
       </div>
     </div>
   )
