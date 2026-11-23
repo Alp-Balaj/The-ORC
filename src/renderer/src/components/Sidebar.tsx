@@ -109,7 +109,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
       </div>
       <div className="space-y-1">
         <label className="block text-[11px] leading-snug text-muted-foreground">Gate command (runs on each merged result)</label>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
           <Input value={gate} onChange={(e) => setGate(e.target.value)} placeholder={suggested ?? 'e.g. pnpm test'} data-testid="gate-command" />
           {suggested && !gate && (
             <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 px-2 font-mono text-[11px]" onClick={() => setGate(suggested)} title="Fills the field; Save to keep it">
@@ -325,6 +325,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                         <MonitorPlay className="size-3 shrink-0 text-working" aria-label="Its app is running" data-testid="app-running-marker" />
                       )}
                       <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                        <span className="flex min-w-3.5 shrink-0 items-center justify-center">
                         {att.tier === 'error' || att.tier === 'needs' ? (
                           <span className={cn('rounded-full px-1.5 text-[11px] font-semibold leading-[18px] tabular-nums text-background', tierBg[att.tier], tierGlow[att.tier])} title={att.title} data-testid="attention-pill" data-tier={att.tier}>{att.tier === 'error' ? att.errors : att.needs}</span>
                         ) : missionReady(m) ? (
@@ -332,11 +333,12 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                         ) : att.tier === 'ready' || att.tier === 'working' ? (
                           <span title={att.tier === 'ready' ? att.title : 'working'} className="flex items-center"><span className={cn('size-1.5 rounded-full', tierBg[att.tier], att.tier === 'working' && 'animate-orc-pulse')} /></span>
                         ) : null}
+                        </span>
                         {m.tokens > 0 && <span className="text-[10.5px] font-normal tabular-nums text-faint">{formatTokens(m.tokens)}</span>}
                       </span>
                     </button>
                     {!expanded && att.question && (att.tier === 'needs') && (
-                      <div className="truncate pb-0.5 pl-6 pr-2 text-[11px] font-normal text-needs/90" title={att.question} data-testid="mission-question">{att.question}</div>
+                      <div className="truncate pb-0.5 pl-6 pr-1.5 text-[11px] font-normal text-needs/90" title={att.question} data-testid="mission-question">{att.question}</div>
                     )}
                     {expanded && (
                       <div className="mt-1 space-y-1 pb-2">
