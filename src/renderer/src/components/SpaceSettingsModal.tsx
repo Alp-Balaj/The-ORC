@@ -21,7 +21,7 @@ function wholeError(value: string, min: number, max: number): string | null {
 function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <section className="space-y-3">
-      <h3 className="text-[10.5px] font-medium uppercase tracking-wider text-faint">{title}</h3>
+      <h3 className="section-title">{title}</h3>
       {children}
     </section>
   )

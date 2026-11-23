@@ -121,7 +121,7 @@ export function CommandPalette({ open, onClose, missions, currentMissionId, onSe
             items.map((it, i) => (
               <div key={it.key}>
                 {(i === 0 || items[i - 1].kind !== it.kind) && (
-                  <div className="px-2 pt-2 pb-1 text-[10.5px] font-semibold tracking-wider text-faint uppercase">{SECTION[it.kind]}</div>
+                  <div className="px-2 pt-2 pb-1 section-title">{SECTION[it.kind]}</div>
                 )}
                 <div
                   role="option"
