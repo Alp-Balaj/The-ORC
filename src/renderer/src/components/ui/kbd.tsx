@@ -8,7 +8,7 @@ export function Kbd({ keys, className }: { keys: string; className?: string }): 
       {formatKeys(keys).map((k, i) => (
         <kbd
           key={i}
-          className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-border-strong bg-secondary px-1 font-mono text-[10.5px] leading-none text-secondary-foreground"
+          className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded border border-border-strong bg-secondary px-1 font-mono text-[10.5px] leading-none text-secondary-foreground"
         >
           {k}
         </kbd>

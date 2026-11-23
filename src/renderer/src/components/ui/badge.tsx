@@ -1,7 +1,7 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '../../lib/utils'
 
-const badgeVariants = cva('inline-flex items-center gap-1 rounded-[5px] px-1.5 py-px text-[11px] font-medium leading-4', {
+const badgeVariants = cva('inline-flex h-4.5 items-center gap-1 rounded-[5px] px-1.5 text-[11px] font-medium leading-4', {
   variants: {
     variant: {
       default: 'bg-secondary text-secondary-foreground',

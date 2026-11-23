@@ -56,7 +56,7 @@ function useSideWidth(): { width: number; handle: React.JSX.Element } {
   }, [])
   const handle = (
     <div
-      className={cn('absolute inset-y-0 -left-[3px] z-20 w-[6px] cursor-col-resize transition-colors hover:bg-primary/40', active && 'bg-primary/60')}
+      className={cn('absolute inset-y-0 -left-0.75 z-20 w-1.5 cursor-col-resize transition-colors hover:bg-primary/40', active && 'bg-primary/60')}
       data-testid="side-resize"
       role="separator"
       aria-orientation="vertical"
@@ -371,20 +371,20 @@ export function App(): React.JSX.Element {
   return (
     <div className={cn('relative grid h-full', showBand && mission ? 'grid-rows-[44px_auto_minmax(0,1fr)]' : 'grid-rows-[44px_minmax(0,1fr)]')} style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr) ${side.width}px` }}>
       {mergeNotice && (
-        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg', 'bottom-3')} data-testid="merge-notice" role="status">
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg', 'bottom-3')} data-testid="merge-notice" role="status">
           <span className="min-w-0 break-words">{mergeNotice}</span>
-          <Button size="icon-sm" variant="ghost" className="ml-1 shrink-0" onClick={() => setMergeNotice(null)} aria-label="Dismiss">
+          <Button size="icon-sm" variant="ghost" className="shrink-0" onClick={() => setMergeNotice(null)} aria-label="Dismiss">
             <X />
           </Button>
         </div>
       )}
       {resumed.length > 0 && (
-        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', 'bottom-3', 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="resumed-banner" role="status">
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', 'bottom-3', 'gap-2 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg')} data-testid="resumed-banner" role="status">
           <RotateCcw className="size-3.5 shrink-0 text-primary" />
           <span className="min-w-0">
             Resumed {resumed.length} mission{resumed.length === 1 ? '' : 's'} after restart: <span className="font-medium">{resumed.map((m) => m.name).join(', ')}</span>
           </span>
-          <Button size="xs" variant="outline" className="ml-1 shrink-0" data-testid="stop-resumed" title="Stop every mission listed here. Worktrees are kept, and Restart brings each one back." onClick={() => void window.orc.stopResumed().then(() => setResumed([]))}>
+          <Button size="xs" variant="outline" className="shrink-0" data-testid="stop-resumed" title="Stop every mission listed here. Worktrees are kept, and Restart brings each one back." onClick={() => void window.orc.stopResumed().then(() => setResumed([]))}>
             <Square /> Stop all
           </Button>
           <Button size="icon-sm" variant="ghost" className="shrink-0" onClick={() => void window.orc.dismissResumed().then(() => setResumed([]))} aria-label="Dismiss" data-testid="dismiss-resumed">
@@ -393,7 +393,7 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {appRestore && (
-        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', ['bottom-3', 'bottom-16'][resumed.length > 0 ? 1 : 0], 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="app-restore-banner" role="status">
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', ['bottom-3', 'bottom-16'][resumed.length > 0 ? 1 : 0], 'gap-2 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg')} data-testid="app-restore-banner" role="status">
           <MonitorPlay className="size-3.5 shrink-0 text-primary" />
           <span className="min-w-0">
             <span className="font-medium">{appRestore.missionName}</span>'s app was running before the restart
@@ -402,7 +402,7 @@ export function App(): React.JSX.Element {
           <Button
             size="xs"
             variant="outline"
-            className="ml-1 shrink-0"
+            className="shrink-0"
             data-testid="start-app-restore"
             disabled={appRestoreBusy}
             onClick={() => {
@@ -424,7 +424,7 @@ export function App(): React.JSX.Element {
       )}
       {/* Header */}
       <header className={cn('accent-hairline flex min-w-0 items-center gap-3 border-b bg-background px-3', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="header">
-        <div className="flex w-[276px] shrink-0 items-center gap-2">
+        <div className="flex w-69 shrink-0 items-center gap-2">
           <div className="grid h-6 w-9 place-items-center rounded-md bg-primary/15 text-[10.5px] font-black tracking-tight text-primary">ORC</div>
           <span className="font-semibold tracking-tight">The ORC</span>
           <Button size="icon-sm" variant="ghost" className="ml-auto text-muted-foreground" title={withHint('Toggle sidebar', 'toggleSidebar')} aria-label="Toggle sidebar" aria-pressed={sidebarOpen} data-testid="toggle-sidebar" onClick={() => setSidebarOpen((v) => !v)}>
@@ -468,11 +468,11 @@ export function App(): React.JSX.Element {
                 aria-label={`Jump to the first agent that needs you: ${needsLabel}`}
                 className={cn('shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring', ring > 0 && 'animate-orc-ring')}
               >
-                <Badge variant="needs-you" className="hover:bg-needs/25">{needsLabel}</Badge>
+                <Badge variant="needs-you" className="shrink-0 hover:bg-needs/25">{needsLabel}</Badge>
               </button>
             )}
             {(working > 0 || doneCount > 0) && (
-              <span className="shrink-0 text-[12px] font-medium tabular-nums text-muted-foreground" data-testid="progress-summary" title="Agents in this mission">
+              <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground" data-testid="progress-summary" title="Agents in this mission">
                 {[working > 0 && `${working} working`, doneCount > 0 && `${doneCount} done`].filter(Boolean).join(' · ')}
               </span>
             )}
@@ -483,7 +483,7 @@ export function App(): React.JSX.Element {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className={cn('h-full px-2.5 text-[12px]', view === 'app' && 'bg-selected text-foreground hover:bg-selected')}
+                      className={cn('h-full px-2.5 text-xs', view === 'app' && 'bg-selected text-foreground hover:bg-selected')}
                       data-testid="open-app"
                       title="Show the app's terminal"
                       onClick={() => setView(view === 'app' ? 'terminal' : 'app')}
@@ -495,11 +495,11 @@ export function App(): React.JSX.Element {
                   </>
                 )}
                 {missionApp?.status === 'running' ? (
-                  <Button size="sm" variant="ghost" className="h-full px-2.5 text-[12px]" disabled={appBusy} data-testid="stop-app" title="End the app and everything it started" onClick={stopApp}>
+                  <Button size="sm" variant="ghost" className="h-full px-2.5 text-xs" disabled={appBusy} data-testid="stop-app" title="End the app and everything it started" onClick={stopApp}>
                     <Square /> {appBusy ? 'Stopping…' : 'Stop app'}
                   </Button>
                 ) : (
-                  <Button size="sm" variant="ghost" className="h-full px-2.5 text-[12px]" disabled={appBusy || !!mission.mergedToMain} data-testid="run-app" title={mission.mergedToMain ? 'Merged to main: run the app from your own checkout' : runTitle} onClick={runApp}>
+                  <Button size="sm" variant="ghost" className="h-full px-2.5 text-xs" disabled={appBusy || !!mission.mergedToMain} data-testid="run-app" title={mission.mergedToMain ? 'Merged to main: run the app from your own checkout' : runTitle} onClick={runApp}>
                     <MonitorPlay /> {appBusy ? 'Starting…' : 'Run app'}
                   </Button>
                 )}
@@ -507,14 +507,14 @@ export function App(): React.JSX.Element {
               <span className="h-5 w-px bg-border" />
               <div className="flex items-center gap-0.5">
                 {mission.paused ? (
-                  <Button size="sm" variant="ghost" className="text-[12px]" onClick={() => void window.orc.resumeMission(mission.id)} data-testid="resume-mission" title="Release held merges and messages">
+                  <Button size="sm" variant="ghost" className="text-xs" onClick={() => void window.orc.resumeMission(mission.id)} data-testid="resume-mission" title="Release held merges and messages">
                     <Play /> Resume
                   </Button>
                 ) : (
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-[12px]"
+                    className="text-xs"
                     disabled={mission.state !== 'running'}
                     onClick={() => void window.orc.pauseMission(mission.id)}
                     data-testid="pause-mission"
@@ -526,7 +526,7 @@ export function App(): React.JSX.Element {
                 <Button
                   size="sm"
                   variant="ghost-destructive"
-                  className="text-[12px]"
+                  className="text-xs"
                   disabled={mission.state === 'stopped'}
                   data-testid="stop-mission"
                   onClick={() => void window.orc.stopMission(mission.id)}
@@ -538,7 +538,6 @@ export function App(): React.JSX.Element {
               <Button
                 size="sm"
                 variant={ready ? 'default' : 'outline'}
-                className="ml-1 text-[12px]"
                 disabled={!canMerge}
                 onClick={() => setView('merge')}
                 data-testid="open-merge"
@@ -549,7 +548,7 @@ export function App(): React.JSX.Element {
               </Button>
               <Button
                 size="sm"
-                className="text-[12px]"
+                className="text-xs"
                 disabled={onOrc === 0}
                 onClick={() => setView('main-merge')}
                 data-testid="open-main-merge"
@@ -560,13 +559,13 @@ export function App(): React.JSX.Element {
             </div>
           </>
         ) : (
-          <span className="ml-auto text-[12px] text-faint">No mission open</span>
+          <span className="ml-auto text-xs text-faint">No mission open</span>
         )}
         <PlanUsageHeader warnAt={warnAt} warnOnly className="max-[1099px]:hidden" />
         <HeaderSettingsMenu mission={mission} warnAt={warnAt} onShortcuts={() => openDialog('shortcuts')} />
       </header>
       {showBand && mission && (
-        <div className={cn('flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-[12px]', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="ready-band" role="status">
+        <div className={cn('flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-xs', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="ready-band" role="status">
           <CircleCheck className="size-4 shrink-0 text-done" />
           <span className="min-w-0 truncate">
             <span className="font-medium">All leads are done.</span> <span className="text-muted-foreground">{readyChecks(mission).text}</span>
@@ -595,7 +594,7 @@ export function App(): React.JSX.Element {
       {/* Terminal */}
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
         {mission && failure && (
-          <div className="flex min-h-9 shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/5 px-3 py-1 text-[12px]" role="alert" data-testid="failure-banner" data-kind={failure.kind}>
+          <div className="flex min-h-9 shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/5 px-3 py-1 text-xs" role="alert" data-testid="failure-banner" data-kind={failure.kind}>
             <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
             <span className="min-w-0 flex-1 truncate text-foreground" title={failure.text}>{failure.text}</span>
             <Button
@@ -635,7 +634,7 @@ export function App(): React.JSX.Element {
           />
         ) : view === 'app' && missionApp ? (
           <>
-            <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="app-head">
+            <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground" data-testid="app-head">
               <MonitorPlay className="size-3.5 shrink-0" />
               <span className="shrink-0 font-medium text-foreground">App</span>
               <span className="min-w-0 truncate font-mono text-[11px]">{missionApp.command}</span>
@@ -653,7 +652,7 @@ export function App(): React.JSX.Element {
           <ReviewScreen mission={mission} agent={view.review} onBack={() => setView('terminal')} />
         ) : agent ? (
           <>
-            <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="terminal-head" data-agent={agent.name}>
+            <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground" data-testid="terminal-head" data-agent={agent.name}>
               <TerminalSquare className="size-3.5 shrink-0" />
               <span className="shrink-0 font-medium text-foreground">{agent.sessionName}</span>
               <span className="min-w-0 truncate font-mono text-[11px] text-faint">{agent.cwd}</span>
@@ -686,11 +685,11 @@ export function App(): React.JSX.Element {
             <MessagesSquare /> messages
           </Button>
         </div>
-        <div className="h-[46%] min-h-[180px] border-b" data-testid="tree">
+        <div className="h-[46%] min-h-45 border-b" data-testid="tree">
           {mission ? (
             <MissionTree agents={shown} feed={mission.feed} selected={agent?.terminalId ?? null} onSelect={selectAgent} showMessages={showMessages} />
           ) : (
-            <div className="p-4 text-[12px] text-muted-foreground">A node appears whenever an agent spawns a worker.</div>
+            <div className="p-4 text-xs text-muted-foreground">A node appears whenever an agent spawns a worker.</div>
           )}
         </div>
         <div className="panel-title flex h-8 items-center border-b px-3 text-[11px] font-medium uppercase tracking-wide text-faint">Feed</div>

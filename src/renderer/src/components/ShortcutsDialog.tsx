@@ -73,7 +73,7 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
                   <h3 className="mb-1.5 text-[10.5px] font-semibold tracking-wider text-faint uppercase">{group}</h3>
                   <ul>
                     {items.map((s) => (
-                      <li key={s.id} className="flex items-center justify-between gap-3 py-1 text-[12.5px]">
+                      <li key={s.id} className="flex min-h-7 items-center justify-between gap-3 text-[12.5px]">
                         <span className="flex min-w-0 items-center gap-1.5 text-foreground">
                           {s.label}
                           {s.bindings.some((b) => b.scope === 'global') && (
@@ -96,8 +96,8 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
             </div>
           )}
         </div>
-        <div className="flex items-start gap-1.5 border-t px-4 py-2.5 text-[11.5px] text-faint">
-          <SquareTerminal className="mt-px size-3 shrink-0" />
+        <div className="flex items-center gap-1.5 border-t px-4 py-2.5 text-[11.5px] text-faint">
+          <SquareTerminal className="size-3 shrink-0" />
           <span>Marked shortcuts work while typing to an agent; Ctrl+C, Ctrl+R and other terminal keys still go to the session.</span>
         </div>
       </div>
