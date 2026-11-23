@@ -327,6 +327,7 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
   const diff = useDiff(() => window.orc.orcDiff(repo), [repo, ready.map((m) => m.integrated!.commit).join()])
   const [result, setResult] = useState<{ ok: boolean; message: string; files?: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [updating, setUpdating] = useState(false)
   const [target, setTarget] = useState<{ branch: string; remote: string | null; ahead: number | null } | null>(null)
   const [pushing, setPushing] = useState(false)
   const [pushed, setPushed] = useState<{ ok: boolean; message: string } | null>(null)
@@ -403,6 +404,23 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
             </p>
             {result && (
               <p className={cn('mt-1.5 text-[12px]', result.ok ? 'text-working' : 'text-destructive')} data-testid="main-merge-result">{result.message}</p>
+            )}
+            {result && !result.ok && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full"
+                disabled={updating || busy}
+                onClick={async () => {
+                  setUpdating(true)
+                  const r = await window.orc.updateFromMain(repo)
+                  setResult(r)
+                  setUpdating(false)
+                }}
+                data-testid="update-from-main"
+              >
+                {updating ? <Loader2 className="animate-spin" /> : <GitMerge />} Update {OrcBranch} from {main}
+              </Button>
             )}
             <Button
               variant="ghost"

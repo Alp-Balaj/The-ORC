@@ -503,6 +503,23 @@ export async function mergeOrcToMain(repo: string, main: string): Promise<MainMe
   })
 }
 
+export type UpdateFromMainResult = { kind: 'up-to-date' } | { kind: 'merged'; commit: string } | { kind: 'conflict'; files: string[] } | { kind: 'error'; reason: string }
+
+/** Merges `main` into the ORC branch inside its own worktree, so Merge to main can then
+ *  fast-forward. A conflict is aborted cleanly (no markers are ever left or committed) and
+ *  reported with its files. */
+export async function updateOrcFromMain(repo: string, main: string): Promise<UpdateFromMainResult> {
+  return serialized(repo, async (): Promise<UpdateFromMainResult> => {
+    const wt = await ensureOrcLocked(repo, main)
+    if (await isAncestor(wt, main, 'HEAD')) return { kind: 'up-to-date' }
+    const r = await git(wt, [...(await identityArgs(wt)), 'merge', '--no-ff', '--no-verify', '-m', `Catch the ORC branch up with ${main}`, main], { allowFail: true })
+    if (r.code === 0) return { kind: 'merged', commit: (await git(wt, ['rev-parse', 'HEAD'])).stdout }
+    const files = (await git(wt, ['diff', '--name-only', '--diff-filter=U'], { allowFail: true })).stdout.split('\n').filter(Boolean)
+    await git(wt, ['merge', '--abort'], { allowFail: true })
+    return files.length ? { kind: 'conflict', files } : { kind: 'error', reason: r.stderr || 'unknown error' }
+  })
+}
+
 /** After a merge to main: remove the mission's worktrees and branches (they are in main now). */
 /** After a merge to main: remove the worktrees and branches of the workers that are in main
  *  now, and the integration worktree. Anything else (a worker still working, in review or in

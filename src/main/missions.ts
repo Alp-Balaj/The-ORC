@@ -804,6 +804,25 @@ export class Missions implements ControlHandlers {
     return missionGit.pushBranch(repo, branch)
   }
 
+  /** The human pressed "Update from main": merges main into the ORC branch so Merge to main can go ahead. */
+  async updateFromMain(repo: string): Promise<{ ok: boolean; message: string; files?: string[] }> {
+    const done = this.integratedIn(repo)
+    const main = done[0]?.mainBranch ?? (await this.git.currentBranch(repo))
+    const orc = missionGit.OrcBranch
+    const r = await missionGit.updateOrcFromMain(repo, main)
+    const note = (text: string, status: 'ok' | 'failed'): void => { for (const m of done) this.feed(m, { kind: 'main', from: 'you', to: null, text, status }) }
+    if (r.kind === 'up-to-date') return { ok: true, message: `${orc} already includes ${main}.` }
+    if (r.kind === 'merged') {
+      note(`updated ${orc} from ${main} at ${r.commit.slice(0, 8)}`, 'ok')
+      return { ok: true, message: `Merged ${main} into ${orc} at ${r.commit.slice(0, 8)}. Merge to ${main} is available again.` }
+    }
+    if (r.kind === 'conflict') {
+      note(`updating ${orc} from ${main} refused: conflict in ${r.files.join(', ')}`, 'failed')
+      return { ok: false, files: r.files, message: `${main} conflicts with ${orc} in ${r.files.join(', ')}. Nothing was changed (the merge was aborted, no conflict markers left). Resolve it by hand in your checkout, or re-integrate after changing ${main}.` }
+    }
+    return { ok: false, message: `git refused to merge ${main} into ${orc}: ${r.reason}` }
+  }
+
   /** The human pressed Merge to main: everything on the repo's ORC branch goes into main. Missions
    *  fully on the ORC branch are then ended and cleared out; the rest keep running. */
   async mergeToMain(repo: string): Promise<{ ok: boolean; message: string; cleared?: number; files?: string[] }> {
