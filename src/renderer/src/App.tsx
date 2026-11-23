@@ -620,7 +620,7 @@ export function App(): React.JSX.Element {
         {actionError && <Banner text={`Action failed: ${actionError}`} testId="action-error" onDismiss={() => setActionError(null)} />}
         {mission && <SplitPanel mission={mission} />}
         {mission && view === 'merge' ? (
-          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
+          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} onRemoved={() => { setView('terminal'); setMissionId(null) }} />
         ) : mission && view === 'main-merge' ? (
           <OrcMergeScreen
             repo={mission.repoPath}
