@@ -121,6 +121,7 @@ Agents talk with Claude Code's own `SendMessage` / `ListAgents`, addressing each
 - Each session's `--settings` carries `permissions.deny` for git write commands (deny rules work without `--safe-mode`), plus your global `deniedTools`.
 - When a worker calls `report_done`, **the app commits** its worktree with a structured message.
 - The app merges into **`integration/<mission>`** in dependency order, then runs the repo's build/test gate on the merged result.
+- **Where the gate command lives:** per space, as `gateCommand` in `<userData>/spaces.json`; nothing is written into the repo. See [ADR 0002](adr/0002-gate-command-per-space-setting.md).
 - A conflict sends a ◐ question to the coordinator, or to you.
 - **`main` changes only when you press Merge to main.** That screen shows the **combined diff** of the mission, the gate results and the Verifier report.
 
