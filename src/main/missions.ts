@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type IntegratedView, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
+import { claudeAccounts } from './claude-accounts.ts'
 import { claudeArgs, coordinatorPrompt, ownerStatusLine, mergerPrompt, orcMergerPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
 import * as gitOps from './git-worktrees.ts'
@@ -1566,7 +1567,7 @@ export class Missions implements ControlHandlers {
         readDirs: agent.role === 'coordinator' ? [this.recordsDirFor(mission.repoPath)].filter((d): d is string => !!d) : []
       })
     )
-    this.terminals.start({ id: agent.terminalId, command, args, cwd: agent.cwd, env: sessionEnv() })
+    this.terminals.start({ id: agent.terminalId, command, args, cwd: agent.cwd, env: sessionEnv(process.env, claudeAccounts.configDirForMission(mission.id)) })
     agent.pid = this.terminals.pid(agent.terminalId)
     this.emit()
   }
