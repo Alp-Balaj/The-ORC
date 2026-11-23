@@ -17,7 +17,8 @@ import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { ButtonGroup } from './components/ui/button-group'
 import { focusActiveTerminal, TerminalView } from './TerminalView'
-import { emitShortcut, installGlobalShortcuts, onShortcut, withHint, type ShortcutId } from './lib/shortcuts'
+import { getMissionSort, sortMissions } from './lib/missionSort'
+import { emitShortcut,installGlobalShortcuts, onShortcut, withHint, type ShortcutId } from './lib/shortcuts'
 import { getThemePref, setThemePref } from './lib/theme'
 import { cn } from './lib/utils'
 import { markReadyBandSeen, missionReady, readyBandSeen, readyChecks } from './lib/ready'
@@ -308,7 +309,9 @@ export function App(): React.JSX.Element {
       case 'nextMission':
       case 'prevMission':
       case 'missionN': {
-        const ordered = roots.flatMap((root) => missions.filter((m) => m.repoPath === root))
+        // Same order as the sidebar (it sorts each space by the saved sort), so next = down the list.
+        const sort = getMissionSort()
+        const ordered = roots.flatMap((root) => sortMissions(missions.filter((m) => m.repoPath === root), sort))
         if (ordered.length === 0) return
         const cur = mission ? ordered.findIndex((m) => m.id === mission.id) : -1
         let i: number
