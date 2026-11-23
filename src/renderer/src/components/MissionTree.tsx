@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { Crown } from 'lucide-react'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
 import { layoutStacked, stackSizes } from '../../../shared/tree-layout'
 import { cn, formatTokens } from '../lib/utils'
@@ -94,6 +95,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       <div className="flex min-w-0 items-center gap-1.5">
         <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} className={cn(far && 'size-3.5')} />
         <span className={cn('truncate font-medium', far ? 'text-[17px]' : 'text-[12px]')}>{a.name}</span>
+        {a.role === 'coordinator' && <Crown aria-label="coordinator" className={cn('ml-auto shrink-0 text-muted-foreground', far ? 'size-4' : 'size-3')} />}
       </div>
       {!far && (
         <div className="mt-1 flex justify-between gap-2 pl-3.5 text-[10.5px] text-muted-foreground">
