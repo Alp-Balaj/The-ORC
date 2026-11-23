@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { MainSessionTerminalId } from '../shared/types.ts'
+import { dirname, join } from 'node:path'
+import { mainSessionKey, mainSessionTerminalId } from '../shared/types.ts'
 import type { MainSessionView, PermissionMode } from '../shared/types.ts'
 import { claudeArgs, mainSessionPrompt, ownerStatusLine, sessionEnv } from './claude-launch.ts'
 import type { HookEvent } from './control-server.ts'
@@ -9,7 +9,6 @@ import type { Launcher } from './missions.ts'
 import { renameOver } from './rename-over.ts'
 import type { TerminalHost } from './terminals.ts'
 
-const SessionName = 'orc-main'
 /** Read-only tools the main session may use without a prompt: mission status, history, messages. */
 const MainAllowTools = [
   'mcp__orc__list_missions',
@@ -31,7 +30,10 @@ interface Saved {
 
 export interface MainSessionOptions {
   terminals: TerminalHost
-  /** The app's data folder: main-session.json and the session's own folder live here. */
+  /** The space this session oversees (its repo root); the session's cwd. */
+  repoPath: string
+  repoName: string
+  /** The app's data folder: main-sessions/<key>.json and the session's own folder live here. */
   dataDir: string
   /** The permission mode missions use; the main session uses the same one. */
   permissionMode: () => PermissionMode
@@ -47,14 +49,18 @@ function load(file: string): Partial<Saved> {
   }
 }
 
-/** The one app-level main session: an interactive claude above every mission. It is not a
- *  mission, so Missions never sees it. */
+/** One space's main session: an interactive claude above that repo's missions. It is not a
+ *  mission, so Missions never sees it. The old global main-session.json is never read. */
 export class MainSession {
   /** How the session is started. Smoke runs swap in a fake command. */
   launcher: Launcher = (args) => ({ command: 'claude', args })
   /** Plan usage from the status line (index.ts sets it); returns the text the line shows. */
   statusLine: (status: unknown) => string | null = () => null
   private controlPort = 0
+  readonly repoPath: string
+  private readonly repoName: string
+  readonly terminalId: string
+  private readonly sessionName: string
   private readonly terminals: TerminalHost
   private readonly dir: string
   private readonly file: string
@@ -75,8 +81,13 @@ export class MainSession {
 
   constructor(o: MainSessionOptions) {
     this.terminals = o.terminals
-    this.dir = join(o.dataDir, 'main-session')
-    this.file = join(o.dataDir, 'main-session.json')
+    this.repoPath = o.repoPath
+    this.repoName = o.repoName
+    const key = mainSessionKey(o.repoPath)
+    this.terminalId = mainSessionTerminalId(o.repoPath)
+    this.sessionName = `orc-main-${key.slice(0, 8)}`
+    this.dir = join(o.dataDir, 'main-sessions', key)
+    this.file = join(o.dataDir, 'main-sessions', `${key}.json`)
     this.currentPermissionMode = o.permissionMode
     this.changed = o.changed
     const saved = load(this.file)
@@ -93,7 +104,7 @@ export class MainSession {
 
   /** Starts the session, or resumes its conversation; a no-op while it runs. */
   start(): void {
-    if (this.terminals.isRunning(MainSessionTerminalId)) return
+    if (this.terminals.isRunning(this.terminalId)) return
     this.launch(this.launched, false)
   }
 
@@ -104,7 +115,7 @@ export class MainSession {
     this.inTurn = false
     this.save()
     this.set('off', '')
-    this.terminals.kill(MainSessionTerminalId)
+    this.terminals.kill(this.terminalId)
   }
 
   /** At launch: brings the session back if it was running when The ORC last quit. */
@@ -113,7 +124,7 @@ export class MainSession {
   }
 
   view(): MainSessionView {
-    return { terminalId: MainSessionTerminalId, sessionName: SessionName, status: this.status, activity: this.activity, resumed: this.resumed }
+    return { terminalId: this.terminalId, repoPath: this.repoPath, repoName: this.repoName, sessionName: this.sessionName, status: this.status, activity: this.activity, resumed: this.resumed }
   }
 
   /** The permission mode the session runs with (what a mission it starts uses too). */
@@ -122,7 +133,7 @@ export class MainSession {
   }
 
   agentForToken(token: string): string | null {
-    return this.token && token === this.token ? MainSessionTerminalId : null
+    return this.token && token === this.token ? this.terminalId : null
   }
 
   /** Hook events from the main session. Returns the hook's stdout, or null for none. */
@@ -164,7 +175,7 @@ export class MainSession {
 
   /** The session's process ended. A stop by the owner already set it off. */
   terminalExited(id: string, exitCode = 0): void {
-    if (id !== MainSessionTerminalId) return
+    if (id !== this.terminalId) return
     this.token = null
     this.inTurn = false
     if (this.status === 'off') return
@@ -206,19 +217,20 @@ export class MainSession {
 
   private launch(resume: boolean, restored: boolean): void {
     mkdirSync(this.dir, { recursive: true })
+    mkdirSync(dirname(this.file), { recursive: true })
     this.token = randomBytes(24).toString('hex')
     // Fresh start, resume and restore all launch bypassPermissions.
     this.mode = 'bypassPermissions'
     const { command, args } = this.launcher(
       claudeArgs({
-        sessionName: SessionName,
+        sessionName: this.sessionName,
         sessionId: this.sessionId,
         resume,
         token: this.token,
         controlPort: this.controlPort,
         permissionMode: this.mode,
         ownStatusLine: ownerStatusLine(this.dir),
-        systemPrompt: mainSessionPrompt(),
+        systemPrompt: mainSessionPrompt(this.repoName, this.repoPath),
         readDirs: [],
         allowTools: MainAllowTools,
         denyTools: MainDenyTools
@@ -229,7 +241,7 @@ export class MainSession {
     this.resumed = restored
     this.inTurn = false
     this.save()
-    this.terminals.start({ id: MainSessionTerminalId, command, args, cwd: this.dir, env: sessionEnv() })
+    this.terminals.start({ id: this.terminalId, command, args, cwd: this.repoPath, env: sessionEnv() })
     this.set('starting', 'starting')
   }
 

@@ -24,12 +24,13 @@ const api = {
   setActiveClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:set-active', id),
   renameClaudeAccount: (id: string, name: string): Promise<void> => ipcRenderer.invoke('claude-accounts:rename', id, name),
   removeClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:remove', id),
-  /** The app-level main session (above all missions). */
-  mainSession: (): Promise<MainSessionView> => ipcRenderer.invoke('main:get'),
+  /** A space's main session (one per repo; it oversees only that repo's missions). */
+  mainSession: (repoPath: string): Promise<MainSessionView> => ipcRenderer.invoke('main:get', repoPath),
+  /** Fires with the view of whichever repo's main session changed (view.repoPath). */
   onMainSession: (cb: (v: MainSessionView) => void) => listen<[MainSessionView]>('main:changed', cb),
-  /** Starts (or resumes) it; no-op when already running. */
-  startMainSession: (): Promise<void> => ipcRenderer.invoke('main:start'),
-  stopMainSession: (): Promise<void> => ipcRenderer.invoke('main:stop'),
+  /** Starts (or resumes) that repo's main session; no-op when already running. */
+  startMainSession: (repoPath: string): Promise<void> => ipcRenderer.invoke('main:start', repoPath),
+  stopMainSession: (repoPath: string): Promise<void> => ipcRenderer.invoke('main:stop', repoPath),
   listMissions: (): Promise<MissionView[]> => ipcRenderer.invoke('missions:list'),
   resumedAtLaunch: (): Promise<{ id: string; name: string }[]> => ipcRenderer.invoke('missions:resumed-at-launch'),
   stopResumed: (): Promise<void> => ipcRenderer.invoke('missions:stop-resumed'),

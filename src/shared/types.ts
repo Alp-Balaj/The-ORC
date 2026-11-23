@@ -340,10 +340,27 @@ export type GithubAccountView = {
   error: string | null
 }
 
-/** The one app-level "main session": a Claude Code session above every mission (not a mission itself).
- *  `off` = not started (or stopped by the owner); the others mirror an agent's status. */
-export const MainSessionTerminalId = 'orc-main'
+/** A space's "main session": a Claude Code session above that repo's missions (not a mission itself).
+ *  There is one per space. `off` = not started (or stopped by the owner); the others mirror an agent's status. */
+export const MainSessionTerminalPrefix = 'orc-main:'
+/** Stable short id of a repo, used in the main session's terminal id, session name and state file. */
+export function mainSessionKey(repoPath: string): string {
+  let h1 = 0x811c9dc5
+  let h2 = 0x01000193
+  for (let i = 0; i < repoPath.length; i++) {
+    const c = repoPath.charCodeAt(i)
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0
+    h2 = Math.imul(h2 + c, 0x85ebca6b) >>> 0
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')
+}
+export const mainSessionTerminalId = (repoPath: string): string => MainSessionTerminalPrefix + mainSessionKey(repoPath)
+export const isMainSessionTerminal = (id: string): boolean => id.startsWith(MainSessionTerminalPrefix)
 export interface MainSessionView {
+  /** The space (repo root) this main session oversees. */
+  repoPath: string
+  /** The space's name. */
+  repoName: string
   terminalId: string
   sessionName: string
   status: 'off' | 'starting' | 'idle' | 'working' | 'needs-you' | 'exited'
