@@ -10,6 +10,7 @@ import { MissionTree } from './components/MissionTree'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { AccountsScreen } from './components/AccountsScreen'
 import { Sidebar } from './components/Sidebar'
+import { RepoDashboard } from './components/RepoDashboard'
 import { PlanUsageHeader } from './components/PlanUsageHeader'
 import { HeaderSettingsMenu } from './components/HeaderSettingsMenu'
 import { Badge } from './components/ui/badge'
@@ -110,6 +111,8 @@ export function App(): React.JSX.Element {
   // Each space has its own main session (above that repo's missions). Selecting one shows its terminal in place of a mission.
   const [mains, setMains] = useState<Record<string, MainSessionView>>({})
   const [mainRoot, setMainRoot] = useState<string | null>(null)
+  // A repo's dashboard (its missions, backlog, activity) shown in place of the terminal.
+  const [dashRoot, setDashRoot] = useState<string | null>(null)
   const main = mainRoot ? mains[mainRoot] ?? null : null
   const mainSelected = mainRoot !== null
   const mainTid = main?.terminalId ?? ''
@@ -151,6 +154,7 @@ export function App(): React.JSX.Element {
     const offS = window.orc.onSpaces(setSpaces)
     const offN = window.orc.onNotifySelect((_m, tid) => {
       setView('terminal')
+      setDashRoot(null)
       if (isMainSessionTerminal(tid)) {
         setMains((cur) => {
           const hit = Object.values(cur).find((v) => v.terminalId === tid)
@@ -217,17 +221,20 @@ export function App(): React.JSX.Element {
   const agent = shown.find((a) => a.terminalId === terminalId) ?? shown.find((a) => a.role === 'coordinator') ?? null
 
   useEffect(() => {
-    window.orc.setSelection(mainSelected ? null : mission?.id ?? null, mainSelected ? mainTid : agent?.terminalId ?? null)
-  }, [mainSelected, mainTid, mission?.id, agent?.terminalId])
+    if (dashRoot) window.orc.setSelection(null, null)
+    else window.orc.setSelection(mainSelected ? null : mission?.id ?? null, mainSelected ? mainTid : agent?.terminalId ?? null)
+  }, [dashRoot, mainSelected, mainTid, mission?.id, agent?.terminalId])
 
   // Stable (they only call setters), so the memoized tree skips renders on unrelated updates.
   const selectMission = useCallback((id: string): void => {
+    setDashRoot(null)
     setMainRoot(null)
     setView('terminal')
     setMissionId(id)
     setTerminalId(`${id}:coordinator`)
   }, [])
   const selectAgent = useCallback((tid: string): void => {
+    setDashRoot(null)
     setMainRoot(null)
     setView('terminal')
     setTerminalId(tid)
@@ -235,11 +242,18 @@ export function App(): React.JSX.Element {
   }, [])
   // Starting it on first select: a session nobody has started yet opens straight into a live terminal.
   const selectMain = (root: string): void => {
+    setDashRoot(null)
     setMainRoot(root)
     setView('terminal')
     const v = mains[root]
     if (!v || v.status === 'off') void window.orc.startMainSession(root)
   }
+  // The repo dashboard: no terminal, and it never starts the main session.
+  const selectRepo = useCallback((root: string): void => {
+    setDashRoot(root)
+    setMainRoot(null)
+    setView('terminal')
+  }, [])
   const mainRunning = !!main && main.status !== 'off' && main.status !== 'exited'
   const space = mission ? spaces.find((s) => s.root === mission.repoPath) : undefined
   const missionApp = appRun && mission && appRun.missionId === mission.id ? appRun : null
@@ -273,7 +287,9 @@ export function App(): React.JSX.Element {
   // Missions in this repo whose work is on the ORC branch, waiting for Merge to main.
   const onOrc = mission ? missions.filter((m) => m.repoPath === mission.repoPath && isOnOrc(m)).length : 0
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
-  const currentRoot = mainRoot ?? mission?.repoPath ?? roots[0] ?? null
+  const currentRoot = dashRoot ?? mainRoot ?? mission?.repoPath ?? roots[0] ?? null
+  // Nothing mission-specific is on screen while the dashboard is open (its tree, feed and header are idle).
+  const asideIdle = !mainSelected && (!mission || dashRoot !== null)
 
   const openDialog = (d: 'palette' | 'shortcuts' | 'accounts'): void => {
     if (dialog === d) return closeDialog()
@@ -481,7 +497,13 @@ export function App(): React.JSX.Element {
             <PanelLeft />
           </Button>
         </div>
-        {mainSelected ? (
+        {dashRoot ? (
+          <div className="flex min-w-0 items-center gap-1.5 text-[13px]" data-testid="header-dash">
+            <span className="shrink-0 text-muted-foreground">Repo</span>
+            <span className="shrink-0 text-faint">/</span>
+            <span className="truncate font-semibold" title={dashRoot}>{dashRoot.split(/[\\/]/).pop()}</span>
+          </div>
+        ) : mainSelected ? (
           <>
             <div className="flex min-w-0 items-center gap-1.5 text-[13px]" data-testid="header-main">
               <span className="shrink-0 font-semibold">Main session</span>
@@ -632,7 +654,7 @@ export function App(): React.JSX.Element {
         <PlanUsageHeader warnAt={warnAt} warnOnly className="max-[1099px]:hidden" />
         <HeaderSettingsMenu mission={mission} warnAt={warnAt} onShortcuts={() => openDialog('shortcuts')} onAccounts={() => openDialog('accounts')} />
       </header>
-      {showBand && mission && !mainSelected && (
+      {showBand && mission && !mainSelected && !dashRoot && (
         <div className={cn('flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-xs', 'col-span-full')} data-testid="ready-band" role="status">
           <CircleCheck className="size-4 shrink-0 text-done" />
           <span className="min-w-0 truncate">
@@ -652,10 +674,12 @@ export function App(): React.JSX.Element {
         currentRoot={currentRoot}
         missions={missions}
         appRun={appRun}
-        selectedMission={mainSelected ? null : mission?.id ?? null}
-        selectedTerminal={mainSelected ? null : agent?.terminalId ?? null}
+        selectedMission={mainSelected || dashRoot ? null : mission?.id ?? null}
+        selectedTerminal={mainSelected || dashRoot ? null : agent?.terminalId ?? null}
         mains={mains}
         mainRoot={mainRoot}
+        dashRoot={dashRoot}
+        onSelectRepo={selectRepo}
         onSelectMain={selectMain}
         onSelectMission={selectMission}
         onSelectAgent={selectAgent}
@@ -664,7 +688,7 @@ export function App(): React.JSX.Element {
 
       {/* Terminal */}
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
-        {!mainSelected && mission && failure && (
+        {!mainSelected && !dashRoot && mission && failure && (
           <div className="flex min-h-9 shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/5 px-3 py-1 text-xs" role="alert" data-testid="failure-banner" data-kind={failure.kind}>
             <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
             <span className="min-w-0 flex-1 truncate text-foreground" title={failure.text}>{failure.text}</span>
@@ -688,8 +712,17 @@ export function App(): React.JSX.Element {
         )}
         {/* Under the header; keep below the failure banner when both show. */}
         {actionError && <Banner text={`Action failed: ${actionError}`} testId="action-error" onDismiss={() => setActionError(null)} />}
-        {!mainSelected && mission && <SplitPanel mission={mission} />}
-        {!mainSelected && merged && merged.sel === missionId && view === 'main-merge' ? (
+        {!mainSelected && !dashRoot && mission && <SplitPanel mission={mission} />}
+        {dashRoot ? (
+          <RepoDashboard
+            root={dashRoot}
+            space={spaces.find((s) => s.root === dashRoot)}
+            missions={missions}
+            main={mains[dashRoot]}
+            onOpenMission={selectMission}
+            onOpenMain={() => selectMain(dashRoot)}
+          />
+        ) : !mainSelected && merged && merged.sel === missionId && view === 'main-merge' ? (
           <MergedScreen repo={merged.repo} branch={merged.branch} message={merged.message} onDone={() => { setMerged(null); setView('terminal') }} />
         ) : mainSelected ? (
           main && main.status !== 'off' ? (
@@ -765,7 +798,7 @@ export function App(): React.JSX.Element {
       </main>
 
       {/* Tree + feed */}
-      <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mainSelected && !mission && 'pointer-events-none opacity-40')} aria-disabled={!mainSelected && !mission}>
+      <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', asideIdle && 'pointer-events-none opacity-40')} aria-disabled={asideIdle}>
         {side.handle}
         <div className="panel-title flex h-8 items-center justify-between border-b px-3">
           <span className="text-[11px] font-medium uppercase tracking-wide text-faint">{mainSelected ? 'Repo coordinators' : 'Mission tree'}</span>
@@ -783,7 +816,7 @@ export function App(): React.JSX.Element {
         <div className="h-[46%] min-h-45 border-b" data-testid="tree">
           {mainSelected ? (
             <MissionTree agents={mainGraph} feed={[]} selected={null} onSelect={(tid) => { if (tid !== mainTid) selectAgent(tid) }} showMessages={false} />
-          ) : mission ? (
+          ) : mission && !dashRoot ? (
             <MissionTree agents={shown} feed={mission.feed} selected={agent?.terminalId ?? null} onSelect={selectAgent} showMessages={showMessages} />
           ) : (
             <div className="p-4 text-xs text-muted-foreground">A node appears whenever an agent spawns a worker.</div>
@@ -791,7 +824,7 @@ export function App(): React.JSX.Element {
         </div>
         <div className="panel-title flex h-8 items-center border-b px-3 text-[11px] font-medium uppercase tracking-wide text-faint">Feed</div>
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="feed">
-          <Feed feed={mainSelected ? [] : mission?.feed ?? []} />
+          <Feed feed={mainSelected || dashRoot ? [] : mission?.feed ?? []} />
         </div>
       </aside>
 

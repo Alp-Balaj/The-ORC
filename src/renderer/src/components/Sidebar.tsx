@@ -115,7 +115,7 @@ function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
   )
 }
 
-export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, currentRoot, mains, mainRoot, onSelectMain, onSelectMission, onSelectAgent, onReview }: {
+export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, currentRoot, mains, mainRoot, dashRoot, onSelectRepo, onSelectMain, onSelectMission, onSelectAgent, onReview }: {
   spaces: SpaceView[]
   currentRoot: string | null
   appRun: AppRunView | null
@@ -124,6 +124,9 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
   selectedTerminal: string | null
   mains: Record<string, MainSessionView>
   mainRoot: string | null
+  /** The repo whose dashboard is open in the main area. */
+  dashRoot: string | null
+  onSelectRepo: (root: string) => void
   onSelectMain: (root: string) => void
   onSelectMission: (id: string) => void
   onSelectAgent: (terminalId: string) => void
@@ -257,9 +260,28 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
           const live = ms.filter((m) => m.state === 'running').flatMap((m) => m.agents).filter((a) => a.status !== 'done' && a.status !== 'exited').length
           return (
             <div key={root} className="mb-1.5" data-testid="space" data-space={name}>
-              <div className="group flex h-7 items-center gap-1 rounded-md px-1 transition-colors hover:bg-accent">
-                <button className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left text-[13px]" onClick={() => toggle(root)} title={root}>
-                  {open ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
+              <div className={cn('group flex h-7 items-center gap-1 rounded-md px-1 transition-colors hover:bg-accent', dashRoot === root && 'bg-selected hover:bg-selected')}>
+                <button
+                  type="button"
+                  className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:text-foreground"
+                  onClick={(e) => { e.stopPropagation(); toggle(root) }}
+                  aria-expanded={open}
+                  aria-label={`${open ? 'Collapse' : 'Expand'} ${name}`}
+                  data-testid="space-chevron"
+                >
+                  {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left text-[13px]"
+                  onClick={() => {
+                    if (!open) toggle(root)
+                    onSelectRepo(root)
+                  }}
+                  aria-current={dashRoot === root ? 'page' : undefined}
+                  title={root}
+                  data-testid="space-select"
+                >
                   <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 truncate font-medium">{name}</span>
                   {ms.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-faint">{ms.length}</span>}
