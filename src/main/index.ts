@@ -583,7 +583,7 @@ app.whenReady().then(async () => {
           }
         }
       })
-      if (done.length) console.log(`recovered:\n  ${done.join('\n  ')}`)
+      if (done.length) console.info(`recovered:\n  ${done.join('\n  ')}`)
       // The banner in the window lists the missions that came back (owner, 2026-11-22).
       const back = new Set(done.filter((l) => /: (resumed|restarted)$/.test(l)).map((l) => l.split('/')[0]))
       resumedAtLaunch = missions.views().filter((m) => back.has(m.name)).map((m) => ({ id: m.id, name: m.name }))
