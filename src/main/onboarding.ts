@@ -107,8 +107,8 @@ export async function scanRepo(root: string, suggestedGate: string | null): Prom
 export async function createStarterClaudeMd(root: string): Promise<boolean> {
   const name = basename(root)
   const pm = await detectPackageManager(root)
-  const install = pm === 'cargo' ? 'cargo build' : pm === 'go' ? 'go build ./...' : pm ? `${pm} install` : 'TODO: install command'
-  const test = pm === 'cargo' ? 'cargo test' : pm === 'go' ? 'go test ./...' : pm ? `${pm} test` : 'TODO: test command'
+  const install = pm === 'cargo' ? 'cargo build' : pm === 'go' ? 'go build ./...' : pm ? `${pm} install` : '[fill in: install command, e.g. pnpm install]'
+  const test = pm === 'cargo' ? 'cargo test' : pm === 'go' ? 'go test ./...' : pm ? `${pm} test` : '[fill in: test command, e.g. pnpm test]'
   const content = [
     `# ${name}`,
     '',
@@ -121,7 +121,7 @@ export async function createStarterClaudeMd(root: string): Promise<boolean> {
     '',
     '## Conventions',
     '',
-    '- TODO: code style, folder layout, naming',
+    '- [fill in: code style, folder layout, naming, e.g. "2-space indent, source in src/, camelCase files"]',
     '',
     '## Rules',
     '',
