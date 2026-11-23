@@ -21,6 +21,8 @@ export class TranscriptTally {
   private partial = ''
   private readonly byMessage = new Map<string, Usage>()
   private latest: Usage | null = null
+  /** 0-based index of the next complete line in the file; blank lines count too. */
+  private lineNo = 0
   readonly path: string
 
   constructor(path: string) {
@@ -54,14 +56,19 @@ export class TranscriptTally {
     const lines = (this.partial + text).split('\n')
     this.partial = lines.pop() ?? ''
     for (const line of lines) {
+      const index = this.lineNo++
       if (!line.trim()) continue
+      let entry: { message?: { id?: string; usage?: Usage } } | null
       try {
-        const entry = JSON.parse(line) as { message?: { id?: string; usage?: Usage } }
-        const usage = entry.message?.usage
-        if (!usage) continue
-        this.byMessage.set(entry.message?.id ?? `line-${this.byMessage.size}`, usage)
-        this.latest = usage
-      } catch {}
+        entry = JSON.parse(line) as { message?: { id?: string; usage?: Usage } } | null
+      } catch {
+        console.error('tokens: skipped unparseable transcript line', this.path, index, Buffer.byteLength(line))
+        continue
+      }
+      const usage = entry?.message?.usage
+      if (!usage) continue
+      this.byMessage.set(entry?.message?.id ?? `line-${this.byMessage.size}`, usage)
+      this.latest = usage
     }
   }
 
@@ -80,6 +87,7 @@ export class TranscriptTally {
   private reset(): void {
     this.offset = 0
     this.partial = ''
+    this.lineNo = 0
     this.byMessage.clear()
     this.latest = null
   }
