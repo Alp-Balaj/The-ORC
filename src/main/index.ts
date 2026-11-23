@@ -339,6 +339,8 @@ ipcMain.handle('orc:merge-to-main', async (_e, repo: string) => {
   for (const m of missions.views()) if (m.repoPath === repo && m.integrated && !m.mergedToMain) await appRunner.stopFor(m.id)
   return missions.mergeToMain(repo)
 })
+ipcMain.handle('orc:push-target', (_e, repo: string) => missions.pushTarget(repo))
+ipcMain.handle('orc:push', (_e, repo: string) => missions.pushMain(repo))
 ipcMain.handle('spaces:set-gate', (_e, root: string, command: string | null) => {
   spaces.setGateCommand(root, command)
   send('spaces:changed', spaces.list())
