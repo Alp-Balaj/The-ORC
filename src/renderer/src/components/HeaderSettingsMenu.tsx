@@ -5,6 +5,7 @@ import { cn, formatTokens } from '../lib/utils'
 import { withHint } from '../lib/shortcuts'
 import { roleLabel } from './ModelFields'
 import { AccentPicker } from './AccentPicker'
+import { BackgroundPicker } from './BackgroundPicker'
 import { openSpaceSettings } from './SpaceSettingsModal'
 import { PlanUsageHeader } from './PlanUsageHeader'
 import { ThemeToggle } from './ThemeToggle'
@@ -111,6 +112,7 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
           </Section>
           <Section label="Appearance">
             <Row label="Theme"><ThemeToggle /></Row>
+            <Row label="Background"><BackgroundPicker /></Row>
             <Row label="Accent"><AccentPicker /></Row>
           </Section>
           <Section label="App">

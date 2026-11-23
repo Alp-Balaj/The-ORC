@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-fJED/R/7BnvrmV07awSU5t51XCWtsruFYNlbCuC6RM4='" />
-    <script>(function(){var t='system';try{t=localStorage.getItem('orc-theme')||'system'}catch(e){}if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var r=document.documentElement;try{var a=localStorage.getItem('orc-accent');if(a&&/^[a-z]+$/.test(a)&&a!=='indigo')r.dataset.accent=a}catch(e){}r.dataset.theme=t;r.style.colorScheme=t;r.style.background=t==='light'?'#f7f7f8':'#0b0b0d'})()</script>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-l2+SBTaZAfrnNEegcTqkdlEaXl7Ix3cjd3usJZfrVq0='" />
+    <script>(function(){var t='system';try{t=localStorage.getItem('orc-theme')||'system'}catch(e){}if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';var r=document.documentElement;try{var a=localStorage.getItem('orc-accent');if(a&&/^[a-z]+$/.test(a)&&a!=='indigo')r.dataset.accent=a}catch(e){}var P={midnight:'#080c14',charcoal:'#0f0e0d',black:'#000000',paper:'#f5f1ea',cool:'#eceef2'},c=t==='light'?'#f7f7f8':'#0b0b0d';try{var b=localStorage.getItem('orc-bg-'+t);if(b&&P[b]&&((b==='paper'||b==='cool')===(t==='light'))){r.dataset.bg=b;c=P[b]}}catch(e){}r.dataset.theme=t;r.style.colorScheme=t;r.style.background=c})()</script>
     <title>The ORC</title>
   </head>
   <body>
