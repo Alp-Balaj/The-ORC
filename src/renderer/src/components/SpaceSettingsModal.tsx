@@ -1,3 +1,4 @@
+import { dialogPanel } from './ui/dialog'
 import { useEffect, useRef, useState } from 'react'
 import { Settings2, X } from 'lucide-react'
 import type { SpaceView } from '../../../shared/types'
@@ -125,7 +126,7 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
         aria-modal="true"
         aria-labelledby="space-settings-title"
         data-testid="space-settings-dialog"
-        className="flex max-h-[85vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl"
+        className={dialogPanel("lg")}
       >
         <form data-testid="space-settings" onSubmit={save} className="flex min-h-0 flex-1 flex-col">
           <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-2">
