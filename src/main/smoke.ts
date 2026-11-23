@@ -437,7 +437,11 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
             log('steering instruction typed into the worker')
             const steered = await waitFor('steer in feed', () => !!view()?.feed.some((f) => f.kind === 'steer' && f.to === w.name), 0, 60_000)
             check('typing into a worker shows as steering in the feed', steered)
-            await waitFor('worker done again', () => view()?.agents.find((a) => a.name === w.name)?.status === 'done', 0, 120_000)
+            await waitFor('worker done again', () => {
+              // the coordinator may already have run stop_agent on the worker: 'exited' also counts as finished
+              const s =view()?.agents.find((a) => a.name === w.name)?.status
+              return s === 'done' || s === 'exited'
+            }, 0, 120_000)
             await waitFor('coordinator idle after the second report', () => coord()?.status === 'idle', 6000, 120_000)
             await sleep(6000) // one token refresh
             await shot('after-steering')
