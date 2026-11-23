@@ -115,23 +115,20 @@ function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
   )
 }
 
-export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, currentRoot, main, mainSelected, onSelectMain, onSelectMission, onSelectAgent, onReview }: {
+export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, currentRoot, mains, mainRoot, onSelectMain, onSelectMission, onSelectAgent, onReview }: {
   spaces: SpaceView[]
   currentRoot: string | null
   appRun: AppRunView | null
   missions: MissionView[]
   selectedMission: string | null
   selectedTerminal: string | null
-  main: MainSessionView | null
-  mainSelected: boolean
-  onSelectMain: () => void
+  mains: Record<string, MainSessionView>
+  mainRoot: string | null
+  onSelectMain: (root: string) => void
   onSelectMission: (id: string) => void
   onSelectAgent: (terminalId: string) => void
   onReview: (agent: string) => void
 }): React.JSX.Element {
-  // The main session is not a mission: its dot uses the agent palette ("off" reads as exited).
-  const mainDot = main && main.status !== 'off' ? main.status : 'exited'
-  const mainSubtitle = !main || main.status === 'off' ? 'Not started' : main.activity || statusLabel[mainDot]
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   // Missions whose cards you closed. Clicking the open mission's row toggles it; selecting
   // another mission opens that one.
@@ -245,25 +242,6 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
         </div>
       </div>
       {error && <div className="px-3 pb-2 text-[12px] text-destructive">{error}</div>}
-      <div className="px-2 pb-2" data-testid="main-session-entry">
-        <button
-          type="button"
-          onClick={onSelectMain}
-          aria-current={mainSelected ? 'page' : undefined}
-          title={`Main session: oversees all missions${main?.status === 'needs-you' ? ' (needs you)' : ''}`}
-          className={cn(
-            'flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-            mainSelected && 'bg-selected text-foreground hover:bg-selected'
-          )}
-        >
-          <Compass className="size-3.5 shrink-0" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate">Main session</span>
-            <span className="block truncate text-[11px] font-normal text-faint" data-testid="main-session-subtitle">{mainSubtitle}</span>
-          </span>
-          <StatusDot status={mainDot} />
-        </button>
-      </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {roots.length === 0 && (
           <div className="mx-1 mt-6 rounded-lg border border-dashed border-border-strong p-4 text-center text-[12px] leading-relaxed text-muted-foreground">
@@ -321,6 +299,34 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   />
                 )}
               </AnimatePresence>
+              {open && (() => {
+                // Each space has its own main session; its dot uses the agent palette ("off" reads as exited).
+                const main = mains[root]
+                const mainDot = main && main.status !== 'off' ? main.status : 'exited'
+                const mainSubtitle = !main || main.status === 'off' ? 'Not started' : main.activity || statusLabel[mainDot]
+                const mainSelected = mainRoot === root
+                return (
+                  <div className="ml-2.5 mt-0.5 border-l border-border pl-1.5" data-testid="main-session-entry">
+                    <button
+                      type="button"
+                      onClick={() => onSelectMain(root)}
+                      aria-current={mainSelected ? 'page' : undefined}
+                      title={`Main session: oversees ${name}'s missions${main?.status === 'needs-you' ? ' (needs you)' : ''}`}
+                      className={cn(
+                        'flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                        mainSelected && 'bg-selected text-foreground hover:bg-selected'
+                      )}
+                    >
+                      <Compass className="size-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">Main session</span>
+                        <span className="block truncate text-[11px] font-normal text-faint" data-testid="main-session-subtitle">{mainSubtitle}</span>
+                      </span>
+                      <StatusDot status={mainDot} />
+                    </button>
+                  </div>
+                )
+              })()}
               {open && ms.length > 0 && (
               <div className="ml-2.5 mt-0.5 space-y-px border-l border-border pl-1.5">
               {ms.map((m) => {
