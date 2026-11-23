@@ -81,7 +81,7 @@ const hook = (m: Missions, t: string, e: Record<string, unknown>) => m.hookEvent
   g(r, 'checkout', '-q', '--', 'shared.txt')
   const merged = await m.mergeToMain(id)
   ok('merge to main fast-forwards and cleans up', merged.ok && existsSync(join(r, 'a.txt')) && existsSync(join(r, 'b.txt')) && !existsSync(wa.cwd) && g(r, 'branch', '--list', 'orc/*', 'integration/*') === '', merged.message)
-  ok('mission stopped after merge', v().state === 'stopped' && !!v().mergedToMain)
+  ok('merged mission cleared out after merge', !m.views().some((x) => x.id === id) && /Cleared 1 merged mission/.test(merged.message), merged.message)
   const { readdirSync } = await import('node:fs')
   const notes = readdirSync(recordsDir)
   const note = notes.length === 1 ? readFileSync(join(recordsDir, notes[0]), 'utf8') : ''

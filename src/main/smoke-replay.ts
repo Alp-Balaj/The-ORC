@@ -234,9 +234,11 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   check('the Verifier verdict shows', /PASS/.test(await waitText('[data-testid=verifier-status]', /PASS/)))
   await shot('replay-merge-screen')
   await js(`document.querySelector('[data-testid=confirm-merge]')?.click()`)
-  const mergeMsg = await waitText('[data-testid=merge-result]', /\S/)
-  check('Merge to main fast-forwards space-b main', /Merged/.test(mergeMsg) && existsSync(join(spaceB, 'doc.txt')), mergeMsg)
-  check('…and the mission is finished', !!view(m3).mergedToMain && view(m3).state === 'stopped')
+  // A successful merge clears the mission out, so its merge screen (and result text) goes with it.
+  const m3Gone = (): boolean => !missions.views().some((v) => v.id === m3)
+  for (const end = Date.now() + 10_000; Date.now() < end && !m3Gone(); await sleep(250));
+  check('Merge to main fast-forwards space-b main', existsSync(join(spaceB, 'doc.txt')))
+  check('…and the merged mission is cleared out', m3Gone())
   await openMission(m2)
   await sleep(600)
   await js(`document.querySelector('[data-testid=stop-mission]')?.click()`)
@@ -423,7 +425,8 @@ export async function runWideTree(c: ReplayCtx, start: (repoPath: string, name: 
     await js(`document.querySelector('[data-testid=side-resize]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`)
     await sleep(1000)
     const reset = await panel()
-    check('double-clicking the edge resets the width', reset.side === before.side && reset.cols === before.cols, JSON.stringify(reset))
+    // Reset goes to the default (420px, App.tsx SideDefault), not to `before`: a width saved by an earlier run may differ.
+    check('double-clicking the edge resets the width', reset.side === 420 && reset.side < after.side, JSON.stringify(reset))
     const roErrors = await js<string[]>(`window.__orcErrors`)
     check('no ResizeObserver loop error while resizing', !roErrors.some((e) => /ResizeObserver/.test(e)), roErrors.join(' | '))
 

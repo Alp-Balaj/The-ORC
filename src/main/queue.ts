@@ -33,6 +33,8 @@ export interface QueueDeps {
 }
 
 const verdictOf = (report: string): string | null => /VERDICT:\s*(\w+)/.exec(report)?.[1]?.toUpperCase() ?? null
+/** Only FAIL (or no readable verdict) pauses the queue; CONCERNS is noted on the item and it moves on. */
+const verdictPasses = (verdict: string | null): boolean => verdict === 'PASS' || verdict === 'CONCERNS'
 
 function firstProblem(report: string): string {
   const lines = report.split('\n')
@@ -234,7 +236,7 @@ export class Queues {
       if (v.status === 'failed') return `Verifier failed — ${firstProblem(v.report) || 'no report'}`
       if (v.status === 'done' && v.integrationCommit === m.integrationCommit) {
         const verdict = verdictOf(v.report)
-        if (verdict !== 'PASS') return `Verifier: ${verdict ?? 'no verdict'} — ${firstProblem(v.report)}`
+        if (!verdictPasses(verdict)) return `Verifier: ${verdict ?? 'no verdict'} — ${firstProblem(v.report)}`
       }
     }
     if (m.gate && !m.gate.ok && m.gate.at !== ack?.gateAt) return `gate failed: ${m.gate.command} (exit ${m.gate.exitCode ?? '?'})`
@@ -244,13 +246,20 @@ export class Queues {
     return null
   }
 
+  /** The Verifier's concerns on a finished item, kept visible since they no longer pause. */
+  private concerns(m: MissionView): string | null {
+    const v = m.verifier
+    if (m.mergedToMain || v?.status !== 'done' || verdictOf(v.report) !== 'CONCERNS') return null
+    return `Verifier: CONCERNS — ${firstProblem(v.report)}`
+  }
+
   private finished(m: MissionView, ack: Ack | undefined): boolean {
     if (m.mergedToMain) return true
     // A stopped mission the owner resumed past will never be verified: move on.
     if (m.state === 'stopped' && ack?.stopped) return true
     const v = m.verifier
     if (!v || v.status === 'running' || v.integrationCommit !== m.integrationCommit) return false
-    if (v.status === 'done' && verdictOf(v.report) === 'PASS') return true
+    if (v.status === 'done' && verdictPasses(verdictOf(v.report))) return true
     return v.at === ack?.verifierAt
   }
 
@@ -271,7 +280,7 @@ export class Queues {
         changed = true
       } else if (m && this.finished(m, q.acks[item.id])) {
         item.status = 'done'
-        item.reason = null
+        item.reason = this.concerns(m)
         changed = true
       }
     }
