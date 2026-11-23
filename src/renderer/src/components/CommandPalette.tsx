@@ -134,7 +134,9 @@ export function CommandPalette({ open, onClose, missions, currentMissionId, onSe
                     i === safeActive ? 'bg-selected text-foreground' : 'text-foreground/90 hover:bg-accent'
                   )}
                 >
-                  {it.kind === 'agent' && <StatusDot status={it.status} />}
+                  <span className="flex w-3.5 shrink-0 items-center justify-center">
+                    {it.kind === 'agent' && <StatusDot status={it.status} />}
+                  </span>
                   <span className="truncate">{it.title}</span>
                   {it.kind !== 'command' && <span className="truncate text-[12px] text-faint">{it.detail}</span>}
                   {it.kind === 'mission' && it.current && (

@@ -48,7 +48,7 @@ export interface Sized extends Placed {
  *  one-line node for everything deeper. `trunk`: how far in from a parent's left edge the
  *  line down into its stacked children runs; `indent` keeps each child's left edge right of
  *  that line, so the elbow (down, then right) never doubles back. */
-export const stackSizes = { cardW: 128, cardH: 46, rowW: 120, rowH: 28, gapX: 14, gapY: 36, rowGap: 6, indent: 14, trunk: 7, stackTop: 10 }
+export const stackSizes = { cardW: 128, cardH: 46, rowW: 114, rowH: 28, gapX: 14, gapY: 36, rowGap: 6, indent: 14, trunk: 7, stackTop: 10 }
 
 /** The "stacked graph": depth 0 and 1 (coordinator and leads) are laid out as a tree, side by
  *  side; everything below a lead goes in one vertical column under it, each depth indented a

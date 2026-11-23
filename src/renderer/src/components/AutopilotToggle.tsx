@@ -56,14 +56,14 @@ export function AutopilotToggle({ root }: { root: string }): React.JSX.Element {
           type="checkbox"
           checked={enabled}
           onChange={(e) => apply({ enabled: e.target.checked })}
-          className="accent-primary"
+          className="shrink-0 accent-primary"
           data-testid="autopilot-enabled"
         />
         Autopilot: when the queue runs empty, find new tasks
       </label>
       <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className="block text-[11px] leading-snug text-muted-foreground">Max tasks per round (1-10)</label>
+        <div className="flex flex-col gap-1">
+          <label className="flex min-h-7.5 items-end text-[11px] leading-snug text-muted-foreground">Max tasks per round (1-10)</label>
           <Input
             type="number"
             min={1}
@@ -79,8 +79,8 @@ export function AutopilotToggle({ root }: { root: string }): React.JSX.Element {
             data-testid="autopilot-max-tasks"
           />
         </div>
-        <div className="space-y-1">
-          <label className="block text-[11px] leading-snug text-muted-foreground">Stop after N empty rounds (1-10)</label>
+        <div className="flex flex-col gap-1">
+          <label className="flex min-h-7.5 items-end text-[11px] leading-snug text-muted-foreground">Stop after N empty rounds (1-10)</label>
           <Input
             type="number"
             min={1}

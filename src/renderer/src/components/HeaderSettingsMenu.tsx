@@ -28,7 +28,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 function Row({ label, children, title, testId }: { label: string; children: React.ReactNode; title?: string; testId?: string }): React.JSX.Element {
   return (
-    <div className="flex items-center justify-between gap-4 text-[12px]" title={title}>
+    <div className="flex min-h-7.5 items-center justify-between gap-4 text-[12px]" title={title}>
       <span className="text-muted-foreground">{label}</span>
       <span className="min-w-0 truncate text-right" data-testid={testId}>{children}</span>
     </div>
