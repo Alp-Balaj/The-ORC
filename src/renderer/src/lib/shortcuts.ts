@@ -12,6 +12,7 @@ export type ShortcutId =
   | 'nextAgent'
   | 'prevAgent'
   | 'coordinator'
+  | 'jumpNeedsYou'
   | 'focusTerminal'
   | 'palette'
   | 'newMission'
@@ -47,6 +48,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'spaceSettings', label: 'Space settings', group: 'Missions', bindings: [g('Mod+,')] },
   { id: 'nextAgent', label: 'Next agent', group: 'Agents', bindings: [g('Alt+ArrowDown')] },
   { id: 'prevAgent', label: 'Previous agent', group: 'Agents', bindings: [g('Alt+ArrowUp')] },
+  { id: 'jumpNeedsYou', label: 'Jump to the agent that needs you', group: 'Agents', bindings: [g('Mod+Shift+J')] },
   { id: 'coordinator', label: 'Go to the coordinator', group: 'Agents', bindings: [g('Mod+0')] },
   { id: 'focusTerminal', label: 'Focus the terminal', group: 'Agents', bindings: [g('Mod+`')] },
   { id: 'palette', label: 'Quick switcher', group: 'General', bindings: [a('Mod+K'), a('Mod+P'), g('Mod+Shift+P')] },
