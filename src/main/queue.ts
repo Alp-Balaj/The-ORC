@@ -72,6 +72,7 @@ export class Queues {
     if (deps.file) {
       try {
         const data = JSON.parse(readFileSync(deps.file, 'utf8')) as { version?: number; queues?: QueueState[] }
+        if (!data || typeof data !== 'object' || (data.queues !== undefined && !Array.isArray(data.queues))) throw new Error('unexpected shape')
         for (const q of data.queues ?? []) {
           if (!q || typeof q.root !== 'string' || !Array.isArray(q.items)) continue
           this.queues.set(q.root, {
@@ -85,7 +86,12 @@ export class Queues {
             usageResumeAt: q.usageResumeAt ?? null
           })
         }
-      } catch {}
+      } catch (err) {
+        this.queues.clear()
+        if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+          console.warn(`queue state file ${deps.file} is unreadable or corrupt; starting with fresh state`, err)
+        }
+      }
     }
     this.armTimer()
   }
