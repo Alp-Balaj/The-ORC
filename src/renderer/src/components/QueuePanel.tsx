@@ -14,11 +14,11 @@ export const modeOptions: { value: PermissionMode; label: string; short: string 
 
 const errText = (err: unknown): string => String(err).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, '')
 
-function StatusIcon({ status }: { status: QueueItem['status'] }): React.JSX.Element {
-  if (status === 'running') return <LoaderCircle className="size-3 shrink-0 animate-spin text-working" aria-label="running" />
-  if (status === 'done') return <CircleCheck className="size-3 shrink-0 text-done" aria-label="done" />
-  if (status === 'paused') return <CirclePause className="size-3 shrink-0 text-needs" aria-label="paused" />
-  return <Circle className="size-3 shrink-0 text-faint" aria-label="queued" />
+function StatusIcon({ status, className }: { status: QueueItem['status']; className?: string }): React.JSX.Element {
+  if (status === 'running') return <LoaderCircle className={cn('size-3 shrink-0 animate-spin text-working', className)} aria-label="running" />
+  if (status === 'done') return <CircleCheck className={cn('size-3 shrink-0 text-done', className)} aria-label="done" />
+  if (status === 'paused') return <CirclePause className={cn('size-3 shrink-0 text-needs', className)} aria-label="paused" />
+  return <Circle className={cn('size-3 shrink-0 text-faint', className)} aria-label="queued" />
 }
 
 /** A space's backlog: tasks that each become a mission, run one after another. */
@@ -76,9 +76,9 @@ export function QueuePanel({ root, queue, onSelectMission }: {
           <span className="font-medium">Queue</span>
           {pending > 0 && <span className="text-[11px] tabular-nums text-faint">{pending}</span>}
           {running ? (
-            <span className="ml-1 text-[10.5px] text-working">running</span>
+            <span className="text-[10.5px] text-working">running</span>
           ) : queue?.pausedReason ? (
-            <span className="ml-1 text-[10.5px] text-needs">paused</span>
+            <span className="text-[10.5px] text-needs">paused</span>
           ) : null}
         </button>
         {pending > 0 && (running ? (
@@ -142,9 +142,9 @@ export function QueuePanel({ root, queue, onSelectMission }: {
                   >
                     <div className="flex min-w-0 items-center gap-1.5">
                       {canDrag ? (
-                        <GripVertical className="-ml-1 size-3 shrink-0 cursor-grab text-faint opacity-0 group-hover/item:opacity-100" />
+                        <GripVertical className="absolute left-1.5 top-1/2 size-3 -translate-y-1/2 cursor-grab text-faint opacity-0 group-hover/item:opacity-100" />
                       ) : null}
-                      <StatusIcon status={it.status} />
+                      <StatusIcon status={it.status} className={canDrag ? 'group-hover/item:opacity-0' : undefined} />
                       {it.status === 'running' && it.missionId ? (
                         <button className="min-w-0 cursor-pointer truncate text-left text-[12px] font-medium text-foreground hover:underline" onClick={() => onSelectMission(it.missionId!)} title={`Open mission ${it.missionName ?? ''}`} data-testid="queue-item-mission">
                           {it.title}
@@ -165,16 +165,16 @@ export function QueuePanel({ root, queue, onSelectMission }: {
                       )}
                     </div>
                     {(it.status === 'running' || it.status === 'done') && it.missionName && (
-                      <div className="truncate pl-[18px] text-[10.5px] text-faint">{it.missionName}</div>
+                      <div className="truncate pl-4.5 text-[10.5px] text-faint">{it.missionName}</div>
                     )}
-                    {it.reason && <div className="pl-[18px] text-[10.5px] leading-snug text-needs">{it.reason}</div>}
+                    {it.reason && <div className="pl-4.5 text-[10.5px] leading-snug text-needs">{it.reason}</div>}
                   </li>
                 )
               })}
             </ul>
           )}
           {items.length > 0 && (
-            <div className="flex items-center gap-1 px-1 text-[11px]" data-testid="queue-clear-row">
+            <div className="flex items-center gap-1 px-1.5 text-[11px]" data-testid="queue-clear-row">
               {doneCount > 0 && (
                 <Button size="xs" variant="ghost" className="h-5 px-1.5 text-muted-foreground" title="Remove finished tasks from the list" data-testid="queue-clear-done" onClick={() => run(window.orc.queueClear(root, 'done'))}>
                   Clear done ({doneCount})
@@ -194,7 +194,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
             </div>
           )}
           <form
-            className="space-y-1 px-0.5 pt-0.5"
+            className="space-y-1 px-1.5 pt-0.5"
             onSubmit={(e) => {
               e.preventDefault()
               add()
@@ -222,7 +222,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
               />
             )}
             {!running && pending > 0 && (
-              <NativeSelect className="h-6 px-1.5 text-[11px] text-muted-foreground" value={permissionMode} onChange={(e) => setMode(e.target.value as PermissionMode)} title="Permission mode for the missions the queue starts" data-testid="queue-mode">
+              <NativeSelect className="h-7 px-1.5 text-[11px] text-muted-foreground" value={permissionMode} onChange={(e) => setMode(e.target.value as PermissionMode)} title="Permission mode for the missions the queue starts" data-testid="queue-mode">
                 {modeOptions.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </NativeSelect>
             )}
