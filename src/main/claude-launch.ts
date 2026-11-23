@@ -64,6 +64,8 @@ export function sessionEnv(base: NodeJS.ProcessEnv = process.env, configDir?: st
   for (const [k, v] of Object.entries(base)) if (v !== undefined && !isInheritedSessionVar(k)) env[k] = v
   const dir = configDir === undefined ? claudeAccounts.activeConfigDir() : configDir
   if (dir) env.CLAUDE_CONFIG_DIR = dir
+  // Marks an ORC-launched session so user Stop/Notification hooks (notify.sh) can skip it.
+  env.ORC_SESSION = '1'
   return env
 }
 
