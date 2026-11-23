@@ -43,15 +43,19 @@ export function SplitPanel({ mission }: { mission: MissionView }): React.JSX.Ele
   )
 }
 
-function useDiff(load: () => Promise<Diff | null>, deps: unknown[]): Diff | null {
+function useDiff(load: () => Promise<Diff | null>, deps: unknown[]): { diff: Diff | null; error: string | null } {
   const [diff, setDiff] = useState<Diff | null>(null)
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     let live = true
     setDiff(null)
+    setError(null)
     load()
       .then((d) => live && setDiff(d))
-      .catch(() => {
-        if (live) setDiff(null)
+      .catch((e: unknown) => {
+        if (!live) return
+        setDiff(null)
+        setError(e instanceof Error ? e.message : String(e))
       })
     return () => {
       live = false
@@ -59,13 +63,13 @@ function useDiff(load: () => Promise<Diff | null>, deps: unknown[]): Diff | null
     // deps are caller-supplied and load is an inline closure that changes every render, so neither can be listed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
-  return diff
+  return { diff, error }
 }
 
-function DiffArea({ diff, empty }: { diff: Diff | null; empty: string }): React.JSX.Element {
+function DiffArea({ diff, error, empty }: { diff: Diff | null; error: string | null; empty: string }): React.JSX.Element {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {diff ? <DiffView diff={diff} /> : <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-strong text-[13px] text-faint">{empty}</div>}
+      {error ? <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-destructive/50 px-4 text-center text-[13px] text-destructive" data-testid="diff-error">Couldn't load the diff: {error}</div> : diff ? <DiffView diff={diff} /> : <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-strong text-[13px] text-faint">{empty}</div>}
     </div>
   )
 }
@@ -84,7 +88,7 @@ function DiffStats({ diff }: { diff: Diff | null }): React.JSX.Element | null {
 /** Checkpointed: one worker's diff, approve or send back. */
 export function ReviewScreen({ mission, agent, onBack }: { mission: MissionView; agent: string; onBack: () => void }): React.JSX.Element {
   const a = mission.agents.find((x) => x.name === agent)
-  const diff = useDiff(() => window.orc.workerDiff(mission.id, agent), [mission.id, agent, a?.merge])
+  const { diff, error: diffError } = useDiff(() => window.orc.workerDiff(mission.id, agent), [mission.id, agent, a?.merge])
   const [note, setNote] = useState('')
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="review-screen">
@@ -100,7 +104,7 @@ export function ReviewScreen({ mission, agent, onBack }: { mission: MissionView;
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
-        <DiffArea diff={diff} empty="No diff to show." />
+        <DiffArea diff={diff} error={diffError} empty="No diff to show." />
       </div>
       {a?.merge === 'review' ? (
         <div className="flex items-center gap-2 border-t border-border bg-background px-4 py-2.5">
@@ -139,7 +143,7 @@ export const OrcBranch = 'orc-integration'
 /** Integrate: the mission's combined diff, the gate, the Verifier, and the button that merges it
  *  into the repo's ORC branch. Merge to main (OrcMergeScreen) later brings the ORC branch to main. */
 export function MergeScreen({ mission, space, onBack, onRemoved }: { mission: MissionView; space: SpaceView | undefined; onBack: () => void; onRemoved?: () => void }): React.JSX.Element {
-  const diff = useDiff(() => window.orc.missionDiff(mission.id), [mission.id, mission.integrationCommit])
+  const { diff, error: diffError } = useDiff(() => window.orc.missionDiff(mission.id), [mission.id, mission.integrationCommit])
   const [gateCmd, setGateCmd] = useState(space?.gateCommand ?? '')
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -189,7 +193,7 @@ export function MergeScreen({ mission, space, onBack, onRemoved }: { mission: Mi
             </div>
           </div>
         ) : (
-          <DiffArea diff={diff} empty="Nothing merged yet." />
+          <DiffArea diff={diff} error={diffError} empty="Nothing merged yet." />
         )}
 
         <aside className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto min-[1440px]:w-[310px]">
@@ -329,7 +333,7 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
   const ready = inRepo.filter((m) => m.integrated && m.integrated.integrationCommit === m.integrationCommit)
   const pending = inRepo.filter((m) => m.merged.length > 0 && !ready.includes(m))
   const main = ready[0]?.mainBranch ?? inRepo[0]?.mainBranch ?? 'main'
-  const diff = useDiff(() => window.orc.orcDiff(repo), [repo, ready.map((m) => m.integrated!.commit).join()])
+  const { diff, error: diffError } = useDiff(() => window.orc.orcDiff(repo), [repo, ready.map((m) => m.integrated!.commit).join()])
   const [result, setResult] = useState<{ ok: boolean; message: string; files?: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [updating, setUpdating] = useState(false)
@@ -357,7 +361,7 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
       </div>
 
       <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4">
-        <DiffArea diff={diff} empty={`Nothing on ${OrcBranch} that isn't in ${main}. Integrate a mission first.`} />
+        <DiffArea diff={diff} error={diffError} empty={`Nothing on ${OrcBranch} that isn't in ${main}. Integrate a mission first.`} />
 
         <aside className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto min-[1440px]:w-[310px]">
           <section className="rounded-lg border border-border bg-card p-3" data-testid="orc-missions">
