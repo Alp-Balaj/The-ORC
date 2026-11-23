@@ -62,7 +62,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
     a.status === 'exited' && a.exitKind !== 'crashed' && 'opacity-60',
     a.exitKind === 'crashed' && !data.selected && 'border-destructive/50',
     a.status === 'done' && !data.selected && 'opacity-70',
-    data.selected && 'border-border-strong bg-selected hover:bg-selected'
+    data.selected && 'border-primary/60 bg-selected shadow-[0_0_0_1px] shadow-primary/25 hover:bg-selected'
   )
   if (data.row) {
     return (
