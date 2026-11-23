@@ -36,8 +36,8 @@ export function AccountsScreen({ open, onClose }: { open: boolean; onClose: () =
     }
   }, [])
 
-  const load = useCallback(() => act(() => window.api.githubStatus()), [act])
-  const connect = useCallback(() => act(() => window.api.githubConnect(), true), [act])
+  const load = useCallback(() => act(() => window.orc.githubStatus()), [act])
+  const connect = useCallback(() => act(() => window.orc.githubConnect(), true), [act])
 
   useEffect(() => {
     if (open) void load()
@@ -48,7 +48,7 @@ export function AccountsScreen({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!polling) return
     const id = window.setInterval(() => {
-      window.api.githubStatus().then(setView, () => {})
+      window.orc.githubStatus().then(setView, () => {})
     }, POLL_MS)
     return () => window.clearInterval(id)
   }, [polling])
@@ -119,7 +119,7 @@ export function AccountsScreen({ open, onClose }: { open: boolean; onClose: () =
           </p>
         )}
         <div className="flex justify-end">
-          <Button size="sm" variant="ghost" onClick={() => void act(() => window.api.githubCancel())} data-testid="github-cancel">
+          <Button size="sm" variant="ghost" onClick={() => void act(() => window.orc.githubCancel())} data-testid="github-cancel">
             Cancel
           </Button>
         </div>
@@ -135,7 +135,7 @@ export function AccountsScreen({ open, onClose }: { open: boolean; onClose: () =
           </div>
           <p className="mt-0.5 text-[11.5px] text-faint">Push to GitHub uses this account.</p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => void act(() => window.api.githubDisconnect())} data-testid="github-disconnect">
+        <Button size="sm" variant="outline" onClick={() => void act(() => window.orc.githubDisconnect())} data-testid="github-disconnect">
           Disconnect
         </Button>
       </div>

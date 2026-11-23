@@ -481,7 +481,8 @@ export type PushResult = { ok: true; remote: string; branch: string; message: st
 export async function pushBranch(repo: string, branch: string, remote?: string): Promise<PushResult> {
   const name = remote ?? (await pushRemote(repo))
   if (!name) return { ok: false, message: 'No remote configured. Add one with `git remote add origin <url>`.' }
-  const r = await serialized(repo, () => git(repo, [...(await githubGitArgs()), 'push', '-u', name, `refs/heads/${branch}:refs/heads/${branch}`], { timeoutMs: 120_000, allowFail: true }))
+  const auth = await githubGitArgs()
+  const r = await serialized(repo, () => git(repo, [...auth, 'push', '-u', name, `refs/heads/${branch}:refs/heads/${branch}`], { timeoutMs: 120_000, allowFail: true }))
   if (r.code === 0) return { ok: true, remote: name, branch, message: `Pushed ${branch} to ${name}.` }
   const err = r.stderr || r.stdout || 'git push failed'
   if (/non-fast-forward|\[rejected\]|fetch first|tip of your current branch is behind/i.test(err)) return { ok: false, message: `Rejected: ${name}/${branch} has commits this branch doesn't. Pull or merge them first (The ORC never force-pushes).` }

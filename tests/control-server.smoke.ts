@@ -21,7 +21,7 @@ await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
   requestInit: { headers: { Authorization: 'Bearer good' } }
 }))
 const tools = (await client.listTools()).tools.map((t) => t.name).sort()
-if (tools.join() !== 'add_to_queue,ask_human,propose_split,report_done,search_history,spawn_agent,stop_agent') fail(`tools ${tools}`)
+if (tools.join() !== 'add_to_queue,ask_human,integrate_mission,list_missions,propose_split,report_done,search_history,spawn_agent,start_mission,stop_agent') fail(`tools ${tools}`)
 const sp = await client.callTool({ name: 'propose_split', arguments: { summary: 'two files', workers: [{ name: 'a', task: 'x' }, { name: 'b', task: 'y' }] } })
 if (!JSON.stringify(sp).includes('pending')) fail('propose_split result')
 const r = await client.callTool({ name: 'spawn_agent', arguments: { name: 'post-api', task: 'build it' } })

@@ -1,5 +1,4 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { shell } from 'electron'
 import type { GithubAccountView } from '../shared/types.ts'
 
 // GitHub account via the `gh` CLI. gh keeps the token in its own store (keyring or hosts.yml);
@@ -48,7 +47,9 @@ export async function githubConnect(): Promise<GithubAccountView> {
     const m = /code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i.exec(buf)
     if (m && connecting && !connecting.code) {
       connecting.code = m[1]
-      void shell.openExternal(connecting.url)
+      // Loaded here, not at the top: mission-git.ts imports this file and tests run it under plain node.
+      const url = connecting.url
+      void import('electron').then(({ shell }) => shell.openExternal(url))
       child.stdin?.write('\n')
     }
   }
