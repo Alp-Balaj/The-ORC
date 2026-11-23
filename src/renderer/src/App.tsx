@@ -610,6 +610,11 @@ export function App(): React.JSX.Element {
               <span className="shrink-0 font-medium text-foreground">{agent.sessionName}</span>
               <span className="min-w-0 truncate font-mono text-[11px] text-faint">{agent.cwd}</span>
             </div>
+            {agent.question && (
+              <div className="question-banner" data-testid="question-banner" title={agent.question}>
+                {agent.question}
+              </div>
+            )}
             <TerminalView key={agent.terminalId} id={agent.terminalId} />
           </>
         ) : (
