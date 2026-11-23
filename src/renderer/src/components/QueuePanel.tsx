@@ -29,6 +29,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
 }): React.JSX.Element {
   const items = queue?.items ?? []
   const pending = items.filter((i) => i.status !== 'done').length
+  const doneCount = items.length - pending
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [details, setDetails] = useState('')
@@ -36,6 +37,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
   const [mode, setMode] = useState<PermissionMode | null>(null)
   const [drag, setDrag] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
+  const [confirmAll, setConfirmAll] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const running = queue?.running ?? false
   const permissionMode = mode ?? queue?.permissionMode ?? 'acceptEdits'
@@ -170,6 +172,26 @@ export function QueuePanel({ root, queue, onSelectMission }: {
                 )
               })}
             </ul>
+          )}
+          {items.length > 0 && (
+            <div className="flex items-center gap-1 px-1 text-[11px]" data-testid="queue-clear-row">
+              {doneCount > 0 && (
+                <Button size="xs" variant="ghost" className="h-5 px-1.5 text-muted-foreground" title="Remove finished tasks from the list" data-testid="queue-clear-done" onClick={() => run(window.orc.queueClear(root, 'done'))}>
+                  Clear done ({doneCount})
+                </Button>
+              )}
+              {confirmAll ? (
+                <span className="ml-auto flex items-center gap-1 text-needs">
+                  Clear all?
+                  <Button size="xs" variant="ghost" className="h-5 px-1.5 text-destructive" data-testid="queue-clear-all-confirm" onClick={() => { setConfirmAll(false); run(window.orc.queueClear(root, 'all')) }}>Yes</Button>
+                  <Button size="xs" variant="ghost" className="h-5 px-1.5" onClick={() => setConfirmAll(false)}>No</Button>
+                </span>
+              ) : (
+                <Button size="xs" variant="ghost" className="ml-auto h-5 px-1.5 text-muted-foreground" title="Remove every task except the running one" data-testid="queue-clear-all" onClick={() => setConfirmAll(true)}>
+                  Clear all
+                </Button>
+              )}
+            </div>
           )}
           <form
             className="space-y-1 px-0.5 pt-0.5"

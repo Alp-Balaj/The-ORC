@@ -336,6 +336,7 @@ ipcMain.handle('queue:add', async (_e, root: string, title: string, details: str
 })
 ipcMain.handle('queue:update', (_e, root: string, id: string, patch: { title?: string; details?: string }) => queue.update(root, id, patch))
 ipcMain.handle('queue:remove', (_e, root: string, id: string) => queue.remove(root, id))
+ipcMain.handle('queue:clear', (_e, root: string, scope: 'done' | 'all') => queue.clear(root, scope))
 ipcMain.handle('queue:reorder', (_e, root: string, ids: string[]) => queue.reorder(root, ids))
 ipcMain.handle('queue:start', (_e, root: string, permissionMode: PermissionMode) => queue.start(root, permissionMode))
 ipcMain.handle('queue:pause', (_e, root: string) => queue.pause(root))
