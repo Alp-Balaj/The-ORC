@@ -83,6 +83,110 @@
 :root[data-accent="teal"] { --color-primary: #14b8a6; --color-ring: #4fd3c4; --color-primary-foreground: #03151a; }
 :root[data-theme="light"][data-accent="teal"] { --color-primary: #0f766e; --color-ring: #1a948a; --color-primary-foreground: #ffffff; }
 
+/* Background palettes (data-bg, set by lib/background.ts). Absent = the mode's default above (graphite / white).
+   Each overrides only surface, border and neutral-text tokens; accent and status colours are untouched.
+   Muted text keeps >= 4.5:1 on its own palette's background. */
+:root[data-theme="dark"][data-bg="midnight"] {
+  --color-background: #080c14;
+  --color-foreground: #e3e8f2;
+  --color-panel: #0c111b;
+  --color-card: #121927;
+  --color-card-foreground: #e3e8f2;
+  --color-border: #1d2636;
+  --color-border-strong: #2a3547;
+  --color-input: #263044;
+  --color-secondary: #172033;
+  --color-secondary-foreground: #d0d6e2;
+  --color-muted: #101726;
+  --color-muted-foreground: #8792a6;
+  --color-faint: #5a6578;
+  --color-accent: #1a2234;
+  --color-selected: #202b40;
+  --color-scrollbar: #263044;
+  --color-scrollbar-hover: #364359;
+  --color-edge: #324058;
+}
+:root[data-theme="dark"][data-bg="charcoal"] {
+  --color-background: #0f0e0d;
+  --color-foreground: #ebe7e1;
+  --color-panel: #151412;
+  --color-card: #1c1a18;
+  --color-card-foreground: #ebe7e1;
+  --color-border: #2a2724;
+  --color-border-strong: #38342f;
+  --color-input: #34302b;
+  --color-secondary: #221f1c;
+  --color-secondary-foreground: #d8d3cb;
+  --color-muted: #191715;
+  --color-muted-foreground: #958f86;
+  --color-faint: #68635b;
+  --color-accent: #24211e;
+  --color-selected: #2d2925;
+  --color-scrollbar: #34302b;
+  --color-scrollbar-hover: #45403a;
+  --color-edge: #413c36;
+}
+:root[data-theme="dark"][data-bg="black"] {
+  --color-background: #000000;
+  --color-foreground: #ececec;
+  --color-panel: #050505;
+  --color-card: #0d0d0d;
+  --color-card-foreground: #ececec;
+  --color-border: #1c1c1c;
+  --color-border-strong: #2a2a2a;
+  --color-input: #262626;
+  --color-secondary: #131313;
+  --color-secondary-foreground: #d4d4d4;
+  --color-muted: #0a0a0a;
+  --color-muted-foreground: #8a8a8a;
+  --color-faint: #5c5c5c;
+  --color-accent: #161616;
+  --color-selected: #1e1e1e;
+  --color-scrollbar: #262626;
+  --color-scrollbar-hover: #383838;
+  --color-edge: #303030;
+}
+:root[data-theme="light"][data-bg="paper"] {
+  --color-background: #f5f1ea;
+  --color-foreground: #211f1b;
+  --color-panel: #fbf8f3;
+  --color-card: #fdfbf7;
+  --color-card-foreground: #211f1b;
+  --color-border: #e3ddd2;
+  --color-border-strong: #d3ccbd;
+  --color-input: #d3ccbd;
+  --color-secondary: #eee9df;
+  --color-secondary-foreground: #35322c;
+  --color-muted: #efeadf;
+  --color-muted-foreground: #666056;
+  --color-faint: #9d9588;
+  --color-accent: #e9e3d7;
+  --color-selected: #e2dccd;
+  --color-scrollbar: #d3ccbd;
+  --color-scrollbar-hover: #b9b1a2;
+  --color-edge: #cbc3b3;
+}
+:root[data-theme="light"][data-bg="cool"] {
+  --color-background: #eceef2;
+  --color-foreground: #181b21;
+  --color-panel: #f6f7f9;
+  --color-card: #fafbfc;
+  --color-card-foreground: #181b21;
+  --color-border: #d9dde4;
+  --color-border-strong: #c7ccd6;
+  --color-input: #c7ccd6;
+  --color-secondary: #e4e7ec;
+  --color-secondary-foreground: #2a2f38;
+  --color-muted: #e6e9ee;
+  --color-muted-foreground: #596070;
+  --color-faint: #939aa8;
+  --color-accent: #dfe3ea;
+  --color-selected: #d8dde6;
+  --color-scrollbar: #c7ccd6;
+  --color-scrollbar-hover: #aab1be;
+  --color-edge: #bcc2cd;
+}
+
 @layer base {
   html, body, #root { height: 100%; }
   body {
