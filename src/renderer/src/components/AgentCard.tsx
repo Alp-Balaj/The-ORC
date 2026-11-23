@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { CircleHelp, GitBranch, CheckCheck, GitMerge, Swords, Eye, Square, X } from 'lucide-react'
+import { CircleHelp, CheckCheck, GitMerge, Swords, Eye, Square, X } from 'lucide-react'
 import type { AgentView, AgentStatus } from '../../../shared/types'
 import { ago, cn, formatTokens } from '../lib/utils'
 import { Button } from './ui/button'
@@ -36,19 +36,19 @@ const labelClass: Record<AgentStatus, string> = {
   starting: 'text-muted-foreground',
   working: 'text-working',
   idle: 'text-muted-foreground',
-  'needs-you': 'rounded bg-needs/15 px-1.5 font-medium leading-4 text-needs ring-1 ring-inset ring-needs/30',
+  'needs-you': 'font-medium text-needs',
   done: 'text-done',
   exited: 'text-exited-foreground'
 }
 
 /** Card surface per status (when not selected): needs-you is loudest, done and exited recede. */
 const cardClass: Record<AgentStatus, string> = {
-  starting: 'border-border bg-card hover:border-border-strong',
-  working: 'border-border bg-card hover:border-border-strong',
-  idle: 'border-border bg-card hover:border-border-strong',
-  'needs-you': 'border-needs/40 bg-card hover:border-needs/60',
-  done: 'border-transparent bg-transparent hover:border-border hover:bg-card',
-  exited: 'border-transparent bg-transparent hover:border-border hover:bg-card'
+  starting: 'hover:bg-accent',
+  working: 'hover:bg-accent',
+  idle: 'hover:bg-accent',
+  'needs-you': 'hover:bg-accent',
+  done: 'hover:bg-accent',
+  exited: 'hover:bg-accent'
 }
 
 export function StatusDot({ status, crashed, className }: { status: AgentStatus; crashed?: boolean; className?: string }): React.JSX.Element {
@@ -73,19 +73,19 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
       layout
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, height: 0, marginTop: 0, paddingTop: 0, paddingBottom: 0, borderWidth: 0 }}
+      exit={{ opacity: 0, height: 0, marginTop: 0, paddingTop: 0, paddingBottom: 0 }}
       transition={{ duration: 0.18 }}
       data-testid="agent-card"
       data-agent={a.name}
       data-status={a.status}
       onClick={onSelect}
       className={cn(
-        'group relative cursor-pointer rounded-lg border px-2.5 py-2 transition-colors',
-        selected ? 'border-ring/50 bg-selected' : crashed ? 'border-destructive/40 bg-card hover:border-destructive/60' : cardClass[a.status]
+        'group relative cursor-pointer rounded-md px-2 py-1 transition-colors',
+        selected ? 'bg-selected' : cardClass[a.status]
       )}
     >
-      {crashed && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-destructive" />}
-      {a.status === 'needs-you' && !selected && <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-needs" />}
+      {crashed && <span aria-hidden className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-destructive" />}
+      {a.status === 'needs-you' && !selected && <span aria-hidden className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-needs" />}
       {/* Dimming sits on this wrapper: motion owns the root's inline opacity. */}
       <div className={cn('min-w-0 transition-opacity', !selected && !crashed && (a.status === 'done' || a.status === 'exited') && 'opacity-70 group-hover:opacity-100')}>
       <div className="flex min-w-0 items-center gap-2">
@@ -158,24 +158,19 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
           </div>
         </div>
       )}
-      <div className="mt-1 truncate pl-4 font-mono text-[11.5px] text-muted-foreground" title={a.activity}>{a.activity}</div>
-      <div className="mt-0.5 flex min-w-0 items-center gap-1.5 pl-4 text-[11px] text-faint">
-        {a.branch && a.role === 'worker' && (
-          <span className="flex min-w-0 items-center gap-1" title={a.branch}>
-            <GitBranch className="size-3 shrink-0" />
-            <span className="truncate">{a.branch.split('/').slice(-1)[0]}</span>
-          </span>
-        )}
+      {a.activity && <div className="truncate pl-4 font-mono text-[11px] text-muted-foreground" title={a.activity}>{a.activity}</div>}
+      <div className="flex min-w-0 items-center gap-1 pl-4 text-[10.5px] text-faint">
+        {a.branch && a.role === 'worker' && <span className="min-w-0 truncate" title={a.branch}>{a.branch.split('/').slice(-1)[0]}</span>}
         {a.branch && a.role === 'worker' && a.tokens > 0 && <span aria-hidden className="shrink-0">·</span>}
         {a.tokens > 0 && <span className="shrink-0 tabular-nums" title={`${a.tokens} tokens · context ${a.contextTokens}`}>{formatTokens(a.tokens)} tok</span>}
+        {a.lastInstructionBy && (
+          <span className="ml-auto hidden shrink-0 truncate group-hover:inline" data-testid="last-instruction" title="Last instruction sent to this agent">
+            {a.lastInstructionBy === 'you' ? 'you' : a.lastInstructionBy}, {ago(a.lastInstructionAt)}
+          </span>
+        )}
       </div>
-      {a.lastInstructionBy && (
-        <div className="mt-0.5 truncate pl-4 text-[11px] text-faint" data-testid="last-instruction">
-          last instruction: <span className={a.lastInstructionBy === 'you' ? 'text-muted-foreground' : ''}>{a.lastInstructionBy}</span>, {ago(a.lastInstructionAt)}
-        </div>
-      )}
       {a.merge === 'merged' && (
-        <div className="mt-1.5 flex items-center gap-1 pl-4 text-[11px] text-muted-foreground" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3 shrink-0 text-working" /> merged into integration</div>
+        <div className="mt-0.5 flex items-center gap-1 pl-4 text-[11px] text-muted-foreground" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3 shrink-0 text-working" /> merged into integration</div>
       )}
       {a.merge === 'conflict' && (
         <div className="mt-1.5 flex min-w-0 items-center gap-1 pl-4 text-[11px] text-destructive" data-testid="merge-state" data-merge="conflict" title={a.conflictFiles.join(', ')}><Swords className="size-3 shrink-0" /> <span className="truncate">conflict: {a.conflictFiles.join(', ')}</span></div>
@@ -193,7 +188,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
         </button>
       )}
       {a.question && (
-        <div className="mt-1.5 ml-4 flex min-w-0 gap-1.5 rounded-md border border-needs/20 bg-needs/5 px-2 py-1 text-[12px] leading-snug text-foreground">
+        <div className="mt-1.5 ml-4 flex min-w-0 gap-1.5 rounded-md bg-needs/10 px-2 py-1 text-[12px] leading-snug text-foreground">
           <CircleHelp className="mt-px size-3.5 shrink-0 text-needs" />
           <span className="min-w-0 break-words">{a.question}</span>
         </div>
