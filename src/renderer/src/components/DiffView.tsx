@@ -138,16 +138,16 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
                       <span className="text-faint">{dir}</span>
                       <span className="font-medium text-foreground">{name}</span>
                     </span>
-                    {s.label && <span className="rounded-sm border border-border-strong px-1.5 text-[10.5px] text-muted-foreground">{s.label}</span>}
+                    {s.label && <span className="rounded-sm border border-border-strong px-1.5 text-[10.5px] leading-4 text-muted-foreground">{s.label}</span>}
                     <span className="ml-auto pl-4 tabular-nums text-working">+{st?.added ?? s.added}</span>
                     <span className="tabular-nums text-destructive">−{st?.removed ?? s.removed}</span>
                   </div>
                   <div className="overflow-hidden rounded-b-md">
                     {s.rows.map((r, i) =>
                       r.kind === 'hunk' ? (
-                        <div key={i} className="whitespace-pre bg-done/5 px-3 py-0.5 text-[11px] text-done/80">{r.text}</div>
+                        <div key={i} className="whitespace-pre bg-done/5 px-3 text-[11px] text-done/80">{r.text}</div>
                       ) : r.kind === 'note' ? (
-                        <div key={i} className="whitespace-pre px-3 py-1 text-faint">{r.text}</div>
+                        <div key={i} className="whitespace-pre px-3 text-faint">{r.text}</div>
                       ) : (
                         <div key={i} className={cn('flex', r.kind === 'add' && 'bg-working/10', r.kind === 'del' && 'bg-destructive/10')}>
                           <span className={cn(gutter, r.kind === 'add' && 'bg-working/15 text-working/70', r.kind === 'del' && 'bg-destructive/15 text-destructive/70')}>{r.old ?? ''}</span>

@@ -106,7 +106,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
               setConfirming(true)
             }}
           >
-            <Square className="size-3" />
+            <Square className="size-3.5" />
           </button>
         )}
         {onDismiss && (
@@ -175,10 +175,10 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
         </div>
       )}
       {a.merge === 'merged' && (
-        <div className="mt-1 flex items-center gap-1 pl-4 text-[11px] text-muted-foreground" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3 text-working" /> merged into integration</div>
+        <div className="mt-1.5 flex items-center gap-1 pl-4 text-[11px] text-muted-foreground" data-testid="merge-state" data-merge="merged"><GitMerge className="size-3 shrink-0 text-working" /> merged into integration</div>
       )}
       {a.merge === 'conflict' && (
-        <div className="mt-1 flex min-w-0 items-center gap-1 pl-4 text-[11px] text-destructive" data-testid="merge-state" data-merge="conflict" title={a.conflictFiles.join(', ')}><Swords className="size-3 shrink-0" /> <span className="truncate">conflict: {a.conflictFiles.join(', ')}</span></div>
+        <div className="mt-1.5 flex min-w-0 items-center gap-1 pl-4 text-[11px] text-destructive" data-testid="merge-state" data-merge="conflict" title={a.conflictFiles.join(', ')}><Swords className="size-3 shrink-0" /> <span className="truncate">conflict: {a.conflictFiles.join(', ')}</span></div>
       )}
       {a.merge === 'review' && (
         <button
@@ -200,7 +200,7 @@ export function AgentCard({ a, selected, onSelect, onReview, onStop, onDismiss }
       )}
       {a.doneSummary && (
         <div className="mt-1.5 flex min-w-0 gap-1.5 pl-4 text-[11.5px] text-muted-foreground">
-          <CheckCheck className="mt-0.5 size-3.5 shrink-0 text-done" />
+          <CheckCheck className="mt-px size-3.5 shrink-0 text-done" />
           <span className="line-clamp-2">{a.doneSummary}</span>
         </div>
       )}

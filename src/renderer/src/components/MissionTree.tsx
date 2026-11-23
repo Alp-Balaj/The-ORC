@@ -96,7 +96,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         <span className={cn('truncate font-medium', far ? 'text-[17px]' : 'text-[12px]')}>{a.name}</span>
       </div>
       {!far && (
-        <div className="mt-1 flex justify-between gap-2 text-[10.5px] text-muted-foreground">
+        <div className="mt-1 flex justify-between gap-2 pl-3.5 text-[10.5px] text-muted-foreground">
           <span className={cn('truncate', a.exitKind === 'crashed' ? 'text-destructive' : labelColor[a.status])}>{a.exitKind === 'crashed' ? 'crashed' : statusLabel[a.status]}</span>
           {a.tokens > 0 && <span className="ml-auto tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
         </div>
@@ -113,7 +113,7 @@ function ChipNode({ data }: NodeProps<Node<ChipNodeData>>): React.JSX.Element {
       data-testid="tree-chip"
       data-lead={data.lead}
       style={{ width: '100%', height: '100%' }}
-      className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-card/60 px-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]')}
+      className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-card/60 pl-2.5 pr-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]')}
     >
       <Handles card={false} />
       <span className="inline-block size-2 shrink-0 rounded-full bg-done/70" />
