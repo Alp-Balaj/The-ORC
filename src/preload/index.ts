@@ -15,6 +15,7 @@ const api = {
   githubConnect: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:connect'),
   githubCancel: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:cancel'),
   githubDisconnect: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:disconnect'),
+  updateApp: (): Promise<string> => ipcRenderer.invoke('app-update:run'),
   listClaudeAccounts: (): Promise<ClaudeAccountView[]> => ipcRenderer.invoke('claude-accounts:list'),
   addClaudeAccount: (name: string): Promise<string> => ipcRenderer.invoke('claude-accounts:add', name),
   loginClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:login', id),
