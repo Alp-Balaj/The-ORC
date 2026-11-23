@@ -166,7 +166,13 @@ export class Autopilots {
           st.status = st.enabled ? 'On: waiting for the queue to run empty' : ''
           this.spaces.set(root, st)
         }
-      } catch {}
+      } catch (err) {
+        // A missing file is a normal first run; anything else is a corrupt/unreadable state file.
+        if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+          console.warn(`autopilot state file ${deps.file} is unreadable or corrupt; starting with fresh state`, err)
+        }
+        this.spaces.clear()
+      }
     }
   }
 
