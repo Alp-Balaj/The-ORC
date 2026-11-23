@@ -138,3 +138,16 @@
 /* One-shot ring when the needs-you count rises; skipped for reduced motion. */
 @keyframes orc-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-needs) 55%, transparent); } 100% { box-shadow: 0 0 0 8px transparent; } }
 @media (prefers-reduced-motion: no-preference) { .animate-orc-ring { animation: orc-ring 900ms ease-out 1; } }
+
+/* One-line amber banner above the terminal: what the selected agent is waiting on. */
+.question-banner {
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--color-needs);
+  background: color-mix(in srgb, var(--color-needs) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-needs) 35%, transparent);
+}
