@@ -299,3 +299,12 @@ export interface AutopilotView {
   emptyRounds: number
 }
 export type AutopilotPatch = { enabled?: boolean; maxTasks?: number; maxEmptyRounds?: number }
+
+/** The connected GitHub account (via the `gh` CLI; no token ever reaches the app). */
+export type GithubAccountView = {
+  state: 'missing' | 'disconnected' | 'connecting' | 'connected'
+  user: string | null
+  /** While connecting: the one-time code gh printed (null until it appears) and where to enter it. */
+  connecting: { code: string | null; url: string } | null
+  error: string | null
+}

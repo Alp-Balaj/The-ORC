@@ -8,6 +8,7 @@ import { Feed } from './components/Feed'
 import { MergeScreen, OrcMergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
+import { AccountsScreen } from './components/AccountsScreen'
 import { Sidebar } from './components/Sidebar'
 import { PlanUsageHeader } from './components/PlanUsageHeader'
 import { HeaderSettingsMenu } from './components/HeaderSettingsMenu'
@@ -105,7 +106,7 @@ export function App(): React.JSX.Element {
   const [appRestoreBusy, setAppRestoreBusy] = useState(false)
   const [appRestoreError, setAppRestoreError] = useState<string | null>(null)
   // Keyboard: the quick switcher or the cheat sheet (one at a time), and whether the sidebar shows.
-  const [dialog, setDialog] = useState<'palette' | 'shortcuts' | null>(null)
+  const [dialog, setDialog] = useState<'palette' | 'shortcuts' | 'accounts' | null>(null)
   const dialogFromTerminal = useRef(false)
   const jumpRef = useRef<() => void>(() => {})
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -231,7 +232,7 @@ export function App(): React.JSX.Element {
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
   const currentRoot = mission?.repoPath ?? roots[0] ?? null
 
-  const openDialog = (d: 'palette' | 'shortcuts'): void => {
+  const openDialog = (d: 'palette' | 'shortcuts' | 'accounts'): void => {
     if (dialog === d) return closeDialog()
     if (!dialog) dialogFromTerminal.current = !!document.activeElement?.closest('.xterm')
     setDialog(d)
@@ -565,7 +566,7 @@ export function App(): React.JSX.Element {
           <span className="ml-auto text-xs text-faint">No mission open</span>
         )}
         <PlanUsageHeader warnAt={warnAt} warnOnly className="max-[1099px]:hidden" />
-        <HeaderSettingsMenu mission={mission} warnAt={warnAt} onShortcuts={() => openDialog('shortcuts')} />
+        <HeaderSettingsMenu mission={mission} warnAt={warnAt} onShortcuts={() => openDialog('shortcuts')} onAccounts={() => openDialog('accounts')} />
       </header>
       {showBand && mission && (
         <div className={cn('flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-xs', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="ready-band" role="status">
@@ -716,6 +717,7 @@ export function App(): React.JSX.Element {
         }}
       />
       <ShortcutsDialog open={dialog === 'shortcuts'} onClose={closeDialog} />
+      <AccountsScreen open={dialog === 'accounts'} onClose={closeDialog} />
     </div>
   )
 }
