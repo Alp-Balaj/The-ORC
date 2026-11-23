@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { claudeAccounts } from './claude-accounts.ts'
 import type { Gating, PermissionMode } from '../shared/types.ts'
 
 /** Git write commands no ORC session may run: The ORC commits and merges. */
@@ -56,9 +57,13 @@ export function isInheritedSessionVar(name: string): boolean {
   )
 }
 
-export function sessionEnv(base: NodeJS.ProcessEnv = process.env): Record<string, string> {
+/** `configDir` selects a Claude login (CLAUDE_CONFIG_DIR): a string uses that account, null the
+ *  default login (~/.claude), undefined the app's active account (default unless one was picked). */
+export function sessionEnv(base: NodeJS.ProcessEnv = process.env, configDir?: string | null): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(base)) if (v !== undefined && !isInheritedSessionVar(k)) env[k] = v
+  const dir = configDir === undefined ? claudeAccounts.activeConfigDir() : configDir
+  if (dir) env.CLAUDE_CONFIG_DIR = dir
   return env
 }
 
