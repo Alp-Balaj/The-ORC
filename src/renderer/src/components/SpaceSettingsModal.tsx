@@ -4,6 +4,7 @@ import type { SpaceView } from '../../../shared/types'
 import { AutopilotToggle } from './AutopilotToggle'
 import { fromDraft, ModelFields, toDraft } from './ModelFields'
 import { Button } from './ui/button'
+import { Field, FormSection as Section } from './ui/field'
 import { Input } from './ui/input'
 
 /** Window event that opens the space settings: `detail` is the space root. */
@@ -16,26 +17,6 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([di
 function wholeError(value: string, min: number, max: number): string | null {
   const n = Number(value)
   return value.trim() !== '' && Number.isInteger(n) && n >= min && n <= max ? null : `Enter a whole number from ${min} to ${max}.`
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
-  return (
-    <section className="space-y-3">
-      <h3 className="section-title">{title}</h3>
-      {children}
-    </section>
-  )
-}
-
-function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string | null; children: React.ReactNode }): React.JSX.Element {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-[12px] font-medium text-foreground">{label}</label>
-      {children}
-      {hint && <p className="text-[11.5px] leading-snug text-muted-foreground">{hint}</p>}
-      {error && <p id={`${id}-error`} className="text-[11.5px] leading-snug text-destructive">{error}</p>}
-    </div>
-  )
 }
 
 /** Per-space settings. Saves with one updateSpace call; stays open with the error if the save fails. */
@@ -160,11 +141,11 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2">
             <fieldset disabled={saving} className="min-w-0 space-y-6 border-0 p-0 text-[12px]">
-              <Section title="Commands">
-                <Field id="ss-run" label="Run command" hint="Run app starts it in a mission's integration branch.">
+              <Section title="Commands" description="Shell commands The ORC runs in this repo. Both are optional.">
+                <Field id="ss-run" label="Run command" optional hint="What the Run app button runs, inside a mission's integration branch.">
                   <Input id="ss-run" autoFocus value={run} onChange={(e) => setRun(e.target.value)} placeholder="e.g. pnpm install && pnpm dev" data-testid="run-command" />
                 </Field>
-                <Field id="ss-gate" label="Gate command" hint="Runs on each merged result. Empty: no gate.">
+                <Field id="ss-gate" label="Gate command" optional hint="A check (such as your tests) that must pass on each merged result. Leave empty to skip the check.">
                   <div className="flex items-center gap-1.5">
                     <Input id="ss-gate" value={gate} onChange={(e) => setGate(e.target.value)} placeholder={suggested ?? 'e.g. pnpm test'} data-testid="gate-command" />
                     {suggested && !gate && (
@@ -176,29 +157,30 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
                 </Field>
               </Section>
 
-              <Section title="Agents & queue">
-                <Field id="ss-max" label="Most live agents" hint="Across all of this space's missions (1 to 50)." error={errors.max}>
+              <Section title="Agents & queue" description="Limits that keep usage and machine load in check.">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field id="ss-max" label="Most live agents" hint="The most Claude sessions open at once across this space's missions. Range 1 to 50." error={errors.max}>
                   <Input id="ss-max" type="number" inputMode="numeric" min={1} max={50} value={max} onChange={(e) => setMax(e.target.value)} aria-invalid={!!errors.max} aria-describedby={errors.max ? 'ss-max-error' : undefined} data-testid="max-live" />
                 </Field>
-                <Field id="ss-parallel" label="Queue parallelism" hint="Most queued tasks running at once. 1 runs them one at a time, stacked (1 to 10)." error={errors.parallel}>
+                <Field id="ss-parallel" label="Queue parallelism" hint="How many queued tasks run at the same time. 1 runs them one after another. Range 1 to 10." error={errors.parallel}>
                   <Input id="ss-parallel" type="number" inputMode="numeric" min={1} max={10} value={parallel} onChange={(e) => setParallel(e.target.value)} aria-invalid={!!errors.parallel} aria-describedby={errors.parallel ? 'ss-parallel-error' : undefined} data-testid="max-parallel" />
                 </Field>
-                <Field id="ss-threshold" label="Pause the queue at plan usage (%)" hint="Applies to your 5-hour or weekly plan usage, whichever is higher (1 to 100)." error={errors.threshold}>
+                <Field id="ss-threshold" label="Pause the queue at plan usage (%)" hint="The queue waits once your 5-hour or weekly plan usage, whichever is higher, reaches this. Range 1 to 100." error={errors.threshold}>
                   <Input id="ss-threshold" type="number" inputMode="numeric" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} aria-invalid={!!errors.threshold} aria-describedby={errors.threshold ? 'ss-threshold-error' : undefined} data-testid="usage-threshold" />
                 </Field>
-                <Field id="ss-idle" label="Auto-stop finished leads after (minutes)" hint="A merged lead that sits idle this long is stopped. 0 turns this off (0 to 1440)." error={errors.idleStop}>
+                <Field id="ss-idle" label="Auto-stop finished leads after (minutes)" hint="A team lead that has merged and sits idle this long is stopped. 0 turns this off. Range 0 to 1440." error={errors.idleStop}>
                   <Input id="ss-idle" type="number" inputMode="numeric" min={0} max={1440} value={idleStop} onChange={(e) => setIdleStop(e.target.value)} aria-invalid={!!errors.idleStop} aria-describedby={errors.idleStop ? 'ss-idle-error' : undefined} data-testid="idle-stop-minutes" />
                 </Field>
+                </div>
                 <AutopilotToggle root={space.root} />
               </Section>
 
-              <Section title="Models">
-                <p className="text-[11.5px] leading-snug text-muted-foreground">Models for this space's missions. A role left empty inherits the app default.</p>
+              <Section title="Models" description="Which Claude model each role uses in this space's missions. A role left empty uses the app default.">
                 <ModelFields draft={models} onChange={setModels} label="Per-role models" />
               </Section>
 
-              <Section title="Storage">
-                <Field id="ss-records" label="Mission records folder" hint="Empty keeps records in The ORC's own data folder.">
+              <Section title="Storage" description="Where mission records are kept.">
+                <Field id="ss-records" label="Mission records folder" optional hint="Leave empty to keep records in The ORC's own data folder.">
                   <Input id="ss-records" value={records} onChange={(e) => setRecords(e.target.value)} placeholder={space.recordsDir ? '' : space.recordsPath} title={`Now: ${space.recordsPath}`} data-testid="records-dir" />
                 </Field>
                 <p className="text-[11.5px] leading-snug text-muted-foreground">
@@ -206,10 +188,10 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
                 </p>
               </Section>
 
-              <Section title="Notifications">
-                <label className="flex cursor-pointer items-start gap-2 text-[12px] leading-snug text-foreground">
+              <Section title="Notifications" description="Applies to this space only.">
+                <label className="flex cursor-pointer items-start gap-2 text-[12px] font-medium leading-snug text-foreground">
                   <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="mt-0.5 accent-primary" data-testid="notifications-enabled" />
-                  Desktop notifications when an agent needs you, finishes or exits
+                  Notify me on the desktop when an agent needs me, finishes or exits
                 </label>
               </Section>
             </fieldset>
@@ -241,7 +223,7 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
               </Button>
               <div className="ml-auto flex gap-1.5">
                 <Button type="button" size="sm" variant="ghost" className="h-7 text-muted-foreground hover:text-foreground" onClick={onClose} disabled={saving}>Cancel</Button>
-                <Button type="submit" size="sm" className="h-7 min-w-16" disabled={saving || !valid}>{saving ? 'Saving…' : 'Save'}</Button>
+                <Button type="submit" size="sm" className="h-7 min-w-24" disabled={saving || !valid}>{saving ? 'Saving…' : 'Save changes'}</Button>
               </div>
             </div>
             )}

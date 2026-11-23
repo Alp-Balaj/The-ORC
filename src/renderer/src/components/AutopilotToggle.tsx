@@ -50,8 +50,8 @@ export function AutopilotToggle({ root }: { root: string }): React.JSX.Element {
   }
 
   return (
-    <div className="space-y-1.5" data-testid="autopilot">
-      <label className="flex items-center gap-2 text-[11px] leading-snug text-muted-foreground">
+    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3" data-testid="autopilot">
+      <label className="flex items-center gap-2 text-[12px] font-medium leading-snug text-foreground">
         <input
           type="checkbox"
           checked={enabled}
@@ -59,11 +59,12 @@ export function AutopilotToggle({ root }: { root: string }): React.JSX.Element {
           className="shrink-0 accent-primary"
           data-testid="autopilot-enabled"
         />
-        Autopilot: when the queue runs empty, find new tasks
+        Autopilot: find new tasks when the queue runs empty
       </label>
+      <p className="text-[11.5px] leading-snug text-muted-foreground">Switches on or off right away; you don't need to press Save.</p>
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
-          <label className="flex min-h-7.5 items-end text-[11px] leading-snug text-muted-foreground">Max tasks per round (1-10)</label>
+          <label htmlFor="autopilot-max-tasks" className="text-[12px] font-medium text-foreground">New tasks per round</label>
           <Input
             type="number"
             min={1}
@@ -76,11 +77,13 @@ export function AutopilotToggle({ root }: { root: string }): React.JSX.Element {
               apply({ maxTasks: next })
             }}
             onKeyDown={commitOnEnter}
+            id="autopilot-max-tasks"
+            aria-describedby="autopilot-limits-help"
             data-testid="autopilot-max-tasks"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="flex min-h-7.5 items-end text-[11px] leading-snug text-muted-foreground">Stop after N empty rounds (1-10)</label>
+          <label htmlFor="autopilot-max-empty-rounds" className="text-[12px] font-medium text-foreground">Stop after empty rounds</label>
           <Input
             type="number"
             min={1}
@@ -93,13 +96,16 @@ export function AutopilotToggle({ root }: { root: string }): React.JSX.Element {
               apply({ maxEmptyRounds: next })
             }}
             onKeyDown={commitOnEnter}
+            id="autopilot-max-empty-rounds"
+            aria-describedby="autopilot-limits-help"
             data-testid="autopilot-max-empty-rounds"
           />
         </div>
       </div>
-      <button type="button" className="cursor-pointer text-[11px] text-muted-foreground underline hover:text-foreground" onClick={() => openLoopSetup(root)} data-testid="autopilot-setup">Guided loop setup…</button>
+      <p id="autopilot-limits-help" className="text-[11.5px] leading-snug text-muted-foreground">Each round adds up to the first number of tasks (1 to 10). Autopilot stops after the second number of rounds in a row find nothing (1 to 10).</p>
+      <button type="button" className="cursor-pointer text-[11.5px] text-muted-foreground underline hover:text-foreground" onClick={() => openLoopSetup(root)} data-testid="autopilot-setup">Guided loop setup…</button>
       {status && (
-        <p className={cn('text-[11px] leading-snug text-muted-foreground', alert && 'text-needs')} data-testid="autopilot-status">
+        <p className={cn('text-[11.5px] leading-snug text-muted-foreground', alert && 'text-needs')} data-testid="autopilot-status">
           {status}
         </p>
       )}
