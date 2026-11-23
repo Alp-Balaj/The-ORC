@@ -35,7 +35,7 @@ function Meter({ label, w, warnAt, now, compact }: { label: string; w: PlanUsage
 }
 
 /** Subscription plan usage (5-hour session and weekly windows) in the main header. */
-export function PlanUsageHeader({ warnAt = 80, className }: { warnAt?: number; className?: string }): React.JSX.Element {
+export function PlanUsageHeader({ warnAt = 80, className, warnOnly }: { warnAt?: number; className?: string; warnOnly?: boolean }): React.JSX.Element {
   const [usage, setUsage] = useState<PlanUsageView | null>(null)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -52,6 +52,8 @@ export function PlanUsageHeader({ warnAt = 80, className }: { warnAt?: number; c
         week && `Weekly: ${Math.round(week.usedPercentage)}% used${week.resetsAt ? `, resets in ${untilReset(week.resetsAt, now)}` : ''}`,
         `Queues pause at ${warnAt}%`
       ].filter(Boolean).join('\n')
+  // Header mode: only appear once a window reaches the warning tone; the full meters live in the settings menu.
+  if (warnOnly && ![five, week].some((w) => w && !(w.resetsAt !== null && w.resetsAt <= now) && tone(Math.round(w.usedPercentage), warnAt) !== 'ok')) return <></>
   return (
     <div className={cn('flex shrink-0 items-center gap-3', className)} title={title} data-testid="plan-usage">
       {five || week ? (
