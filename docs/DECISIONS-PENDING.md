@@ -39,7 +39,10 @@ See ADR 0001.
 ### 6. Smaller choices → kept as built
 
 - **The gate command** is a per-space setting in the app's `spaces.json`. Nothing is written into
-  the repo.
+  the repo. Verified against the code 2026-11-23 and documented in
+  [ADR 0002](adr/0002-gate-command-per-space-setting.md) (resolved). Correction: a new space is
+  seeded with a suggested `typecheck` gate, and the gate runs in the mission's worktrees under
+  `<repo>/.orc/worktrees/` (the command itself is still never written into the repo).
 - **A conflict** goes back to the worker that hit it. The card shows it in red but doesn't turn ◐.
 - **Merge order** is the order teams finish, not dependency order.
 - **Pause** interrupts turns agents start for each other, but anything you type still runs.
