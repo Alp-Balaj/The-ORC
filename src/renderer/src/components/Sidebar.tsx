@@ -232,7 +232,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-r bg-background">
-      <div className="flex items-center justify-between px-3 pb-2 pt-3">
+      <div className="panel-title flex items-center justify-between px-3 pb-2 pt-3">
         <div className="text-[11px] font-medium uppercase tracking-wide text-faint">Spaces</div>
         <Button size="sm" variant="ghost" className="-mr-1.5 h-7 px-2 text-muted-foreground hover:text-foreground" onClick={openRepo} title="Open a repository as a space" data-testid="open-repo">
           <FolderPlus /> Open repo
