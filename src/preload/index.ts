@@ -58,7 +58,7 @@ const api = {
   /** Merges the repo's ORC branch into main and clears out the missions now in main. */
   mergeToMain: (repo: string): Promise<{ ok: boolean; message: string; cleared?: number; files?: string[] }> => ipcRenderer.invoke('orc:merge-to-main', repo),
   /** The branch Push to GitHub would push, and its remote (null: none configured). */
-  pushTarget: (repo: string): Promise<{ branch: string; remote: string | null }> => ipcRenderer.invoke('orc:push-target', repo),
+  pushTarget: (repo: string): Promise<{ branch: string; remote: string | null; ahead: number | null }> => ipcRenderer.invoke('orc:push-target', repo),
   /** `git push -u <remote> <main>`: never forced; the human's click only. */
   pushToRemote: (repo: string): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('orc:push', repo),
   setGateCommand: (root: string, command: string | null): Promise<void> => ipcRenderer.invoke('spaces:set-gate', root, command),
