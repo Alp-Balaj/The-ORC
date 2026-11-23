@@ -227,7 +227,9 @@ export function bashPath(): string {
         const dir = dirname(git)
         candidates.push(join(dir, '..', 'bin', 'bash.exe'), join(dir, '..', '..', 'bin', 'bash.exe'))
       }
-    } catch {}
+    } catch {
+      // `where git` fails when git is not on PATH: expected, the default install path is tried next.
+    }
     candidates.push(join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe'))
     const found = candidates.find((c) => existsSync(c))
     if (found) gateBash = found

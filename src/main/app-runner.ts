@@ -17,7 +17,10 @@ export function killTree(pid: number): void {
   }
   try {
     process.kill(-pid, 'SIGTERM')
-  } catch {}
+  } catch (err) {
+    // ESRCH: the group already exited, which is the goal. Anything else (EPERM) is worth a line.
+    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') console.error('app runner: could not kill process group', pid, err)
+  }
 }
 
 /** The app that was running, saved so it comes back after The ORC restarts. */
@@ -85,7 +88,9 @@ export class AppRunner {
       const tmp = `${this.file}.tmp`
       writeFileSync(tmp, JSON.stringify(run))
       renameOver(tmp, this.file)
-    } catch {}
+    } catch (err) {
+      console.error('app runner: could not save app-run.json', err)
+    }
   }
 
   /** Ends the running app and waits until its process has exited. */
