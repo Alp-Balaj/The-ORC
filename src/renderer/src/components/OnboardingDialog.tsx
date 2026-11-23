@@ -1,10 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, CircleCheck, LoaderCircle, RotateCw, X } from 'lucide-react'
 import type { EnrollmentScan } from '../../../shared/types'
 import { cn } from '../lib/utils'
 import { Button } from './ui/button'
 
-const STEPS = ['Scan', 'Git readiness', 'Permissions', 'CLAUDE.md and enroll'] as const
+const STEPS = ['Scan', 'Git check', 'Permissions', 'CLAUDE.md and enroll'] as const
+const STEP_HELP = [
+  'We read this folder to pick sensible defaults. Nothing is changed yet.',
+  'Missions need a git repository with at least one commit.',
+  'These are the rules Claude sessions in this space run under.',
+  'Nothing is saved until you press the button below.',
+] as const
 type StepIndex = 0 | 1 | 2 | 3
 
 const errText = (err: unknown): string => String(err).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, '')
@@ -42,6 +48,11 @@ export function OnboardingDialog({ root, rerun = false, onClose, onFinish }: { r
   const [makeClaudeMd, setMakeClaudeMd] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    dialogRef.current?.focus()
+  }, [])
 
   const runScan = useCallback(() => {
     setScanning(true)
@@ -89,7 +100,7 @@ export function OnboardingDialog({ root, rerun = false, onClose, onFinish }: { r
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={rerun ? 'Re-run onboarding' : 'Set up space'} data-testid="onboarding-dialog" className="flex max-h-[85vh] w-full max-w-[600px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={rerun ? 'Re-run onboarding' : 'Set up space'} data-testid="onboarding-dialog" className="flex outline-none max-h-[85vh] w-full max-w-[600px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl">
         <div className="flex items-start gap-3 border-b px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-semibold text-foreground">{rerun ? 'Re-run onboarding' : 'Set up space'}: <span className="font-mono">{name}</span></div>
@@ -118,6 +129,11 @@ export function OnboardingDialog({ root, rerun = false, onClose, onFinish }: { r
           </ol>
 
           <div className="min-h-[280px] min-w-0 flex-1 overflow-y-auto px-4 py-3" data-testid="onboarding-body">
+            <div className="mb-3">
+              <h3 className="text-[13px] font-semibold text-foreground">{STEPS[step]}</h3>
+              <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">{STEP_HELP[step]}</p>
+            </div>
+
             {step === 0 && (
               scanning ? (
                 <div className="flex h-full min-h-[240px] items-center justify-center gap-2 text-[12.5px] text-muted-foreground" data-testid="onboarding-scanning">
@@ -138,7 +154,12 @@ export function OnboardingDialog({ root, rerun = false, onClose, onFinish }: { r
                   <Fact label="Settings files">{scan.claudeSettings.length > 0 ? scan.claudeSettings.join(', ') : 'none'}</Fact>
                   <Fact label="Suggested gate">{scan.suggestedGate ?? 'none'}</Fact>
                 </dl>
-              ) : null
+              ) : (
+                <div className="flex items-center justify-between gap-2 py-2 text-[12.5px] text-muted-foreground" data-testid="onboarding-scan-empty">
+                  <span>No scan results yet.</span>
+                  <Button size="sm" variant="outline" className="h-7" onClick={runScan}><RotateCw /> Scan again</Button>
+                </div>
+              )
             )}
 
             {step === 1 && scan && (
@@ -161,7 +182,7 @@ export function OnboardingDialog({ root, rerun = false, onClose, onFinish }: { r
                 </ul>
                 {blocking && (
                   <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-needs/40 px-2.5 py-2 text-[12px] text-muted-foreground">
-                    <span>Fix this, then re-scan to continue.</span>
+                    <span>Fix this in the repository, then re-scan. Next unlocks once git is ready.</span>
                     <Button size="sm" variant="outline" className="h-7 shrink-0" onClick={runScan} disabled={scanning} data-testid="onboarding-rescan"><RotateCw /> Re-scan</Button>
                   </div>
                 )}

@@ -25,14 +25,21 @@ const stateLabel: Record<AutopilotView['state'], { label: string; tone: Tone }> 
   stopped: { label: 'Stopped', tone: 'warn' }
 }
 
-function Step({ n, title, hint, children }: { n: number; title: string; hint: string; children: React.ReactNode }): React.JSX.Element {
+/** Numeric field check, shown inline under the field. Blur still clamps the value into range. */
+const numberError = (value: string, min: number, max: number): string | undefined => {
+  const n = Number(value)
+  return value.trim() === '' || !Number.isFinite(n) || n < min || n > max ? `Enter a number from ${min} to ${max}.` : undefined
+}
+
+function Step({ n, title, hint, htmlFor, error, children }: { n: number; title: string; hint: string; htmlFor?: string; error?: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <section className="flex gap-3">
       <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border text-[11px] tabular-nums text-muted-foreground">{n}</span>
       <div className="min-w-0 flex-1 space-y-1.5">
-        <h3 className="text-[12.5px] font-medium text-foreground">{title}</h3>
+        <h3 className="text-[12.5px] font-medium text-foreground"><label htmlFor={htmlFor}>{title}</label></h3>
         <p className="text-[11.5px] leading-snug text-muted-foreground">{hint}</p>
         {children}
+        {error && <p id={`${htmlFor}-error`} role="alert" className="text-[11.5px] leading-snug text-destructive">{error}</p>}
       </div>
     </section>
   )
@@ -133,14 +140,14 @@ export function LoopSetupDialog({ space, queue, onClose }: { space: SpaceView; q
             <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Repeat className="size-3.5" /></div>
             <div>
               <h2 className="text-[14px] font-semibold">Loop setup</h2>
-              <p className="text-[11.5px] leading-snug text-muted-foreground">{space.root.split('/').filter(Boolean).pop()}</p>
+              <p className="text-[11.5px] leading-snug text-muted-foreground">Adds new tasks to {space.root.split('/').filter(Boolean).pop()} when its queue runs out.</p>
             </div>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} title="Close (Esc)" aria-label="Close"><X /></Button>
         </div>
 
         {!loaded ? (
-          <div className="px-4 pb-6 pt-2 text-[12px] text-muted-foreground" data-testid="loop-loading">Loading loop status…</div>
+          <div role="status" className="px-4 pb-6 pt-2 text-[12px] text-muted-foreground" data-testid="loop-loading">Loading loop status…</div>
         ) : (
           <div className="space-y-4 overflow-y-auto px-4 pb-4">
             <p className="text-[12px] leading-relaxed text-muted-foreground">
@@ -166,25 +173,28 @@ export function LoopSetupDialog({ space, queue, onClose }: { space: SpaceView; q
               {!entry && <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">The loop hasn't run in this space yet. It starts off; nothing happens until you turn it on.</p>}
             </div>
 
-            {error && <div className="rounded-md border border-destructive/40 px-2.5 py-1.5 text-[12px] text-destructive" data-testid="loop-error">Couldn't save: {error}</div>}
+            {error && <div role="alert" className="rounded-md border border-destructive/40 px-2.5 py-1.5 text-[12px] text-destructive" data-testid="loop-error">Couldn't save: {error}</div>}
 
             <Step n={1} title="Turn it on" hint="Per space, off by default. Turning it off and on again also clears a stopped loop.">
               <label className="flex cursor-pointer items-center gap-2 text-[12px] text-foreground">
-                <input type="checkbox" checked={enabled} onChange={(e) => void apply({ enabled: e.target.checked })} className="accent-primary" data-testid="loop-enabled" />
+                <input type="checkbox" autoFocus checked={enabled} onChange={(e) => void apply({ enabled: e.target.checked })} className="accent-primary" data-testid="loop-enabled" />
                 Keep this space's queue filled
               </label>
             </Step>
-            <Step n={2} title="Tasks per round" hint="The most new tasks one discovery round may add (1-10). Smaller rounds are easier to review.">
-              <Input type="number" min={1} max={10} className="w-24" value={maxTasks} onChange={(e) => setMaxTasks(e.target.value)} onKeyDown={commitOnEnter}
+            <Step n={2} title="Tasks per round" htmlFor="loop-max-tasks" error={numberError(maxTasks, 1, 10)} hint="The most new tasks one discovery round may add (1-10). Smaller rounds are easier to review.">
+              <Input id="loop-max-tasks" type="number" min={1} max={10} placeholder="5" className="w-24" value={maxTasks} onChange={(e) => setMaxTasks(e.target.value)} onKeyDown={commitOnEnter}
+                aria-invalid={!!numberError(maxTasks, 1, 10)} aria-describedby="loop-max-tasks-error"
                 onBlur={() => { const n = clampTo(maxTasks, 5, 1, 10); setMaxTasks(String(n)); if (n !== storedMax) void apply({ maxTasks: n }) }} data-testid="loop-max-tasks" />
             </Step>
-            <Step n={3} title="Stop after empty rounds" hint="A round that finds nothing new (or fails) counts as empty. This many in a row stops the loop (1-10).">
-              <Input type="number" min={1} max={10} className="w-24" value={maxEmpty} onChange={(e) => setMaxEmpty(e.target.value)} onKeyDown={commitOnEnter}
+            <Step n={3} title="Stop after empty rounds" htmlFor="loop-max-empty" error={numberError(maxEmpty, 1, 10)} hint="A round that finds nothing new (or fails) counts as empty. This many in a row stops the loop (1-10).">
+              <Input id="loop-max-empty" type="number" min={1} max={10} placeholder="2" className="w-24" value={maxEmpty} onChange={(e) => setMaxEmpty(e.target.value)} onKeyDown={commitOnEnter}
+                aria-invalid={!!numberError(maxEmpty, 1, 10)} aria-describedby="loop-max-empty-error"
                 onBlur={() => { const n = clampTo(maxEmpty, 2, 1, 10); setMaxEmpty(String(n)); if (n !== storedEmpty) void apply({ maxEmptyRounds: n }) }} data-testid="loop-max-empty" />
             </Step>
-            <Step n={4} title="Pause at plan usage" hint="Shared with the space's queue: the loop waits while your 5-hour or weekly usage is at or above this percent (1-100).">
+            <Step n={4} title="Pause at plan usage" htmlFor="loop-threshold" error={numberError(threshold, 1, 100)} hint="Shared with the space's queue: the loop waits while your 5-hour or weekly usage is at or above this percent (1-100).">
               <div className="flex items-center gap-2">
-                <Input type="number" min={1} max={100} className="w-24" value={threshold} onChange={(e) => setThreshold(e.target.value)} onKeyDown={commitOnEnter} onBlur={saveThreshold} data-testid="loop-threshold" />
+                <Input id="loop-threshold" type="number" min={1} max={100} placeholder="90" className="w-24" value={threshold} onChange={(e) => setThreshold(e.target.value)} onKeyDown={commitOnEnter} onBlur={saveThreshold}
+                  aria-invalid={!!numberError(threshold, 1, 100)} aria-describedby="loop-threshold-error" data-testid="loop-threshold" />
                 <span className="text-[11.5px] text-muted-foreground">{limitsKnown ? `Now at ${Math.round(top)}%` : 'Current usage not known yet'}</span>
               </div>
             </Step>
@@ -199,7 +209,8 @@ export function LoopSetupDialog({ space, queue, onClose }: { space: SpaceView; q
             </div>
           </div>
         )}
-        <div className="flex justify-end border-t px-4 py-2.5">
+        <div className="flex items-center justify-between gap-3 border-t px-4 py-2.5">
+          <span className="text-[11.5px] text-muted-foreground">Changes save as you make them.</span>
           <Button size="sm" className="h-7" onClick={onClose}>Done</Button>
         </div>
       </div>
