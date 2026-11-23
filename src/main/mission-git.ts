@@ -329,6 +329,70 @@ export async function integrateIntoOrc(repo: string, mission: string, main: stri
   })
 }
 
+/** The merge-worktree key for integrating a mission into the ORC branch (worker names are
+ *  [a-z0-9-], so it never collides with a worker's). */
+export const OrcMergeKey = '_orc'
+
+export type OrcConflictMerge = { kind: 'conflict'; files: string[]; path: string } | { kind: 'clean'; path: string } | { kind: 'up-to-date' }
+
+/** Merges the mission's integration branch into the ORC branch in a throwaway merge worktree
+ *  (never the ORC worktree or the owner's checkout), leaving conflict markers for a merge agent. */
+export async function startOrcConflictMerge(repo: string, mission: string, main: string): Promise<OrcConflictMerge> {
+  const path = mergePath(repo, mission, OrcMergeKey)
+  const branch = integrationBranch(mission)
+  const up = await serialized(repo, async () => {
+    const wt = await ensureOrcLocked(repo, main)
+    if (await isAncestor(wt, branch, 'HEAD')) return true
+    await removeMergeWorktree(repo, mission, OrcMergeKey)
+    await git(repo, ['worktree', 'add', '-q', '-b', mergeBranchName(mission, OrcMergeKey), path, OrcBranch])
+    await shareCodegraph(repo, path)
+    return false
+  })
+  if (up) return { kind: 'up-to-date' }
+  const r = await git(path, [...(await identityArgs(path)), 'merge', '--no-ff', '--no-verify', '-m', `Integrate ${mission} into the ORC branch`, branch], { allowFail: true })
+  if (r.code === 0) return { kind: 'clean', path }
+  const files = (await git(path, ['diff', '--name-only', '--diff-filter=U'], { allowFail: true })).stdout.split('\n').filter(Boolean)
+  if (files.length === 0) {
+    await discardMerge(repo, mission, OrcMergeKey)
+    throw new GitError(`merge of ${branch} into ${OrcBranch} failed: ${r.stderr}`, r.stderr, r.code)
+  }
+  return { kind: 'conflict', files, path }
+}
+
+/** Stages and commits what the merge agent resolved in the ORC merge worktree. Refuses while
+ *  markers remain. Safe to call again after a follow-up edit (a failed gate). */
+export async function commitOrcMerge(repo: string, mission: string, files: string[], message: string): Promise<{ kind: 'committed' } | { kind: 'markers'; files: string[] }> {
+  const wt = mergePath(repo, mission, OrcMergeKey)
+  const left = markersLeft(wt, files)
+  if (left.length) return { kind: 'markers', files: left }
+  await git(wt, ['add', '-u'])
+  await git(wt, ['add', '--', ...files], { allowFail: true })
+  const dirty = (await git(wt, ['status', '--porcelain', '--untracked-files=no'])).stdout
+  const merging = (await git(wt, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], { allowFail: true })).code === 0
+  if (dirty || merging) await git(wt, [...(await identityArgs(wt)), 'commit', '--no-verify', '-m', message])
+  return { kind: 'committed' }
+}
+
+/** Moves the ORC branch to the finished merge branch (fast-forward, else a merge commit; if even
+ *  that conflicts, `moved`: the caller starts over). Removes the merge worktree on success. */
+export async function landOrcMerge(repo: string, mission: string, main: string, message: string): Promise<{ kind: 'merged'; commit: string } | { kind: 'moved' }> {
+  const mb = mergeBranchName(mission, OrcMergeKey)
+  const r = await serialized(repo, async () => {
+    const wt = await ensureOrcLocked(repo, main)
+    const ff = await isAncestor(wt, 'HEAD', mb)
+    const m = ff
+      ? await git(wt, ['merge', '--ff-only', '-q', mb], { allowFail: true })
+      : await git(wt, [...(await identityArgs(wt)), 'merge', '--no-ff', '--no-verify', '-m', message, mb], { allowFail: true })
+    if (m.code !== 0) {
+      await git(wt, ['merge', '--abort'], { allowFail: true })
+      return { kind: 'moved' as const }
+    }
+    return { kind: 'merged' as const, commit: (await git(wt, ['rev-parse', 'HEAD'])).stdout }
+  })
+  if (r.kind === 'merged') await serialized(repo, () => removeMergeWorktree(repo, mission, OrcMergeKey))
+  return r
+}
+
 /** Everything the ORC branch would bring to `main`. */
 export async function orcDiff(repo: string, main: string): Promise<CombinedDiff> {
   const exists = (await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${OrcBranch}`], { allowFail: true })).code === 0

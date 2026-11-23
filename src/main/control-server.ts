@@ -27,6 +27,8 @@ export interface ControlHandlers {
   /** Ends a finished worker's session. Returns the reply for the caller. */
   stopAgent(caller: string, name: string, reason: string | null): string
   proposeSplit(caller: string, summary: string, workers: { name: string; task: string }[]): string
+  /** Coordinator only: integrate the caller's mission into the repo's ORC branch. */
+  integrateMission(caller: string): Promise<string>
   /** Returns the hook's stdout (JSON for Claude Code), or null for none. */
   hookEvent(caller: string, event: HookEvent): string | null
 }
@@ -138,6 +140,17 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
       }
     },
     async ({ summary, workers }) => text(h.proposeSplit(caller, summary, workers))
+  )
+  server.registerTool(
+    'integrate_mission',
+    {
+      description:
+        'Coordinator only: once this mission is finished (every lead reported and merged), integrate it into the repo\'s ORC branch. ' +
+        'Returns the result at once, or "pending" when it conflicts with other missions\' work: a merge agent then resolves the conflict ' +
+        '(gate-checked) and you get a [The ORC] message with the result. Does not merge to main; the human does that.',
+      inputSchema: {}
+    },
+    async () => text(await h.integrateMission(caller))
   )
   server.registerTool(
     'search_history',
