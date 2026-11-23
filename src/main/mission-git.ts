@@ -465,3 +465,26 @@ export async function prepareConflict(repo: string, worktree: string, integratio
     await git(worktree, [...(await identityArgs(worktree)), 'merge', '--no-ff', '--no-commit', integration], { allowFail: true })
   })
 }
+
+// ---- Push to the remote (always an explicit human click; agents never push) ----
+
+/** The remote to push to: `origin`, else the repo's only remote, else null. */
+export async function pushRemote(repo: string): Promise<string | null> {
+  const remotes = (await git(repo, ['remote'], { allowFail: true })).stdout.split('\n').filter(Boolean)
+  return remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0] : null
+}
+
+export type PushResult = { ok: true; remote: string; branch: string; message: string } | { ok: false; message: string }
+
+/** `git push -u <remote> <branch>`: never forced, never prompts, times out. */
+export async function pushBranch(repo: string, branch: string, remote?: string): Promise<PushResult> {
+  const name = remote ?? (await pushRemote(repo))
+  if (!name) return { ok: false, message: 'No remote configured. Add one with `git remote add origin <url>`.' }
+  const r = await serialized(repo, () => git(repo, ['push', '-u', name, `refs/heads/${branch}:refs/heads/${branch}`], { timeoutMs: 120_000, allowFail: true }))
+  if (r.code === 0) return { ok: true, remote: name, branch, message: `Pushed ${branch} to ${name}.` }
+  const err = r.stderr || r.stdout || 'git push failed'
+  if (/non-fast-forward|\[rejected\]|fetch first|tip of your current branch is behind/i.test(err)) return { ok: false, message: `Rejected: ${name}/${branch} has commits this branch doesn't. Pull or merge them first (The ORC never force-pushes).` }
+  if (/authentication|could not read username|permission denied|access denied|403|invalid credentials|terminal prompts disabled/i.test(err)) return { ok: false, message: `Authentication failed for ${name}. Set up a credential helper or SSH key, then try again.` }
+  if (/does not appear to be a git repository|no such remote|repository not found|could not resolve host/i.test(err)) return { ok: false, message: `Cannot reach ${name}: ${err.split('\n')[0]}` }
+  return { ok: false, message: err.split('\n').slice(0, 3).join(' ') }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, CircleDashed, GitMerge, ListChecks, Loader2, Play, ShieldCheck, Undo2, X, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, CircleDashed, GitMerge, ListChecks, Upload, Loader2, Play, ShieldCheck, Undo2, X, XCircle } from 'lucide-react'
 import type { DiffView as Diff, MissionView, SpaceView } from '../../../shared/types'
 import { cn } from '../lib/utils'
 import { emitShortcut } from '../lib/shortcuts'
@@ -284,6 +284,11 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
   const diff = useDiff(() => window.orc.orcDiff(repo), [repo, ready.map((m) => m.integrated!.commit).join()])
   const [result, setResult] = useState<{ ok: boolean; message: string; files?: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [target, setTarget] = useState<{ branch: string; remote: string | null } | null>(null)
+  const [pushing, setPushing] = useState(false)
+  const [pushed, setPushed] = useState<{ ok: boolean; message: string } | null>(null)
+  useEffect(() => { void window.orc.pushTarget(repo).then(setTarget) }, [repo, result])
+  const noRemote = !!target && !target.remote
   const nothing = !!diff && diff.files.length === 0 && diff.commits === 0
 
   return (
@@ -355,6 +360,27 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
             </p>
             {result && (
               <p className={cn('mt-1.5 text-[12px]', result.ok ? 'text-working' : 'text-destructive')} data-testid="main-merge-result">{result.message}</p>
+            )}
+            <Button
+              variant="ghost"
+              className="mt-3 w-full"
+              disabled={pushing || !target || noRemote}
+              title={noRemote ? 'No git remote configured. Add one with: git remote add origin <url>' : `git push -u ${target?.remote ?? 'origin'} ${target?.branch ?? main}`}
+              onClick={async () => {
+                setPushing(true)
+                setPushed(null)
+                setPushed(await window.orc.pushToRemote(repo))
+                setPushing(false)
+              }}
+              data-testid="push-to-github"
+            >
+              {pushing ? <Loader2 className="animate-spin" /> : <Upload />} {pushing ? 'Pushing…' : 'Push to GitHub'}
+            </Button>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">
+              Pushes {target?.branch ?? main} to {target?.remote ?? 'the remote'}. Never forced. Merge first to include the ORC branch.
+            </p>
+            {pushed && (
+              <p className={cn('mt-1.5 text-[12px]', pushed.ok ? 'text-working' : 'text-destructive')} data-testid="push-result">{pushed.message}</p>
             )}
           </section>
         </aside>
