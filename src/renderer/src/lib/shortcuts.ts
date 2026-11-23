@@ -17,6 +17,7 @@ export type ShortcutId =
   | 'palette'
   | 'newMission'
   | 'spaceSettings'
+  | 'integrate'
   | 'mergeScreen'
   | 'toggleSidebar'
   | 'toggleTheme'
@@ -44,6 +45,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'prevMission', label: 'Previous mission', group: 'Missions', bindings: [g('Ctrl+Shift+Tab')] },
   { id: 'missionN', label: 'Jump to mission 1–9 (9 is the last)', group: 'Missions', bindings: [g('Mod+Digit')] },
   { id: 'newMission', label: 'New mission', group: 'Missions', bindings: [g('Mod+Shift+N'), a('Mod+N')] },
+  { id: 'integrate', label: 'Integrate this mission (open the Integrate screen)', group: 'Missions', bindings: [g('Mod+Shift+G')] },
   { id: 'mergeScreen', label: 'Open Merge to main (the ORC branch)', group: 'Missions', bindings: [g('Mod+Shift+M')] },
   { id: 'spaceSettings', label: 'Space settings', group: 'Missions', bindings: [g('Mod+,')] },
   { id: 'nextAgent', label: 'Next agent', group: 'Agents', bindings: [g('Alt+ArrowDown')] },
