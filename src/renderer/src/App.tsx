@@ -287,6 +287,11 @@ export function App(): React.JSX.Element {
   // Missions in this repo whose work is on the ORC branch, waiting for Merge to main.
   const onOrc = mission ? missions.filter((m) => m.repoPath === mission.repoPath && isOnOrc(m)).length : 0
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
+  // A repo disconnected while its dashboard or main session was open: fall back to the next repo (or the empty state).
+  useEffect(() => {
+    if (dashRoot && !roots.includes(dashRoot)) setDashRoot(null)
+    if (mainRoot && !roots.includes(mainRoot)) setMainRoot(null)
+  })
   const currentRoot = dashRoot ?? mainRoot ?? mission?.repoPath ?? roots[0] ?? null
   // Nothing mission-specific is on screen while the dashboard is open (its tree, feed and header are idle).
   const asideIdle = !mainSelected && (!mission || dashRoot !== null)

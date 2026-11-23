@@ -51,6 +51,10 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
   const [notify, setNotify] = useState(space.notifications)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const [disconnectError, setDisconnectError] = useState<string | null>(null)
+  const name = space.root.split(/[\\/]/).filter(Boolean).pop() ?? space.root
   const dialog = useRef<HTMLDivElement>(null)
   // Read during the first render, before the autofocused field takes focus, so Escape can give it back.
   const [returnFocus] = useState(() => document.activeElement)
@@ -95,6 +99,18 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose, saving])
+
+  async function disconnect(): Promise<void> {
+    setDisconnecting(true)
+    setDisconnectError(null)
+    try {
+      await window.orc.removeSpace(space.root)
+      onClose()
+    } catch (err) {
+      setDisconnectError(String(err).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, ''))
+      setDisconnecting(false)
+    }
+  }
 
   async function save(e: React.FormEvent): Promise<void> {
     e.preventDefault()
@@ -201,7 +217,25 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
 
           <div className="border-t px-4 py-2.5">
             {error && <div role="alert" data-testid="space-settings-error" className="mb-2 rounded-md border border-destructive/40 px-2.5 py-1.5 text-[12px] text-destructive">Couldn't save: {error}</div>}
+            {confirming ? (
+              <div role="alertdialog" aria-labelledby="disconnect-title" data-testid="disconnect-confirm" className="space-y-2">
+                <div>
+                  <h3 id="disconnect-title" className="text-[12.5px] font-semibold">Disconnect {name}?</h3>
+                  <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
+                    The ORC forgets this repo, its settings and its stopped missions. Your files, branches and worktrees on disk are not touched, and you can connect the repo again any time.
+                  </p>
+                </div>
+                {disconnectError && <div role="alert" data-testid="disconnect-error" className="rounded-md border border-destructive/40 px-2.5 py-1.5 text-[12px] text-destructive">Couldn't disconnect: {disconnectError}</div>}
+                <div className="flex justify-end gap-1.5">
+                  <Button type="button" size="sm" variant="ghost" className="h-7 text-muted-foreground hover:text-foreground" onClick={() => { setConfirming(false); setDisconnectError(null) }} disabled={disconnecting}>Keep repo</Button>
+                  <Button type="button" size="sm" variant="destructive" className="h-7" onClick={() => void disconnect()} disabled={disconnecting} data-testid="disconnect-confirm-button">{disconnecting ? 'Disconnecting…' : 'Disconnect repo'}</Button>
+                </div>
+              </div>
+            ) : (
             <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="ghost-destructive" className="h-7 px-2 text-[12px]" onClick={() => setConfirming(true)} disabled={saving} data-testid="space-disconnect">
+                Disconnect repo
+              </Button>
               <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[12px] text-muted-foreground hover:text-foreground" onClick={onRerunOnboarding} disabled={saving} title="Walk through the setup checks again (keeps the space enrolled until you save)" data-testid="space-rerun-onboarding">
                 Re-run onboarding
               </Button>
@@ -210,6 +244,7 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
                 <Button type="submit" size="sm" className="h-7 min-w-16" disabled={saving || !valid}>{saving ? 'Saving…' : 'Save'}</Button>
               </div>
             </div>
+            )}
           </div>
         </form>
       </div>
