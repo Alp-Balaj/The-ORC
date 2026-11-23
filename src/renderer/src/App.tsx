@@ -369,7 +369,7 @@ export function App(): React.JSX.Element {
   }, [needsTotal])
 
   return (
-    <div className="relative grid h-full grid-rows-[44px_minmax(0,1fr)]" style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr) ${side.width}px` }}>
+    <div className={cn('relative grid h-full', showBand && mission ? 'grid-rows-[44px_auto_minmax(0,1fr)]' : 'grid-rows-[44px_minmax(0,1fr)]')} style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr) ${side.width}px` }}>
       {mergeNotice && (
         <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg', 'bottom-3')} data-testid="merge-notice" role="status">
           <span className="min-w-0 break-words">{mergeNotice}</span>
@@ -566,7 +566,7 @@ export function App(): React.JSX.Element {
         <HeaderSettingsMenu mission={mission} warnAt={warnAt} onShortcuts={() => openDialog('shortcuts')} />
       </header>
       {showBand && mission && (
-        <div className="flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-[12px]" data-testid="ready-band" role="status">
+        <div className={cn('flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-[12px]', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="ready-band" role="status">
           <CircleCheck className="size-4 shrink-0 text-done" />
           <span className="min-w-0 truncate">
             <span className="font-medium">All leads are done.</span> <span className="text-muted-foreground">{readyChecks(mission).text}</span>
