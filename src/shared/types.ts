@@ -36,6 +36,11 @@ export interface AgentView {
   shutDown?: boolean
   /** Removed from the cards and tree with its X. Cleared if the session is brought back. */
   dismissed?: boolean
+  /** How its process ended: "crashed" = exited non-zero on its own (not stopped by you or the
+   *  app, not after report_done); "clean" = any other exit; null/absent while it runs. */
+  exitKind?: 'clean' | 'crashed' | null
+  /** Exit code of a crashed process. */
+  exitCode?: number | null
 }
 
 /** One line of a mission's feed. "message" is a SendMessage as the sender saw it;
@@ -248,10 +253,27 @@ export interface StartMissionRequest {
  *  A stopped mission keeps the workers Stop ended (Restart brings them back). A worker whose
  *  diff waits for your review stays, since its card is where you review it; one left in a
  *  conflict stays until you dismiss it. The coordinator always stays. */
+/** The failure to put in the banner under the header, most severe first: a crashed agent, a
+ *  merge conflict, then a failed gate. Null when nothing failed. */
+export type Failure =
+  | { kind: 'crash'; agent: AgentView; text: string }
+  | { kind: 'conflict'; agent: AgentView; text: string }
+  | { kind: 'gate'; text: string }
+
+export function missionFailure(m: MissionView): Failure | null {
+  const crashed = m.agents.filter((a) => a.exitKind === 'crashed' && !a.dismissed).at(-1)
+  if (crashed) return { kind: 'crash', agent: crashed, text: `${crashed.name} crashed${crashed.exitCode != null ? ` (exit ${crashed.exitCode})` : ''}: its session ended unexpectedly` }
+  const conflict = m.agents.find((a) => a.merge === 'conflict' && a.status !== 'exited') ?? m.agents.find((a) => a.merge === 'conflict')
+  if (conflict) return { kind: 'conflict', agent: conflict, text: `${conflict.name} conflicts with merged work${conflict.conflictFiles.length ? ` in ${conflict.conflictFiles.length} file${conflict.conflictFiles.length === 1 ? '' : 's'}` : ''}` }
+  if (m.gate && !m.gate.ok && m.gate.output !== 'running…' && !m.mergedToMain) return { kind: 'gate', text: `The gate failed (exit ${m.gate.exitCode}): ${m.gate.command}` }
+  return null
+}
+
 export function shownAgents(m: MissionView): AgentView[] {
   return m.agents.filter((a) => {
     if (a.role !== 'worker' || a.status !== 'exited' || a.merge === 'review') return true
     if (a.dismissed) return false
+    if (a.exitKind === 'crashed') return true
     if (a.merge === 'conflict') return true
     return !(a.shutDown || m.state === 'running')
   })

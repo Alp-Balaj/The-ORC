@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
-import { ModelRoles, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
+import { AlertTriangle, GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
+import { ModelRoles, missionFailure, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { roleLabel } from './components/ModelFields'
 import { CommandPalette } from './components/CommandPalette'
 import { Banner } from './components/Banner'
@@ -331,6 +331,7 @@ export function App(): React.JSX.Element {
   }, [])
 
   const side = useSideWidth()
+  const failure = mission ? missionFailure(mission) : null
   const needsYou = mission?.agents.filter((a) => a.status === 'needs-you').length ?? 0
   // Needs-you agents across all missions, this mission's first: the header chip and its shortcut jump to the first.
   const needsList = missions
@@ -592,6 +593,28 @@ export function App(): React.JSX.Element {
 
       {/* Terminal */}
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
+        {mission && failure && (
+          <div className="flex min-h-9 shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/5 px-3 py-1 text-[12px]" role="alert" data-testid="failure-banner" data-kind={failure.kind}>
+            <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+            <span className="min-w-0 flex-1 truncate text-foreground" title={failure.text}>{failure.text}</span>
+            <Button
+              size="xs"
+              variant="outline"
+              className="shrink-0"
+              data-testid="failure-action"
+              onClick={() => {
+                if (failure.kind === 'gate') setView('merge')
+                else {
+                  selectAgent(failure.agent.terminalId)
+                  if (failure.kind === 'conflict' && failure.agent.merge === 'review') setView({ review: failure.agent.name })
+                  else focusActiveTerminal()
+                }
+              }}
+            >
+              {failure.kind === 'crash' ? 'Open its terminal' : failure.kind === 'conflict' ? 'Open the conflict' : 'Open the gate'}
+            </Button>
+          </div>
+        )}
         {/* Under the header; keep below the failure banner when both show. */}
         {actionError && <Banner text={`Action failed: ${actionError}`} testId="action-error" onDismiss={() => setActionError(null)} />}
         {mission && <SplitPanel mission={mission} />}

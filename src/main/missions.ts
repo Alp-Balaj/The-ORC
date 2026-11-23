@@ -916,7 +916,13 @@ export class Missions implements ControlHandlers {
     // Exiting before Claude Code ever said hello: it failed to start (not on PATH, bad flag,
     // untrusted folder, …). Its terminal shows why; say so on the card.
     const failedToStart = a.status === 'starting'
+    const mission0 = this.missions.get(a.missionId)
+    // A crash = a non-zero exit nobody asked for: not already ended (Stop, stop_agent, mission stop)
+    // and not after report_done (returned above).
+    const crashed = exitCode !== 0 && a.status !== 'exited' && !a.shutDown && mission0?.state === 'running'
     this.update(terminalId, {
+      exitKind: crashed ? 'crashed' : 'clean',
+      exitCode: crashed ? exitCode : null,
       status: 'exited',
       activity: failedToStart ? `claude exited before starting (code ${exitCode}): see its terminal` : a.activity,
       inTurn: false
@@ -1484,6 +1490,8 @@ export class Missions implements ControlHandlers {
     }
     const hadTurn = !!agent.tally && existsSync(agent.tally.path)
     agent.dismissed = false
+    agent.exitKind = null
+    agent.exitCode = null
     // A turn cut off by the restart is over; questions and done stay as they were.
     // A session started fresh is "starting" until its new SessionStart, whatever it was.
     if (!hadTurn && !agent.question && agent.status !== 'done') {
@@ -1589,7 +1597,8 @@ function agentView(a: Agent): AgentView {
     merge: a.merge,
     conflictFiles: a.conflictFiles,
     ...(a.shutDown ? { shutDown: true } : {}),
-    ...(a.dismissed ? { dismissed: true } : {})
+    ...(a.dismissed ? { dismissed: true } : {}),
+    ...(a.exitKind ? { exitKind: a.exitKind, exitCode: a.exitCode ?? null } : {})
   }
 }
 

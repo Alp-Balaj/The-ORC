@@ -18,8 +18,8 @@ export const tierGlow: Partial<Record<Tier, string>> = {
   needs: 'shadow-[0_0_0_3px] shadow-needs/20'
 }
 
-/** Red: a merge conflict. Crashed sessions (crash-vs-clean-exit work) belong here too. */
-export const isError = (a: AgentView): boolean => a.merge === 'conflict' || (a as { crashed?: boolean }).crashed === true
+/** Red: a merge conflict or a crashed session. */
+export const isError = (a: AgentView): boolean => a.merge === 'conflict' || (a.exitKind === 'crashed' && !a.dismissed)
 
 export function agentTier(a: AgentView): Tier | null {
   if (isError(a)) return 'error'
