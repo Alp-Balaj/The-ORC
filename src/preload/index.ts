@@ -1,5 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
-import type { GithubAccountView, MainSessionView, AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
+import type { EnrollmentScan, GithubAccountView, MainSessionView, AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
 import type { ClaudeAccountView } from '../shared/claude-accounts-types.ts'
 
 export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; maxParallel?: number; notifications?: boolean }
@@ -65,6 +65,10 @@ const api = {
   listSpaces: (): Promise<SpaceView[]> => ipcRenderer.invoke('spaces:list'),
   addSpace: (path: string): Promise<string> => ipcRenderer.invoke('spaces:add', path),
   removeSpace: (root: string): Promise<void> => ipcRenderer.invoke('spaces:remove', root),
+  scanRepo: (root: string): Promise<EnrollmentScan> => ipcRenderer.invoke('onboarding:scan', root),
+  createClaudeMd: (root: string): Promise<boolean> => ipcRenderer.invoke('onboarding:create-claude-md', root),
+  enrollSpace: (root: string): Promise<void> => ipcRenderer.invoke('onboarding:enroll', root),
+  resetEnrollment: (root: string): Promise<void> => ipcRenderer.invoke('onboarding:reset', root),
   onSpaces: (cb: (s: SpaceView[]) => void) => listen<[SpaceView[]]>('spaces:changed', cb),
   runApp: (missionId: string): Promise<void> => ipcRenderer.invoke('app:run', missionId),
   stopApp: (): Promise<void> => ipcRenderer.invoke('app:stop'),

@@ -10,6 +10,7 @@ import { missionAttention, tierBg, tierGlow, topTier } from '../lib/attention'
 import { AgentCard, StatusDot, statusLabel } from './AgentCard'
 import { AutopilotToggle } from './AutopilotToggle'
 import { LOOP_SETUP_EVENT, LoopSetupDialog } from './LoopSetupDialog'
+import { OnboardingDialog } from './OnboardingDialog'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
 import { fromDraft, ModelFields, toDraft } from './ModelFields'
@@ -76,7 +77,7 @@ function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
   )
 }
 
-function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => void }): React.JSX.Element {
+function SpaceSettings({ space, onClose, onRerunOnboarding }: { space: SpaceView; onClose: () => void; onRerunOnboarding: () => void }): React.JSX.Element {
   const [gate, setGate] = useState(space.gateCommand ?? '')
   const [max, setMax] = useState(String(space.maxLive))
   const [records, setRecords] = useState(space.recordsDir ?? '')
@@ -146,6 +147,9 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
         Desktop notifications when an agent needs you, finishes or exits
       </label>
       <ModelFields draft={models} onChange={setModels} label="Models for this space's missions" />
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-foreground" onClick={onRerunOnboarding} title="Walk through the setup checks again (keeps the space enrolled until you save)" data-testid="space-rerun-onboarding">Re-run onboarding</Button>
+      </div>
       <div className="flex gap-1.5">
         <Button type="submit" size="sm" className="h-7 flex-1">Save</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 text-muted-foreground hover:text-foreground" onClick={onClose}>Cancel</Button>
@@ -177,6 +181,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
   const [closedMissions, setClosedMissions] = useState<Set<string>>(new Set())
   const [formFor, setFormFor] = useState<string | null>(null)
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
+  const [onboardFor, setOnboardFor] = useState<{ root: string; rerun: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<MissionSort>(getMissionSort)
   const [queues, setQueues] = useState<QueueView[]>([])
@@ -233,7 +238,9 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
     if (!path) return
     try {
       const root = await window.orc.addSpace(path)
-      setFormFor(root)
+      const added = (await window.orc.listSpaces()).find((s) => s.root === root)
+      if (added && added.enrolledAt === null) setOnboardFor({ root, rerun: false })
+      else setFormFor(root)
     } catch (err) {
       setError(String(err).replace(/^Error: (Error invoking remote method '[^']+': )?(Error: )?/, ''))
     }
@@ -323,6 +330,11 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                     {live}/{space.maxLive}
                   </span>
                 )}
+                {space && space.enrolledAt === null && (
+                  <Button size="sm" variant="outline" className="h-6 shrink-0 px-2 text-[11px]" onClick={() => setOnboardFor({ root, rerun: false })} title="Enroll this repository as a space" data-testid="space-onboard">
+                    Set up
+                  </Button>
+                )}
                 {space && (
                   <Button size="icon" variant="ghost" className={cn('size-6 shrink-0 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100', settingsFor === root && 'text-foreground opacity-100')} title={withHint('Space settings', 'spaceSettings')} data-testid="space-settings-button" onClick={() => setSettingsFor(settingsFor === root ? null : root)}>
                     <Settings2 />
@@ -333,7 +345,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                 </Button>
               </div>
               <AnimatePresence>
-                {settingsFor === root && space && <SpaceSettings space={space} onClose={() => setSettingsFor(null)} />}
+                {settingsFor === root && space && <SpaceSettings space={space} onClose={() => setSettingsFor(null)} onRerunOnboarding={() => { setSettingsFor(null); setOnboardFor({ root, rerun: true }) }} />}
               </AnimatePresence>
               <AnimatePresence>
                 {formFor === root && (
@@ -417,6 +429,23 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
         })}
       </div>
       <PlanUsageMeter usage={usage} threshold={spaces.length > 0 ? Math.min(...spaces.map((s) => s.usageThreshold)) : 80} />
+      {onboardFor && (
+        <OnboardingDialog
+          root={onboardFor.root}
+          rerun={onboardFor.rerun}
+          onClose={() => setOnboardFor(null)}
+          onFinish={(r) => {
+            setOnboardFor(null)
+            setCollapsed((c) => {
+              if (!c.has(r)) return c
+              const n = new Set(c)
+              n.delete(r)
+              return n
+            })
+            setFormFor(r)
+          }}
+        />
+      )}
       {loopRoot && spaces.find((s) => s.root === loopRoot) && (
         <LoopSetupDialog space={spaces.find((s) => s.root === loopRoot)!} queue={queues.find((q) => q.root === loopRoot)} onClose={() => setLoopRoot(null)} />
       )}
