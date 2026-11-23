@@ -128,6 +128,8 @@ export interface MissionView {
   integrated: IntegratedView | null
   /** The last integration into the ORC branch that failed (a conflict), until one succeeds. */
   integrateError: { message: string; files: string[]; at: number } | null
+  /** An integration into the ORC branch is running (a merge agent may be resolving a conflict). */
+  integrating: boolean
   paused: boolean
 }
 
@@ -278,3 +280,22 @@ export function shownAgents(m: MissionView): AgentView[] {
     return !(a.shutDown || m.state === 'running')
   })
 }
+
+/** Autopilot for one space: when the queue runs empty, a read-only discovery session adds new tasks. */
+export interface AutopilotView {
+  root: string
+  /** Per-space switch. Default off. */
+  enabled: boolean
+  /** Most tasks one discovery round may add (1-10). Default 5. */
+  maxTasks: number
+  /** Stop after this many rounds in a row that found nothing (1-10). Default 2. */
+  maxEmptyRounds: number
+  /** off · idle (waiting for the queue to run empty) · discovering · waiting (queue busy or paused) ·
+   *  usage (paused by the plan-usage budget) · stopped (too many empty rounds, or a failure). */
+  state: 'off' | 'idle' | 'discovering' | 'waiting' | 'usage' | 'stopped'
+  /** One line for the UI, e.g. "Discovering: round 3" or "Stopped: 2 rounds found nothing". */
+  status: string
+  round: number
+  emptyRounds: number
+}
+export type AutopilotPatch = { enabled?: boolean; maxTasks?: number; maxEmptyRounds?: number }

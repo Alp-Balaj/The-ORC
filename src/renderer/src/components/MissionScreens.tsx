@@ -191,7 +191,7 @@ export function MergeScreen({ mission, space, onBack, onRemoved }: { mission: Mi
             {!mission.mergedToMain && (
               <Button
                 className="mt-3 w-full"
-                disabled={busy || mission.merged.length === 0 || integrated}
+                disabled={busy || mission.integrating || mission.merged.length === 0 || integrated}
                 onClick={async () => {
                   setBusy(true)
                   setResult(await window.orc.integrate(mission.id))
@@ -199,7 +199,7 @@ export function MergeScreen({ mission, space, onBack, onRemoved }: { mission: Mi
                 }}
                 data-testid="confirm-merge"
               >
-                {busy ? <Loader2 className="animate-spin" /> : <GitMerge />} {integrated ? 'Integrated' : newSince ? 'Integrate new work' : 'Integrate'}
+                {busy || mission.integrating ? <Loader2 className="animate-spin" /> : <GitMerge />} {mission.integrating ? 'Resolving conflicts…' : integrated ? 'Integrated' : newSince ? 'Integrate new work' : 'Integrate'}
               </Button>
             )}
             <p className="mt-2 text-[11.5px] leading-relaxed text-faint">

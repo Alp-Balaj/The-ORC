@@ -25,9 +25,10 @@ export function EmptyState({ hasRepo, hasMission, sidebarOpen, openSidebar }: { 
       </div>
       <h2 className="text-[15px] font-semibold text-foreground">{hasRepo ? 'Start your first mission' : 'Add a repository to begin'}</h2>
       <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">Each mission runs a coordinator, a real Claude Code session you talk to, and the team leads it spawns.</p>
-      <ol className="mt-5 w-full space-y-1 rounded-lg border bg-card p-1.5 text-left text-[12.5px]">
+      <div className="accent-rule mt-5 w-full" aria-hidden />
+      <ol className="mt-3 w-full space-y-1 rounded-lg border bg-card p-1.5 text-left text-[12.5px]">
         {steps.map((s, i) => (
-          <li key={s.label} className={cn('flex items-center gap-2.5 rounded-md px-2 py-1.5', i === current && 'bg-selected', i > current && 'opacity-55')} aria-current={i === current ? 'step' : undefined}>
+          <li key={s.label} className={cn('flex items-center gap-2.5 rounded-md px-2 py-1.5', i === current && 'bg-selected shadow-[inset_2px_0_0] shadow-primary', i > current && 'opacity-55')} aria-current={i === current ? 'step' : undefined}>
             <span className={cn('grid size-5 shrink-0 place-items-center rounded-full border text-[11px] font-medium tabular-nums', s.done ? 'border-transparent bg-primary text-primary-foreground' : i === current ? 'border-primary text-primary' : 'border-border-strong bg-secondary text-muted-foreground')}>
               {s.done ? <Check className="size-3" /> : i + 1}
             </span>

@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification } from '
 import { join } from 'node:path'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import type { MissionView, PermissionMode, StartMissionRequest } from '../shared/types.ts'
+import type { AutopilotPatch, MissionView, PermissionMode, StartMissionRequest } from '../shared/types.ts'
 import type { SpacePatch } from '../preload/index.ts'
 import { ControlServer } from './control-server.ts'
 import { HistoryIndex } from './history-index.ts'
@@ -16,6 +16,7 @@ import { Notifier } from './notifications.ts'
 import { TerminalHost } from './terminals.ts'
 import { AppRunner } from './app-runner.ts'
 import { Queues } from './queue.ts'
+import { Autopilots } from './autopilot.ts'
 import { PlanUsage } from './plan-usage.ts'
 
 let win: BrowserWindow | null = null
@@ -51,6 +52,7 @@ const terminals = new TerminalHost(
 )
 /** Created after spaces (below); missions can change before that. */
 let queues: Queues | null = null
+let autopilots: Autopilots | null = null
 /** Desktop notifications: no-ops in smoke runs, which must never pop real ones. */
 const notifier = new Notifier({
   show: ({ title, body, urgent }, onClick) => {
@@ -102,6 +104,7 @@ missions.spaceModelsFor = (repo) => spaces.models(repo)
 const planUsage = new PlanUsage((u) => {
   send('usage:changed', u)
   queues?.onUsage()
+  autopilots?.onUsage()
 })
 missions.statusLine = (s) => planUsage.update(s)
 // Smoke runs that must survive a restart (the crash test) use fake sessions from the start.
@@ -161,6 +164,7 @@ const control = new ControlServer({
   askHuman: (c, q) => missions.askHuman(c, q),
   stopAgent: (c, n, r) => missions.stopAgent(c, n, r),
   proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
+  integrateMission: (c) => missions.integrateMission(c),
   searchHistory: (c, query, limit) => {
     const m = missions.views().find((v) => v.agents.some((a) => a.terminalId === c))
     if (!m) return 'search_history: unknown caller (no mission found for this session).'
@@ -207,10 +211,22 @@ queues = new Queues({
   usageThreshold: (root) => spaces.usageThreshold(root),
   maxParallel: (root) => spaces.maxParallel(root),
   usage: () => planUsage.view(),
-  emit: (q) => send('queue:changed', q),
+  emit: (q) => {
+    send('queue:changed', q)
+    autopilots?.onQueues()
+  },
   file: smoke ? null : join(app.getPath('userData'), 'queue.json')
 })
 const queue = queues
+// Autopilot: refills an empty queue with discovered tasks (off by default per space).
+autopilots = new Autopilots({
+  queue,
+  usageThreshold: (root) => spaces.usageThreshold(root),
+  usage: () => planUsage.view(),
+  emit: (a) => send('autopilot:changed', a),
+  file: smoke ? null : join(app.getPath('userData'), 'autopilot.json')
+})
+const autopilot = autopilots
 if (smoke) {
   // A hidden window stops producing frames after a while; screenshots then never arrive.
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
@@ -336,9 +352,12 @@ ipcMain.handle('queue:add', async (_e, root: string, title: string, details: str
 })
 ipcMain.handle('queue:update', (_e, root: string, id: string, patch: { title?: string; details?: string }) => queue.update(root, id, patch))
 ipcMain.handle('queue:remove', (_e, root: string, id: string) => queue.remove(root, id))
+ipcMain.handle('queue:clear', (_e, root: string, scope: 'done' | 'all') => queue.clear(root, scope))
 ipcMain.handle('queue:reorder', (_e, root: string, ids: string[]) => queue.reorder(root, ids))
 ipcMain.handle('queue:start', (_e, root: string, permissionMode: PermissionMode) => queue.start(root, permissionMode))
 ipcMain.handle('queue:pause', (_e, root: string) => queue.pause(root))
+ipcMain.handle('autopilot:list', () => autopilot.list())
+ipcMain.handle('autopilot:set', (_e, root: string, patch: AutopilotPatch) => autopilot.set(root, patch))
 ipcMain.handle('usage:get', () => planUsage.view())
 ipcMain.handle('spaces:add', async (_e, path: string) => {
   const root = await spaces.add(path)

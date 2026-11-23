@@ -1,5 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
-import type { AppRunView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
+import type { AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
 
 export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; maxParallel?: number; notifications?: boolean }
 
@@ -57,10 +57,14 @@ const api = {
   queueUpdate: (root: string, id: string, patch: { title?: string; details?: string }): Promise<void> => ipcRenderer.invoke('queue:update', root, id, patch),
   queueRemove: (root: string, id: string): Promise<void> => ipcRenderer.invoke('queue:remove', root, id),
   /** Every item id of the space, in the new order. */
+  queueClear: (root: string, scope: 'done' | 'all'): Promise<void> => ipcRenderer.invoke('queue:clear', root, scope),
   queueReorder: (root: string, ids: string[]): Promise<void> => ipcRenderer.invoke('queue:reorder', root, ids),
   /** Starts or resumes the queue; red flags on the current item are acknowledged. */
   queueStart: (root: string, permissionMode: PermissionMode): Promise<void> => ipcRenderer.invoke('queue:start', root, permissionMode),
   queuePause: (root: string): Promise<void> => ipcRenderer.invoke('queue:pause', root),
+  listAutopilot: (): Promise<AutopilotView[]> => ipcRenderer.invoke('autopilot:list'),
+  onAutopilot: (cb: (a: AutopilotView[]) => void) => listen<[AutopilotView[]]>('autopilot:changed', cb),
+  autopilotSet: (root: string, patch: AutopilotPatch): Promise<void> => ipcRenderer.invoke('autopilot:set', root, patch),
   planUsage: (): Promise<PlanUsageView | null> => ipcRenderer.invoke('usage:get'),
   onPlanUsage: (cb: (u: PlanUsageView | null) => void) => listen<[PlanUsageView | null]>('usage:changed', cb),
   replay: (id: string): Promise<string> => ipcRenderer.invoke('terminal:replay', id),

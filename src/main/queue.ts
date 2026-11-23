@@ -156,6 +156,16 @@ export class Queues {
     this.changed()
   }
 
+  /** 'done' drops finished tasks; 'all' drops everything except the running one(s). */
+  clear(root: string, scope: 'done' | 'all'): void {
+    const q = this.queues.get(root)
+    if (!q) return
+    const drop = (i: QueueItem): boolean => (scope === 'done' ? i.status === 'done' : i.status !== 'running')
+    for (const i of q.items.filter(drop)) delete q.acks[i.id]
+    q.items = q.items.filter((i) => !drop(i))
+    this.changed()
+  }
+
   reorder(root: string, ids: string[]): void {
     const q = this.queues.get(root)
     if (!q) return

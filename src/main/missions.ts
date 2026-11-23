@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type IntegratedView, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
-import { claudeArgs, coordinatorPrompt, ownerStatusLine, mergerPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
+import { claudeArgs, coordinatorPrompt, ownerStatusLine, mergerPrompt, orcMergerPrompt, sessionEnv, workerPrompt } from './claude-launch.ts'
 import type { ControlHandlers, HookEvent } from './control-server.ts'
 import * as gitOps from './git-worktrees.ts'
 import type { TerminalHost } from './terminals.ts'
@@ -61,7 +61,12 @@ interface MergerState {
   queue: string[]
   /** How many times this worker's merge raced another landing and restarted. */
   tries: number
+  /** ORC-branch merges only: resolves the pending integrate() result. */
+  onDone?: (r: IntegrateOutcome) => void
+  integrationCommit?: string | null
 }
+
+export interface IntegrateOutcome { ok: boolean; message: string; files?: string[]; pending?: boolean }
 
 interface Mission {
   id: string
@@ -161,7 +166,7 @@ export class Missions implements ControlHandlers {
   launcher: Launcher = (args) => ({ command: 'claude', args })
   /** Git operations. Tests swap in fakes. */
   git: Pick<typeof gitOps, 'addWorktree' | 'branchesUnder' | 'currentBranch' | 'repoRoot'> &
-    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'ensureOrcBranch' | 'integrateIntoOrc' | 'mergeOrcToMain' | 'orcDiff' | 'cleanupMission' | 'branchDiff' | 'prepareConflict' | 'startConflictMerge' | 'landMerge' | 'concludeMerge' | 'discardMerge'> = { ...gitOps, ...missionGit }
+    Pick<typeof missionGit, 'commitAll' | 'ensureIntegration' | 'mergeIntoIntegration' | 'runGate' | 'combinedDiff' | 'ensureOrcBranch' | 'integrateIntoOrc' | 'mergeOrcToMain' | 'orcDiff' | 'cleanupMission' | 'branchDiff' | 'prepareConflict' | 'startConflictMerge' | 'landMerge' | 'concludeMerge' | 'discardMerge' | 'startOrcConflictMerge' | 'commitOrcMerge' | 'landOrcMerge'> = { ...gitOps, ...missionGit }
 
   private readonly terminals: TerminalHost
   private readonly changed: (missions: MissionView[]) => void
@@ -233,6 +238,7 @@ export class Missions implements ControlHandlers {
         mergedToMain: m.mergedToMain,
         integrated: m.integrated,
         integrateError: m.integrateError,
+        integrating: this.integrating.has(m.id),
         paused: m.paused
       }
     })
@@ -335,6 +341,12 @@ export class Missions implements ControlHandlers {
       }
     }
     this.feed(m, { kind: 'stopped', from: 'you', to: null, text: 'Mission stopped. Every session was ended; worktrees are kept.' })
+    // A merge agent for the ORC branch died with it: refuse the pending integration.
+    const orc = this.mergers.get(id)?.get(missionGit.OrcMergeKey)
+    if (orc) {
+      const agent = m.agents.get(orc.agent)
+      if (agent) this.gitWork = this.gitWork.then(() => this.orcMergerFailed(m, agent, orc, 'was stopped with the mission')).catch(() => {})
+    }
   }
 
   // ControlHandlers ---------------------------------------------------------
@@ -423,6 +435,20 @@ export class Missions implements ControlHandlers {
     mission.split = { status: 'pending', summary, workers: workers.map((w) => ({ name: slug(w.name), task: w.task })), at: Date.now(), note: null }
     this.feed(mission, { kind: 'split', from: a.name, to: 'you', text: oneLine(`${summary} (${workers.length} workers: ${workers.map((w) => w.name).join(', ')})`) })
     return 'Pending: the human reviews your split in The ORC. End your turn now and do not spawn anything. You will receive a message starting with [The ORC] when they approve or reject it.'
+  }
+
+  /** orc MCP `integrate_mission`: the coordinator integrates its own mission into the ORC branch. */
+  async integrateMission(callerTerminal: string): Promise<string> {
+    const a = this.byTerminal.get(callerTerminal)
+    if (!a) throw new Error('unknown caller')
+    if (a.role !== 'coordinator') return 'Only the coordinator integrates the mission.'
+    const mission = this.missions.get(a.missionId)!
+    const busy = [...mission.agents.values()].filter((x) => x.role === 'worker' && !x.mergerFor && x.merge !== 'merged' && x.status !== 'exited')
+    if (busy.length) return `Not finished: ${busy.map((x) => x.name).join(', ')} not merged yet. Wait for their reports first.`
+    const v = mission.verifier
+    if (v?.status === 'running') return 'The Verifier is still running. Wait for its verdict, then call this again.'
+    const r = await this.integrate(mission.id, { detach: true })
+    return r.ok || r.pending ? r.message : `Not integrated: ${r.message}${r.files?.length ? ` Conflicting files: ${r.files.join(', ')}.` : ''} Tell the human.`
   }
 
   /** The human's answer to a pending split. */
@@ -557,29 +583,65 @@ export class Missions implements ControlHandlers {
 
   /** Integrates the mission into its repo's ORC branch (the human pressed Integrate, or the
    *  queue's Verifier passed). The mission keeps running; Merge to main later brings it to main. */
-  async integrate(missionId: string): Promise<{ ok: boolean; message: string; files?: string[] }> {
+  async integrate(missionId: string, opts: { detach?: boolean } = {}): Promise<IntegrateOutcome> {
     const mission = this.missions.get(missionId)
     if (!mission) return { ok: false, message: 'no such mission' }
     if (mission.mergedToMain) return { ok: false, message: 'This mission is already in main.' }
     if (mission.merged.length === 0) return { ok: false, message: 'Nothing is merged into the integration branch yet.' }
-    const integrationCommit = mission.integrationCommit
-    let r: missionGit.IntegrateResult
+    if (this.integrating.has(mission.id)) return { ok: false, message: 'This mission is already being integrated (a merge agent may be resolving a conflict).' }
+    this.integrating.add(mission.id)
+    this.emit()
+    const settle = (r: IntegrateOutcome): IntegrateOutcome => {
+      this.integrating.delete(mission.id)
+      this.emit()
+      return r
+    }
+    let out: IntegrateOutcome | { wait: Promise<IntegrateOutcome> }
     try {
-      r = await this.git.integrateIntoOrc(mission.repoPath, mission.name, mission.mainBranch)
+      out = await this.integrateStep(mission, 0)
     } catch (err) {
-      const message = String((err as Error).message ?? err)
-      mission.integrateError = { message, files: [], at: Date.now() }
-      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `integrating into ${missionGit.OrcBranch} failed: ${oneLine(message)}`, status: 'failed' })
-      return { ok: false, message }
+      return settle(this.integrateFailed(mission, String((err as Error).message ?? err), []))
     }
+    if (!('wait' in out)) return settle(out)
+    const pending = out.wait.then(settle)
+    if (!opts.detach) return pending
+    // The coordinator's call returns at once; the result arrives as a [The ORC] message.
+    void pending.then((r) => {
+      const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
+      if (coord) this.deliver(coord, `[The ORC] Integration into ${missionGit.OrcBranch} ${r.ok ? 'finished' : 'failed'}: ${r.message}`)
+    })
+    return { ok: false, pending: true, message: `Conflicts with work already on ${missionGit.OrcBranch}; a merge agent is resolving them in a throwaway worktree. You will get a message starting with [The ORC] with the result. End your turn; do not call integrate_mission again meanwhile.` }
+  }
+
+  /** Mission ids being integrated right now (including while a merge agent resolves). */
+  private integrating = new Set<string>()
+
+  private integrateFailed(mission: Mission, message: string, files: string[], feedText?: string): IntegrateOutcome {
+    mission.integrateError = { message, files, at: Date.now() }
+    this.feed(mission, { kind: 'main', from: 'you', to: null, text: feedText ?? `integrating into ${missionGit.OrcBranch} failed: ${oneLine(message)}`, status: 'failed' })
+    return files.length ? { ok: false, message, files } : { ok: false, message }
+  }
+
+  /** One attempt to merge into the ORC branch. A conflict starts a merge agent and returns its
+   *  pending result; after `tries` races with other integrations it is refused as before. */
+  private async integrateStep(mission: Mission, tries: number): Promise<IntegrateOutcome | { wait: Promise<IntegrateOutcome> }> {
+    const integrationCommit = mission.integrationCommit
+    const r = await this.git.integrateIntoOrc(mission.repoPath, mission.name, mission.mainBranch)
     if (r.kind === 'conflict') {
-      const message = `Conflicts with work already on ${missionGit.OrcBranch} in ${r.files.join(', ')}. Nothing was integrated.`
-      mission.integrateError = { message, files: r.files, at: Date.now() }
-      this.feed(mission, { kind: 'main', from: 'you', to: null, text: `integrating into ${missionGit.OrcBranch} refused: conflict in ${r.files.join(', ')}`, status: 'failed' })
-      return { ok: false, message, files: r.files }
+      const refusal = (files: string[]): IntegrateOutcome =>
+        this.integrateFailed(mission, `Conflicts with work already on ${missionGit.OrcBranch} in ${files.join(', ')}. Nothing was integrated.`, files, `integrating into ${missionGit.OrcBranch} refused: conflict in ${files.join(', ')}`)
+      if (this.useMergeAgent && mission.state === 'running' && tries < 3) {
+        const started = await this.startOrcMerger(mission, r.files, tries)
+        if (started) return started
+      }
+      return refusal(r.files)
     }
+    return this.integratedOk(mission, r.kind === 'merged' ? r.commit : null, integrationCommit)
+  }
+
+  private integratedOk(mission: Mission, newCommit: string | null, integrationCommit: string | null): IntegrateOutcome {
     const at = Date.now()
-    const commit = r.kind === 'merged' ? r.commit : (mission.integrated?.commit ?? integrationCommit ?? '')
+    const commit = newCommit ?? (mission.integrated?.commit ?? integrationCommit ?? '')
     // A mission stacked on another one (before the ORC branch existed) brings that one in too.
     for (const m of [mission, ...this.stackChain(mission)]) {
       m.integrated = { commit, at, integrationCommit: m.integrationCommit }
@@ -587,8 +649,122 @@ export class Missions implements ControlHandlers {
       if (m !== mission) this.feed(m, { kind: 'main', from: 'you', to: null, text: `integrated into ${missionGit.OrcBranch} with ${mission.name}`, status: 'ok' })
     }
     this.record(mission, `Integrated into ${missionGit.OrcBranch}`, `Commit \`${commit}\`.`)
-    this.feed(mission, { kind: 'main', from: 'you', to: null, text: r.kind === 'merged' ? `integrated into ${missionGit.OrcBranch} at ${commit.slice(0, 8)}` : `already on ${missionGit.OrcBranch}`, status: 'ok' })
-    return { ok: true, message: r.kind === 'merged' ? `Integrated into ${missionGit.OrcBranch} at ${commit.slice(0, 8)}.` : `Already on ${missionGit.OrcBranch}.` }
+    this.feed(mission, { kind: 'main', from: 'you', to: null, text: newCommit ? `integrated into ${missionGit.OrcBranch} at ${commit.slice(0, 8)}` : `already on ${missionGit.OrcBranch}`, status: 'ok' })
+    return { ok: true, message: newCommit ? `Integrated into ${missionGit.OrcBranch} at ${commit.slice(0, 8)}.` : `Already on ${missionGit.OrcBranch}.` }
+  }
+
+  /** Starts a merge agent for a conflict with the ORC branch, in a throwaway merge worktree.
+   *  Returns the promise of the final result, or null when it could not start (refuse as before). */
+  private async startOrcMerger(mission: Mission, files: string[], tries: number): Promise<{ wait: Promise<IntegrateOutcome> } | null> {
+    const key = missionGit.OrcMergeKey
+    const orcBranch = missionGit.OrcBranch
+    const integration = missionGit.integrationBranch(mission.name)
+    let name = slug('merge-orc')
+    for (let i = 2; mission.agents.has(name); i++) name = slug(`merge-orc-${i}`)
+    const integrationCommit = mission.integrationCommit
+    let onDone!: (r: IntegrateOutcome) => void
+    const promise = new Promise<IntegrateOutcome>((res) => (onDone = res))
+    const st: MergerState = { worker: key, agent: name, files, attempts: 0, queue: [], tries, onDone, integrationCommit }
+    if (!this.mergers.has(mission.id)) this.mergers.set(mission.id, new Map())
+    this.mergers.get(mission.id)!.set(key, st)
+    try {
+      const cm = await this.git.startOrcConflictMerge(mission.repoPath, mission.name, mission.mainBranch)
+      if (cm.kind !== 'conflict') {
+        // Raced: it merged cleanly (or is already there) after all.
+        this.dropMerger(mission.id, key)
+        if (cm.kind === 'up-to-date') return { wait: Promise.resolve(this.integratedOk(mission, null, integrationCommit)) }
+        const done = await this.git.landOrcMerge(mission.repoPath, mission.name, mission.mainBranch, `Integrate ${mission.name} into the ORC branch`)
+        if (done.kind === 'merged') return { wait: Promise.resolve(this.integratedOk(mission, done.commit, integrationCommit)) }
+        await this.git.discardMerge(mission.repoPath, mission.name, key)
+        return null
+      }
+      st.files = cm.files
+      const sessionName = `${mission.name}/${name}`
+      const coord = [...mission.agents.values()].find((x) => x.role === 'coordinator')
+      const task = `Resolve the merge conflict from integrating ${integration} into ${orcBranch}: ${cm.files.join(', ')}`
+      this.launch(mission, {
+        name,
+        sessionName,
+        role: 'worker',
+        parent: coord?.name ?? null,
+        task,
+        cwd: cm.path,
+        branch: null,
+        systemPrompt: orcMergerPrompt(mission.name, sessionName, coord?.sessionName ?? `${mission.name}/coordinator`, integration, orcBranch, cm.files),
+        firstPrompt: task
+      })
+      mission.agents.get(name)!.mergerFor = key
+      this.feed(mission, { kind: 'conflict', from: 'orc', to: name, text: `resolving conflict in ${cm.files.join(', ')} (${integration} into ${orcBranch})` })
+      this.emit()
+      return { wait: promise }
+    } catch (err) {
+      this.dropMerger(mission.id, key)
+      await this.git.discardMerge(mission.repoPath, mission.name, key).catch(() => {})
+      this.orcNote(mission, `could not start a merge agent for ${orcBranch}: ${String((err as Error).message ?? err)}`)
+      return null
+    }
+  }
+
+  /** The ORC-branch merge agent reported done: verify (markers, gate) and land it, or give it
+   *  another go, or refuse as before. */
+  private async finishOrcMerger(mission: Mission, m: Agent, st: MergerState, summary: string): Promise<void> {
+    const key = missionGit.OrcMergeKey
+    const orcBranch = missionGit.OrcBranch
+    if (/^\s*cannot resolve/i.test(summary)) return this.orcMergerFailed(mission, m, st, `reported it cannot resolve: ${oneLine(summary, 160)}`)
+    const retry = (text: string, why: string): boolean => {
+      if (++st.attempts < 3) {
+        this.deliver(m, text)
+        m.status = 'working'
+        this.emit()
+        return true
+      }
+      void this.orcMergerFailed(mission, m, st, why)
+      return false
+    }
+    const msg = `Integrate ${mission.name} into the ORC branch\n\nConflict resolved by ${m.name}: ${oneLine(summary, 200)}`
+    const c = await this.git.commitOrcMerge(mission.repoPath, mission.name, st.files, msg)
+    if (c.kind === 'markers') {
+      retry(`[The ORC] Conflict markers are still in ${c.files.join(', ')}. Resolve them, then call report_done again.`, `left conflict markers in ${c.files.join(', ')}`)
+      return
+    }
+    const gate = this.gateCommandFor(mission.repoPath)
+    if (gate) {
+      this.feed(mission, { kind: 'gate', from: 'orc', to: m.name, text: `${gate} on the merge into ${orcBranch}…` })
+      const g = await this.git.runGate(missionGit.mergePath(mission.repoPath, mission.name, key), gate)
+      this.feed(mission, { kind: 'gate', from: 'orc', to: null, text: `${gate} (merge into ${orcBranch}): ${g.ok ? 'passed' : `failed (exit ${g.exitCode})`}`, status: g.ok ? 'ok' : 'failed' })
+      if (!g.ok) {
+        retry(`[The ORC] Your resolution fails the gate \`${gate}\` (exit ${g.exitCode}). Fix it (edit files only, no git), then call report_done again. Output tail:\n${g.output.slice(-1500)}`, `resolution fails the gate: ${oneLine(g.output.slice(-160))}`)
+        return
+      }
+    }
+    const done = await this.git.landOrcMerge(mission.repoPath, mission.name, mission.mainBranch, msg)
+    if (done.kind === 'moved') {
+      // Another integration landed on the same code meanwhile: start over against the new tip.
+      this.dropMerger(mission.id, key)
+      this.endAgent(mission, m, 'orc', `${orcBranch} moved; redoing the merge`)
+      await this.git.discardMerge(mission.repoPath, mission.name, key)
+      try {
+        const out = await this.integrateStep(mission, st.tries + 1)
+        if ('wait' in out) void out.wait.then(st.onDone)
+        else st.onDone?.(out)
+      } catch (err) {
+        st.onDone?.(this.integrateFailed(mission, String((err as Error).message ?? err), []))
+      }
+      return
+    }
+    this.dropMerger(mission.id, key)
+    this.endAgent(mission, m, 'orc', 'conflict resolved')
+    this.feed(mission, { kind: 'conflict', from: m.name, to: null, text: `conflict resolved in ${st.files.join(', ')}`, status: 'ok' })
+    st.onDone?.(this.integratedOk(mission, done.commit, st.integrationCommit ?? null))
+  }
+
+  /** The merge agent for the ORC branch failed: throw its worktree away and refuse, naming the files. */
+  private async orcMergerFailed(mission: Mission, m: Agent, st: MergerState, why: string): Promise<void> {
+    this.dropMerger(mission.id, missionGit.OrcMergeKey)
+    await this.git.discardMerge(mission.repoPath, mission.name, missionGit.OrcMergeKey).catch(() => {})
+    if (!m.shutDown) this.endAgent(mission, m, 'orc', `merge agent failed: ${oneLine(why, 120)}`)
+    const files = st.files
+    st.onDone?.(this.integrateFailed(mission, `Conflicts with work already on ${missionGit.OrcBranch} in ${files.join(', ')}; the merge agent ${why}. Nothing was integrated.`, files, `integrating into ${missionGit.OrcBranch} refused: merge agent ${oneLine(why, 120)} (conflict in ${files.join(', ')})`))
   }
 
   /** Legacy stacked missions this one was based on (their work is in its integration branch). */
@@ -1120,6 +1296,7 @@ export class Missions implements ControlHandlers {
   private async finishMerger(mission: Mission, m: Agent, summary: string): Promise<void> {
     const st = this.mergerFor(mission.id, m.name)
     if (!st) return
+    if (st.worker === missionGit.OrcMergeKey) return this.finishOrcMerger(mission, m, st, summary)
     const w = mission.agents.get(st.worker)!
     if (/^\s*cannot resolve/i.test(summary)) return this.mergerFailed(mission, m, `reported it cannot resolve: ${oneLine(summary, 160)}`)
     const integration = missionGit.integrationBranch(mission.name)
@@ -1150,6 +1327,7 @@ export class Missions implements ControlHandlers {
   private async mergerFailed(mission: Mission, m: Agent, why: string): Promise<void> {
     const st = this.mergerFor(mission.id, m.name)
     if (!st) return
+    if (st.worker === missionGit.OrcMergeKey) return this.orcMergerFailed(mission, m, st, why)
     this.dropMerger(mission.id, st.worker)
     await this.git.discardMerge(mission.repoPath, mission.name, st.worker)
     if (mission.state === 'stopped') return
