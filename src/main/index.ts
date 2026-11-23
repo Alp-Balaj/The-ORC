@@ -485,7 +485,23 @@ ipcMain.handle('spaces:add', async (_e, path: string) => {
   send('spaces:changed', spaces.list())
   return root
 })
-ipcMain.handle('spaces:remove', (_e, root: string) => {
+/** Disconnects a repo from The ORC: forgets it (and its stopped missions) in The ORC's own state.
+ *  Never touches the repo's files, branches or worktrees. Refuses while a mission is running. */
+ipcMain.handle('spaces:remove', async (_e, root: string) => {
+  knownSpace(root)
+  const mine = missions.views().filter((m) => m.repoPath === root)
+  const running = mine.filter((m) => m.state === 'running')
+  if (running.length > 0) {
+    const names = running.map((m) => m.name).join(', ')
+    throw new Error(`${running.length === 1 ? 'a mission is' : `${running.length} missions are`} still running in this repo (${names}). Stop ${running.length === 1 ? 'it' : 'them'} first.`)
+  }
+  queue.pause(root)
+  mainSessions.get(root)?.stop()
+  mainSessions.delete(root)
+  for (const m of mine) {
+    await appRunner.stopFor(m.id)
+    missions.removeMission(m.id)
+  }
   spaces.remove(root)
   send('spaces:changed', spaces.list())
 })
