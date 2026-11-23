@@ -25,6 +25,7 @@ const OrcTools = [
   'mcp__orc__ask_human',
   'mcp__orc__propose_split',
   'mcp__orc__stop_agent',
+  'mcp__orc__integrate_mission',
   'mcp__orc__search_history',
   'mcp__orc__add_to_queue',
   'SendMessage',
@@ -227,6 +228,10 @@ export function coordinatorPrompt(mission: string, sessionName: string, repo: st
     'messaged again, so keep any lead you may still send follow-up work to in the same area.',
     'Never commit, merge, push or manage branches: The ORC commits each team\'s work when its lead',
     'reports done and merges it into the mission\'s integration branch; the human merges to main.',
+    'When the mission is finished (every lead reported and merged, Verifier passed or concerns noted),',
+    'you may call `mcp__orc__integrate_mission` to put it on the repo\'s ORC branch. If it conflicts with',
+    'other missions\' work, The ORC resolves it with a merge agent and messages you the result; never',
+    'merge or resolve it yourself, and the human still merges the ORC branch to main.',
     'Messages starting with [The ORC] come from the app, not the human.',
     'The human can type into any lead directly. If they are steering a lead, do not override them.',
     'When the human asks for planning or a grilling session, interview them with the grill-me method',
@@ -283,5 +288,26 @@ export function mergerPrompt(mission: string, sessionName: string, coordinator: 
     'server; load it with ToolSearch first if needed) with a one-line summary of how you resolved it.',
     'If you cannot resolve it safely, call report_done with a summary that starts with "CANNOT RESOLVE:"',
     'and the reason; The ORC then sends it back to the worker. Do not wait for replies; be quick.'
+  ].join(' ')
+}
+
+/** The merger for the ORC branch: like mergerPrompt, but the merge is the mission's integration
+ *  branch into the repo's ORC branch, and a failure just refuses the integration. */
+export function orcMergerPrompt(mission: string, sessionName: string, coordinator: string, integration: string, orcBranch: string, files: string[]): string {
+  return [
+    `You are the merge agent "${sessionName}" in The ORC mission "${mission}".`,
+    `Your coordinator is the Claude Code session named "${coordinator}".`,
+    `The mission's branch ${integration} is being merged into the repo's ORC branch ${orcBranch}, which`,
+    `already holds other missions' work. Your current directory (a temporary merge worktree) holds that`,
+    `merge half-done: these files have conflict markers (<<<<<<<, =======, >>>>>>>): ${files.join(', ')}.`,
+    'Edit each file so it has no markers and BOTH sides\' intent survives (read both sides and the',
+    'surrounding code; if it is a real clash, pick what keeps the code correct and consistent).',
+    'Touch no other file unless a resolution needs it to compile. Work only in the current directory.',
+    'Run no git commands that write (no add, commit, merge, checkout, reset): The ORC stages and commits.',
+    'Do not call spawn_agent. When no markers remain, call the `mcp__orc__report_done` tool (orc MCP',
+    'server; load it with ToolSearch first if needed) with a one-line summary of how you resolved it.',
+    'The ORC then runs the space\'s gate on the result and may send you its failure to fix.',
+    'If you cannot resolve it safely, call report_done with a summary that starts with "CANNOT RESOLVE:"',
+    'and the reason; the integration is then refused. Do not wait for replies; be quick.'
   ].join(' ')
 }

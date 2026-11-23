@@ -161,6 +161,7 @@ const control = new ControlServer({
   askHuman: (c, q) => missions.askHuman(c, q),
   stopAgent: (c, n, r) => missions.stopAgent(c, n, r),
   proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
+  integrateMission: (c) => missions.integrateMission(c),
   searchHistory: (c, query, limit) => {
     const m = missions.views().find((v) => v.agents.some((a) => a.terminalId === c))
     if (!m) return 'search_history: unknown caller (no mission found for this session).'

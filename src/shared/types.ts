@@ -128,6 +128,8 @@ export interface MissionView {
   integrated: IntegratedView | null
   /** The last integration into the ORC branch that failed (a conflict), until one succeeds. */
   integrateError: { message: string; files: string[]; at: number } | null
+  /** An integration into the ORC branch is running (a merge agent may be resolving a conflict). */
+  integrating: boolean
   paused: boolean
 }
 
