@@ -294,7 +294,7 @@ const autopilot = autopilots
 const mainSession = new MainSession({
   terminals,
   dataDir: smoke ?? app.getPath('userData'),
-  permissionMode: () => missions.views().at(-1)?.permissionMode ?? 'acceptEdits',
+  permissionMode: () => 'bypassPermissions',
   changed: (v) => send('main:changed', v)
 })
 mainSession.statusLine = (s) => planUsage.update(s)
