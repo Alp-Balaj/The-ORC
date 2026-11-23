@@ -8,6 +8,7 @@ import { cn, formatTokens } from '../lib/utils'
 import { missionAttention, tierBg, tierGlow, topTier } from '../lib/attention'
 import { AgentCard, StatusDot } from './AgentCard'
 import { AutopilotToggle } from './AutopilotToggle'
+import { LOOP_SETUP_EVENT, LoopSetupDialog } from './LoopSetupDialog'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
 import { fromDraft, ModelFields, toDraft } from './ModelFields'
@@ -171,6 +172,12 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [queues, setQueues] = useState<QueueView[]>([])
+  const [loopRoot, setLoopRoot] = useState<string | null>(null)
+  useEffect(() => {
+    const open = (e: Event): void => setLoopRoot((e as CustomEvent<string>).detail)
+    window.addEventListener(LOOP_SETUP_EVENT, open)
+    return () => window.removeEventListener(LOOP_SETUP_EVENT, open)
+  }, [])
   const [usage, setUsage] = useState<PlanUsageView | null>(null)
   useEffect(() => {
     void window.orc.listQueues().then(setQueues)
@@ -361,6 +368,9 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
         })}
       </div>
       <PlanUsageMeter usage={usage} threshold={spaces.length > 0 ? Math.min(...spaces.map((s) => s.usageThreshold)) : 80} />
+      {loopRoot && spaces.find((s) => s.root === loopRoot) && (
+        <LoopSetupDialog space={spaces.find((s) => s.root === loopRoot)!} queue={queues.find((q) => q.root === loopRoot)} onClose={() => setLoopRoot(null)} />
+      )}
     </aside>
   )
 }

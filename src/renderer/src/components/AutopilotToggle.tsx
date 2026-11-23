@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AutopilotView } from '../../../shared/types'
 import { cn } from '../lib/utils'
 import { Input } from './ui/input'
+import { openLoopSetup } from './LoopSetupDialog'
 
 const DEFAULT_MAX_TASKS = 5
 const DEFAULT_MAX_EMPTY_ROUNDS = 2
@@ -96,6 +97,7 @@ export function AutopilotToggle({ root }: { root: string }): React.JSX.Element {
           />
         </div>
       </div>
+      <button type="button" className="cursor-pointer text-[11px] text-muted-foreground underline hover:text-foreground" onClick={() => openLoopSetup(root)} data-testid="autopilot-setup">Guided loop setup…</button>
       {status && (
         <p className={cn('text-[11px] leading-snug text-muted-foreground', alert && 'text-needs')} data-testid="autopilot-status">
           {status}
