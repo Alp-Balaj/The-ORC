@@ -42,12 +42,18 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
   const root = useRef<HTMLDivElement>(null)
   const id = useId()
   const [updating, setUpdating] = useState(false)
-  const [updated, setUpdated] = useState(false)
+  const [updated, setUpdated] = useState<'updated' | 'restarting' | false>(false)
+  const [canRestart, setCanRestart] = useState(false)
+  useEffect(() => { if (open) void window.orc.canRestartOnUpdate().then(setCanRestart) }, [open])
   // A failure rejects the invoke: App's unhandledrejection handler shows it in the action-error banner.
-  const updateApp = (): void => {
+  const updateApp = async (): Promise<void> => {
+    if (canRestart) {
+      const live = (await window.orc.listMissions()).filter((m) => m.state === 'running').length
+      if (live > 0 && !window.confirm(`${live} mission${live === 1 ? ' is' : 's are'} running. The app restarts once the update is built; sessions stop and missions resume on relaunch. Continue?`)) return
+    }
     setUpdating(true)
     setUpdated(false)
-    void window.orc.updateApp().then(() => setUpdated(true)).finally(() => setUpdating(false))
+    void window.orc.updateApp().then((r) => setUpdated(r === 'Restarting' ? 'restarting' : 'updated')).finally(() => setUpdating(false))
   }
 
   useEffect(() => {
@@ -108,11 +114,11 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
             <Row label="Accent"><AccentPicker /></Row>
           </Section>
           <Section label="App">
-            <Button variant="outline" size="sm" className="w-full justify-start text-[12px]" disabled={updating} title="Rebuilds the stable copy of main (scripts/orc-app.sh). The running app is not restarted." data-testid="update-app" onClick={updateApp}>
-              {updating ? <Loader2 className="animate-spin" /> : <Download />} {updating ? 'Updating…' : 'Update app'}
+            <Button variant="outline" size="sm" className="w-full justify-start text-[12px]" disabled={updating || updated === 'restarting'} title={canRestart ? 'Rebuilds the stable copy of main (scripts/orc-app.sh), then restarts the app into it.' : 'Rebuilds the stable copy of main (scripts/orc-app.sh). This copy is not the stable one, so it is not restarted.'} data-testid="update-app" onClick={() => void updateApp()}>
+              {updating ? <Loader2 className="animate-spin" /> : <Download />} {updating ? 'Updating…' : updated === 'restarting' ? 'Restarting…' : canRestart ? 'Update & restart' : 'Update app'}
             </Button>
             <p className="text-[11.5px] leading-snug text-muted-foreground" data-testid="update-app-status" role="status">
-              {updating ? 'Rebuilding the stable copy of main. This can take a few minutes.' : updated ? 'Updated. Quit and reopen The ORC to run the new version.' : 'Rebuilds the stable copy from the latest main. Restart to use it.'}
+              {updating ? 'Rebuilding the stable copy of main. This can take a few minutes.' : updated === 'restarting' ? 'Updated. Restarting The ORC into the new version…' : updated ? 'Updated. Quit and reopen The ORC to run the new version.' : canRestart ? 'Rebuilds the stable copy from the latest main, then restarts into it.' : 'Rebuilds the stable copy from the latest main. Restart to use it.'}
             </p>
           </Section>
           <div className="px-1.5 pt-1">
