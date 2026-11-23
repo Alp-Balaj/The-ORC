@@ -9,7 +9,7 @@ export function missionReady(m: MissionView): boolean {
   const workers = m.agents.filter((a) => a.role === 'worker')
   if (workers.some((a) => a.merge !== 'merged' && a.merge !== 'nothing')) return false
   if (m.agents.some((a) => a.status === 'starting' || a.status === 'working' || a.status === 'needs-you')) return false
-  if (m.gate?.output === 'running…' || m.verifier?.status === 'running') return false
+  if (m.gate?.running || m.verifier?.status === 'running') return false
   return true
 }
 

@@ -226,7 +226,7 @@ function missionsText(repoPath: string): string {
         ? `integrated into the ORC branch (${m.integrated.commit.slice(0, 8)})`
         : 'not integrated into the ORC branch'
     out.push(`integration: ${integration}${m.integrateError ? `; last integration failed: ${m.integrateError.message}` : ''}`)
-    out.push(`gate: ${m.gate ? (m.gate.ok ? 'passed' : `failed (${m.gate.command})`) : 'not run'} | verifier: ${m.verifier?.status ?? 'not run'}`)
+    out.push(`gate: ${m.gate ? (m.gate.running ? 'running' : m.gate.ok ? 'passed' : `failed (${m.gate.command})`) : 'not run'} | verifier: ${m.verifier?.status ?? 'not run'}`)
     if (m.split?.status === 'pending') out.push('plan: the split waits for the owner to approve it')
     for (const a of m.agents.filter((x) => !x.dismissed)) {
       const q = a.question ? ` | question: ${a.question}` : ''
