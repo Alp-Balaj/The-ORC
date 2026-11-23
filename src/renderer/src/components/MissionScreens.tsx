@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Bot, Check, CheckCircle2, CircleDashed, GitMerge, ListChecks, Loader2, Play, ShieldCheck, Undo2, X, XCircle } from 'lucide-react'
 import type { DiffView as Diff, MissionView, SpaceView } from '../../../shared/types'
 import { cn } from '../lib/utils'
+import { emitShortcut } from '../lib/shortcuts'
 import { DiffView } from './DiffView'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -122,7 +123,7 @@ function StaleNote({ children }: { children: React.ReactNode }): React.JSX.Eleme
 }
 
 /** Merge to main: the mission's combined diff, the gate, the Verifier, and the button. */
-export function MergeScreen({ mission, space, onBack, onCleared }: { mission: MissionView; space: SpaceView | undefined; onBack: () => void; onCleared?: (n: number) => void }): React.JSX.Element {
+export function MergeScreen({ mission, space, onBack, onCleared, onRemoved }: { mission: MissionView; space: SpaceView | undefined; onBack: () => void; onCleared?: (n: number) => void; onRemoved?: () => void }): React.JSX.Element {
   const diff = useDiff(() => window.orc.missionDiff(mission.id), [mission.id, mission.integrationCommit])
   const [gateCmd, setGateCmd] = useState(space?.gateCommand ?? '')
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -140,6 +141,8 @@ export function MergeScreen({ mission, space, onBack, onCleared }: { mission: Mi
   const verifierPass = !!v && /VERDICT:\s*PASS/.test(v.report)
   const verifierState = !v ? 'idle' : v.status === 'running' ? 'running' : verifierPass ? 'pass' : 'warn'
   const unmerged = mission.agents.filter((a) => a.role === 'worker' && a.merge !== 'merged')
+  const conflictState = mission.merged.length === 0 ? 'idle' : unmerged.length ? 'warn' : 'pass'
+  const conflictText = mission.merged.length === 0 ? 'nothing merged yet' : unmerged.length ? `${unmerged.length} worker${unmerged.length === 1 ? '' : 's'} not merged` : 'clean, fast-forward'
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="merge-screen">
@@ -158,9 +161,55 @@ export function MergeScreen({ mission, space, onBack, onCleared }: { mission: Mi
       </div>
 
       <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4">
-        <DiffArea diff={diff} empty="Nothing merged yet." />
+        {mission.mergedToMain ? (
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card p-6 text-center" data-testid="merged-success">
+            <CheckCircle2 className="size-10 text-working" />
+            <div className="text-[16px] font-semibold">Merged to {mission.baseBranch}</div>
+            <div className="font-mono text-[12px] text-muted-foreground" title={mission.mergedToMain.commit}>{mission.mergedToMain.commit.slice(0, 8)}</div>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" onClick={() => void window.orc.removeMission(mission.id).then(() => onRemoved?.())} data-testid="merged-remove-mission">Remove mission</Button>
+              <Button onClick={() => emitShortcut('newMission')} data-testid="merged-new-mission">New mission</Button>
+            </div>
+          </div>
+        ) : (
+          <DiffArea diff={diff} empty="Nothing merged yet." />
+        )}
 
         <aside className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto min-[1440px]:w-[310px]">
+          <section className="rounded-lg border border-ring/40 bg-card p-3" data-testid="verdict-panel">
+            <ul className="space-y-1.5 text-[12.5px]">
+              <li className="flex items-center gap-2"><StatusIcon state={gateState} /><span className="w-[68px] shrink-0 text-muted-foreground">Gate</span><span className="min-w-0 truncate">{gateText}{gateStale ? ' (stale)' : ''}</span></li>
+              <li className="flex items-center gap-2"><StatusIcon state={verifierState} /><span className="w-[68px] shrink-0 text-muted-foreground">Verifier</span><span className="min-w-0 truncate">{v ? (v.status === 'running' ? 'running' : verdict) : 'not run'}{v && stale ? ' (stale)' : ''}</span></li>
+              <li className="flex items-center gap-2"><StatusIcon state={conflictState} /><span className="w-[68px] shrink-0 text-muted-foreground">Conflicts</span><span className="min-w-0 truncate">{conflictText}</span></li>
+            </ul>
+            {!mission.mergedToMain && (
+              <Button
+                className="mt-3 w-full"
+                disabled={busy || mission.merged.length === 0}
+                onClick={async () => {
+                  setBusy(true)
+                  const r = await window.orc.mergeToMain(mission.id)
+                  setResult(r)
+                  setBusy(false)
+                  // The mission is cleared out of the list: this screen goes away with it.
+                  if (r.ok && r.cleared) onCleared?.(r.cleared)
+                }}
+                data-testid="confirm-merge"
+              >
+                <GitMerge /> Merge to {mission.baseBranch}
+              </Button>
+            )}
+            <p className="mt-2 text-[11.5px] leading-relaxed text-faint">Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.</p>
+            {unmerged.length > 0 && (
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-needs" data-testid="unmerged-warning">Not merged, kept as they are: {unmerged.map((a) => a.name).join(', ')}.</p>
+            )}
+            {(result || mission.mergedToMain) && (
+              <p className={cn('mt-1.5 text-[12px]', result && !result.ok ? 'text-destructive' : 'text-working')} data-testid="merge-result">
+                {result?.message ?? `Merged at ${mission.mergedToMain!.commit.slice(0, 8)}.`}
+              </p>
+            )}
+          </section>
+
           <section className="rounded-lg border border-border bg-card p-3" data-testid="gate-panel">
             <div className="flex items-center gap-2">
               <StatusIcon state={gateState} />
@@ -212,38 +261,6 @@ export function MergeScreen({ mission, space, onBack, onCleared }: { mission: Mi
             )}
           </section>
 
-          <section className="rounded-lg border border-ring/40 bg-card p-3">
-            <div className="flex items-center gap-2 text-[13px] font-medium"><GitMerge className="size-4 text-faint" /> Merge</div>
-            <ul className="mt-2 space-y-1 text-[12px]">
-              <li className="flex items-center gap-2"><StatusIcon state={gateState} /><span className="text-muted-foreground">Gate:</span> {gateText}</li>
-              <li className="flex items-center gap-2"><StatusIcon state={verifierState} /><span className="text-muted-foreground">Verifier:</span> {v ? (v.status === 'running' ? 'running' : verdict) : 'not run'}</li>
-              <li className="flex items-center gap-2"><StatusIcon state={mission.merged.length > 0 ? (unmerged.length ? 'warn' : 'pass') : 'idle'} /><span className="text-muted-foreground">Workers:</span> {mission.merged.length} merged{unmerged.length ? `, ${unmerged.length} not` : ''}</li>
-            </ul>
-            <Button
-              className="mt-3 w-full"
-              disabled={busy || mission.merged.length === 0 || !!mission.mergedToMain}
-              onClick={async () => {
-                setBusy(true)
-                const r = await window.orc.mergeToMain(mission.id)
-                setResult(r)
-                setBusy(false)
-                // The mission is cleared out of the list: this screen goes away with it.
-                if (r.ok && r.cleared) onCleared?.(r.cleared)
-              }}
-              data-testid="confirm-merge"
-            >
-              <GitMerge /> Merge to {mission.baseBranch}
-            </Button>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-faint">Fast-forward only. Ends the mission's sessions and removes merged workers' worktrees.</p>
-            {unmerged.length > 0 && (
-              <p className="mt-1.5 text-[11.5px] leading-relaxed text-needs" data-testid="unmerged-warning">Not merged, kept as they are: {unmerged.map((a) => a.name).join(', ')}.</p>
-            )}
-            {(result || mission.mergedToMain) && (
-              <p className={cn('mt-1.5 text-[12px]', result && !result.ok ? 'text-destructive' : 'text-working')} data-testid="merge-result">
-                {result?.message ?? `Merged at ${mission.mergedToMain!.commit.slice(0, 8)}.`}
-              </p>
-            )}
-          </section>
         </aside>
       </div>
     </div>

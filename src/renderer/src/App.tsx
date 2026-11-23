@@ -584,7 +584,7 @@ export function App(): React.JSX.Element {
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
         {mission && <SplitPanel mission={mission} />}
         {mission && view === 'merge' ? (
-          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} onCleared={(n) => { setView('terminal'); setMissionId(null); setTerminalId(null); setMergeNotice(`Merged into main; cleared ${n} mission${n === 1 ? '' : 's'}`) }} />
+          <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} onRemoved={() => { setView('terminal'); setMissionId(null) }} onCleared={(n) => { setView('terminal'); setMissionId(null); setTerminalId(null); setMergeNotice(`Merged into main; cleared ${n} mission${n === 1 ? '' : 's'}`) }} />
         ) : view === 'app' && missionApp ? (
           <>
             <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-[12px] text-muted-foreground" data-testid="app-head">
