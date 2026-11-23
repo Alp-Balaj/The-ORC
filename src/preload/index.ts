@@ -2,7 +2,7 @@ import { clipboard, contextBridge, ipcRenderer } from 'electron'
 import type { EnrollmentScan, GithubAccountView, MainSessionView, AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
 import type { ClaudeAccountView } from '../shared/claude-accounts-types.ts'
 
-export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; maxParallel?: number; notifications?: boolean }
+export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; maxParallel?: number; notifications?: boolean; autoIntegrate?: boolean }
 
 function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const fn = (_e: unknown, ...args: unknown[]): void => cb(...(args as A))

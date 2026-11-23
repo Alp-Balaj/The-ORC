@@ -47,6 +47,8 @@ interface Settings {
   maxParallel: number
   /** Desktop notifications (and the needs-you badge) for this space's missions. */
   notifications: boolean
+  /** Verified queue missions are integrated into the ORC branch on their own. Default on. */
+  autoIntegrate: boolean
   /** Onboarding finished for this space (epoch ms), or null: not enrolled yet. */
   enrolledAt: number | null
 }
@@ -94,7 +96,8 @@ export class Spaces {
               usageThreshold: clampThreshold(o.usageThreshold),
               idleStopMinutes: clampIdleStop(o.idleStopMinutes),
               maxParallel: clampParallel(o.maxParallel),
-              notifications: o.notifications !== false
+              notifications: o.notifications !== false,
+              autoIntegrate: o.autoIntegrate !== false
             })
           }
         }
@@ -111,7 +114,7 @@ export class Spaces {
   }
 
   private get(root: string): Settings {
-    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes, maxParallel: DefaultMaxParallel, notifications: true, enrolledAt: null }
+    return this.settings.get(root) ?? { gateCommand: null, maxLive: DefaultMaxLive, recordsDir: null, runCommand: null, models: {}, usageThreshold: DefaultUsageThreshold, idleStopMinutes: DefaultIdleStopMinutes, maxParallel: DefaultMaxParallel, notifications: true, autoIntegrate: true, enrolledAt: null }
   }
 
   /** suggestGate per root, read once. */
@@ -166,6 +169,10 @@ export class Spaces {
     return this.get(root).notifications
   }
 
+  autoIntegrate(root: string): boolean {
+    return this.get(root).autoIntegrate
+  }
+
   update(root: string, patch: Partial<Settings>): void {
     const next = { ...this.get(root), ...patch }
     next.gateCommand = next.gateCommand?.trim() || null
@@ -177,6 +184,7 @@ export class Spaces {
     next.idleStopMinutes = clampIdleStop(next.idleStopMinutes)
     next.maxParallel = clampParallel(next.maxParallel)
     next.notifications = next.notifications !== false
+    next.autoIntegrate = next.autoIntegrate !== false
     this.settings.set(root, next)
     this.save()
   }

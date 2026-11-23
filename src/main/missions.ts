@@ -567,7 +567,7 @@ export class Missions implements ControlHandlers {
     this.feed(mission, { kind: 'verifier', from: 'verifier', to: null, text: `verdict: ${verdict}`, status: verdict === 'PASS' ? 'ok' : 'failed' })
     // A queued mission whose Verifier passed goes onto the ORC branch on its own, so the next one
     // builds on it. Work merged meanwhile makes this report stale: the next run integrates that.
-    if (mission.queueItemId && (verdict === 'PASS' || verdict === 'CONCERNS') && mission.verifier.integrationCommit === mission.integrationCommit) {
+    if (mission.queueItemId && this.autoIntegrateFor(mission.repoPath) && (verdict === 'PASS' || verdict === 'CONCERNS') && mission.verifier.integrationCommit === mission.integrationCommit) {
       await this.integrate(mission.id)
     }
   }
@@ -1434,6 +1434,8 @@ export class Missions implements ControlHandlers {
 
   /** Where a space's gate command comes from. index.ts wires this to Spaces. */
   gateCommandFor: (repo: string) => string | null = () => null
+  /** Whether verified queue missions in this repo integrate on their own. Wired to the space setting. */
+  autoIntegrateFor: (repo: string) => boolean = () => true
 
   /** Gets text to an agent: typed into its terminal when it is idle (Claude Code has no way to
    *  message a session from outside), otherwise attached to its next hook. */

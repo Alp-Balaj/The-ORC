@@ -31,6 +31,7 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
   const [idleStop, setIdleStop] = useState(String(space.idleStopMinutes))
   const [models, setModels] = useState(toDraft(space.models))
   const [notify, setNotify] = useState(space.notifications)
+  const [autoInt, setAutoInt] = useState(space.autoIntegrate)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -109,6 +110,7 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
         usageThreshold: Number(threshold),
         maxParallel: Number(parallel),
         notifications: notify,
+        autoIntegrate: autoInt,
         idleStopMinutes: Number(idleStop)
       })
       onClose()
@@ -173,6 +175,13 @@ export function SpaceSettingsModal({ space, onClose, onRerunOnboarding }: { spac
                   <Input id="ss-idle" type="number" inputMode="numeric" min={0} max={1440} value={idleStop} onChange={(e) => setIdleStop(e.target.value)} aria-invalid={!!errors.idleStop} aria-describedby={errors.idleStop ? 'ss-idle-error' : undefined} data-testid="idle-stop-minutes" />
                 </Field>
                 </div>
+                <label className="flex cursor-pointer items-start gap-2 text-[12px] font-medium leading-snug text-foreground">
+                  <input type="checkbox" checked={autoInt} onChange={(e) => setAutoInt(e.target.checked)} className="mt-0.5 accent-primary" data-testid="auto-integrate" />
+                  <span>
+                    Auto-integrate verified queue missions
+                    <span className="block text-[11.5px] font-normal text-muted-foreground">When off, a verified mission stays put until you press Integrate (or the coordinator integrates it).</span>
+                  </span>
+                </label>
                 <AutopilotToggle root={space.root} />
               </Section>
 

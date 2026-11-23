@@ -104,6 +104,7 @@ const missions = new Missions(terminals, (views) => {
 })
 const appRunner = new AppRunner(terminals, (run) => send('app:changed', run))
 missions.gateCommandFor = (repo) => spaces.gateCommand(repo)
+missions.autoIntegrateFor = (repo) => spaces.autoIntegrate(repo)
 missions.idleStopMinutesFor = (repo) => spaces.idleStopMinutes(repo)
 missions.liveLimitFor = (repo) => spaces.maxLive(repo)
 missions.recordsDirFor = (repo) => spaces.recordsPath(repo)
