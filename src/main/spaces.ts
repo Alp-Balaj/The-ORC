@@ -226,6 +226,8 @@ export class Spaces {
       const tmp = `${this.file}.tmp`
       writeFileSync(tmp, JSON.stringify(this.list().map(({ name: _n, recordsPath: _p, suggestedGate: _g, ...rest }) => rest), null, 2))
       renameOver(tmp, this.file)
-    } catch {}
+    } catch (err) {
+      console.error(`spaces: could not save ${this.file}`, err)
+    }
   }
 }
