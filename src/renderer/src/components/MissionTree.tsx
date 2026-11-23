@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Panel, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Crown } from 'lucide-react'
+import { Crown, Maximize, ZoomIn, ZoomOut } from 'lucide-react'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
 import { layoutStacked, stackSizes } from '../../../shared/tree-layout'
 import { cn, formatTokens } from '../lib/utils'
@@ -145,16 +145,11 @@ const edgeTypes = { elbow: ElbowEdge, step: StepEdge }
 const FitPad = 12
 const FitMinZoom = 0.6
 
-/** Refits the view whenever the set of nodes changes, so a new worker is never off-screen,
- *  and 150ms after the panel stops changing size (not on every pixel of a drag).
- *  Never zooms below FitMinZoom: a tree taller than the panel is aligned to its top and
- *  scrolls instead. */
-function AutoFit({ shape }: { shape: string }): null {
+/** The fit used by AutoFit and the Fit button: the whole tree in view, never below FitMinZoom. */
+function useFit(): () => void {
   const { setViewport, getNodesBounds, getNodes } = useReactFlow()
   const store = useStoreApi()
-  const width = useStore((s) => s.width)
-  const height = useStore((s) => s.height)
-  const fit = useCallback((): void => {
+  return useCallback((): void => {
     const { width: W, height: H } = store.getState()
     const b = getNodesBounds(getNodes())
     if (!W || !H || !b.width) return
@@ -163,6 +158,16 @@ function AutoFit({ shape }: { shape: string }): null {
     const y = b.height * zoom + 2 * FitPad > H ? FitPad - b.y * zoom : (H - b.height * zoom) / 2 - b.y * zoom
     void setViewport({ x, y, zoom }, { duration: 200 })
   }, [setViewport, getNodesBounds, getNodes, store])
+}
+
+/** Refits the view whenever the set of nodes changes, so a new worker is never off-screen,
+ *  and 150ms after the panel stops changing size (not on every pixel of a drag).
+ *  Never zooms below FitMinZoom: a tree taller than the panel is aligned to its top and
+ *  scrolls instead. */
+function AutoFit({ shape }: { shape: string }): null {
+  const fit = useFit()
+  const width = useStore((s) => s.width)
+  const height = useStore((s) => s.height)
   useEffect(() => {
     const t = setTimeout(fit, 30)
     return () => clearTimeout(t)
@@ -172,6 +177,34 @@ function AutoFit({ shape }: { shape: string }): null {
     return () => clearTimeout(t)
   }, [width, height, fit])
   return null
+}
+
+const zoomButton = 'flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40'
+
+/** Floating zoom pill: [out] [NN%] [in] | [fit]. Zoom steps and Fit use the same store as the canvas. */
+function ZoomControls(): React.JSX.Element {
+  const { zoomIn, zoomOut } = useReactFlow()
+  const fit = useFit()
+  const zoom = useStore((s) => s.transform[2])
+  const minZoom = useStore((s) => s.minZoom)
+  const maxZoom = useStore((s) => s.maxZoom)
+  const atMin = zoom <= minZoom + 1e-3
+  const atMax = zoom >= maxZoom - 1e-3
+  return (
+    <Panel position="bottom-left" className="nopan nowheel nodrag flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm">
+      <button type="button" aria-label="Zoom out" title="Zoom out" disabled={atMin} className={zoomButton} onClick={() => void zoomOut({ duration: 150 })}>
+        <ZoomOut className="size-3.5" />
+      </button>
+      <span aria-live="polite" className="min-w-[3.25rem] text-center text-[11px] tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
+      <button type="button" aria-label="Zoom in" title="Zoom in" disabled={atMax} className={zoomButton} onClick={() => void zoomIn({ duration: 150 })}>
+        <ZoomIn className="size-3.5" />
+      </button>
+      <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
+      <button type="button" aria-label="Fit to view" title="Fit to view" className={zoomButton} onClick={fit}>
+        <Maximize className="size-3.5" />
+      </button>
+    </Panel>
+  )
 }
 
 /** The mission's spawn tree, as a stacked graph: coordinator and leads side by side, each
@@ -344,6 +377,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       colorMode="dark"
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--color-border)" />
+      <ZoomControls />
     </ReactFlow>
     </ReactFlowProvider>
   )
