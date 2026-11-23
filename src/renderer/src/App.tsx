@@ -334,6 +334,9 @@ export function App(): React.JSX.Element {
     .sort((x, y) => Number(y.m.id === mission?.id) - Number(x.m.id === mission?.id))
   const needsOther = needsList.length - needsYou
   const needsTotal = needsList.length
+  useEffect(() => {
+    document.title = needsTotal > 0 ? `(${needsTotal}) The ORC` : 'The ORC'
+  }, [needsTotal])
   const needsLabel = [
     needsYou > 0 && `${needsYou} need${needsYou === 1 ? 's' : ''} you`,
     needsOther > 0 && `${needsYou > 0 ? '' : needsOther + ' '}${needsYou > 0 ? needsOther + ' ' : ''}in other mission${needsOther === 1 ? '' : 's'}`
