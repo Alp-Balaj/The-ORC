@@ -125,29 +125,29 @@ _Kept current through the night. `docs/history/` has the full detail (start with
 
 ## Open questions for the owner
 
-- **UI polish is waiting on you.** Your global CLAUDE.md says to research real apps on Mobbin before
-  designing screens, and to ask if Mobbin isn't available. The Mobbin tools aren't available in
-  this session (ToolSearch found none). So the M2 look stays as built (Tailwind, shadcn-style
-  components, React Flow, Motion), and I spent the time on error-handling hardening instead.
-  Connect Mobbin, or say "skip the research", and the polish pass can follow.
-  UI built after that rule appeared, without the research: space settings (the gear), Pause/Resume,
-  Remove, the failed-action banner and the error screen. These are small controls on existing
-  screens, but review them under the rule.
+_Refreshed 2026-11-23 against `docs/DECISIONS-PENDING.md` and `docs/HANDOFF.md`. The items below
+are resolved or updated; the rest of this report is unchanged history._
 
-- **`docs/DECISIONS-PENDING.md`** has three items:
-  - the ADR the plan asks for: plan check auto-merges into integration;
-  - typing `[The ORC] …` notices into an idle coordinator's terminal;
-  - where the gate command lives.
+- **UI polish — still open, but no longer blocked on Mobbin.** The Mobbin tools are now available
+  in sessions (pre-approved in `.claude/settings.json`; see CLAUDE.md "UI work starts with Mobbin
+  research"), so the "connect Mobbin or skip the research" question is resolved. The polish pass
+  itself is still listed under "Next / open" in HANDOFF ("UI polish, starting with Mobbin
+  research"). UI built without the research (space settings gear, Pause/Resume, Remove, the
+  failed-action banner, the error screen) still needs that review.
 
-- **Your `notify.sh` hook fires for every ORC session** (Stop and Notification), because
-  `--settings` hooks are layered on top of yours. With five workers, that is a lot of desktop
-  notifications.
-  - Options: leave it as it is; have the ORC set an env var such as `ORC_SESSION=1` so your script
-    can skip ORC sessions; or launch with `--setting-sources` without `user`. That last one would also
-    drop your permissions and plugins, which goes against "the Claude Code I use".
-  - I left it as is. **Tonight's test sessions ran through `notify.sh` too** (it sends a desktop
-    notification on Stop unless that session's window has focus), so you may find a pile of
-    notifications from the test runs.
+- ~~**`docs/DECISIONS-PENDING.md`** has three items.~~ **Resolved 2026-11-22.** Nothing is pending
+  (HANDOFF "Next / open"; `docs/DECISIONS-PENDING.md`):
+  - plan check auto-merging into integration: accepted, and "no check" is now the default
+    ([ADR 0001](adr/0001-unattended-merges-into-integration.md));
+  - typing `[The ORC] …` notices into an idle coordinator's terminal: accepted;
+  - where the gate command lives: a per-space setting in the app's `spaces.json`
+    ([ADR 0002](adr/0002-gate-command-per-space-setting.md)).
+
+- ~~**Your `notify.sh` hook fires for every ORC session.**~~ **Resolved.** The ORC now sets
+  `ORC_SESSION=1` in every session's env (`sessionEnv()` in `src/main/claude-launch.ts`;
+  `docs/history/pass-orc-session-1-to-every-orc-sess-orc-session-env.md`), so your hook can skip
+  ORC sessions by checking that variable. Add that check to `notify.sh` yourself; the ORC doesn't
+  edit your hooks.
 
 ## Billed sessions used
 
