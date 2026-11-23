@@ -489,12 +489,12 @@ export function App(): React.JSX.Element {
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-2">
               {mainRunning ? (
-                <Button size="sm" variant="ghost-destructive" className="text-xs" data-testid="main-stop" title="End the main session. Its conversation is kept, so Resume brings it back." onClick={() => mainRoot && void window.orc.stopMainSession(mainRoot)}>
+                <Button size="sm" variant="ghost-destructive" className="text-xs" data-testid="main-stop" title="End the main session. Start begins a new conversation." onClick={() => mainRoot && void window.orc.stopMainSession(mainRoot)}>
                   <Square /> Stop
                 </Button>
               ) : (
                 <Button size="sm" variant="outline" className="text-xs" data-testid="main-start" onClick={() => mainRoot && void window.orc.startMainSession(mainRoot)}>
-                  <Play /> {main?.status === 'exited' ? 'Resume' : 'Start'}
+                  <Play /> Start
                 </Button>
               )}
             </div>
@@ -697,7 +697,7 @@ export function App(): React.JSX.Element {
               <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground" data-testid="terminal-head" data-agent="main-session">
                 <TerminalSquare className="size-3.5 shrink-0" />
                 <span className="shrink-0 font-medium text-foreground">{main.sessionName}</span>
-                <span className="min-w-0 truncate text-[11px] text-faint">{main.activity || (mainRunning ? '' : 'Ended. Resume to continue its conversation.')}</span>
+                <span className="min-w-0 truncate text-[11px] text-faint">{main.activity || (mainRunning ? '' : 'Ended. Start begins a new conversation.')}</span>
               </div>
               <TerminalView key={main.terminalId} id={main.terminalId} />
             </>

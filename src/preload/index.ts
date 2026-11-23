@@ -29,7 +29,7 @@ const api = {
   mainSession: (repoPath: string): Promise<MainSessionView> => ipcRenderer.invoke('main:get', repoPath),
   /** Fires with the view of whichever repo's main session changed (view.repoPath). */
   onMainSession: (cb: (v: MainSessionView) => void) => listen<[MainSessionView]>('main:changed', cb),
-  /** Starts (or resumes) that repo's main session; no-op when already running. */
+  /** Starts a new session for that repo's main session; no-op when already running. */
   startMainSession: (repoPath: string): Promise<void> => ipcRenderer.invoke('main:start', repoPath),
   stopMainSession: (repoPath: string): Promise<void> => ipcRenderer.invoke('main:stop', repoPath),
   listMissions: (): Promise<MissionView[]> => ipcRenderer.invoke('missions:list'),

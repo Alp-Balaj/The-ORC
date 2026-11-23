@@ -23,8 +23,6 @@ interface Saved {
   sessionId: string
   /** Running when The ORC last quit or was told to run it: start it again at launch. */
   wanted: boolean
-  /** Its conversation was started at least once, so later launches resume it. */
-  launched: boolean
   permissionMode: PermissionMode | null
 }
 
@@ -68,13 +66,11 @@ export class MainSession {
   private readonly changed: (view: MainSessionView) => void
   private sessionId: string
   private wanted: boolean
-  private launched: boolean
   private mode: PermissionMode | null
   /** Per-launch bearer token; null while not running. */
   private token: string | null = null
   private status: MainSessionView['status'] = 'off'
   private activity = ''
-  private resumed = false
   private inTurn = false
   private idlePolls = 0
   private turnIdlePolls = 0
@@ -93,7 +89,6 @@ export class MainSession {
     const saved = load(this.file)
     this.sessionId = typeof saved.sessionId === 'string' ? saved.sessionId : randomUUID()
     this.wanted = saved.wanted === true
-    this.launched = saved.launched === true
     // The main session always runs bypassPermissions: a saved older mode never overrides it.
     this.mode = 'bypassPermissions'
   }
@@ -102,10 +97,10 @@ export class MainSession {
     this.controlPort = port
   }
 
-  /** Starts the session, or resumes its conversation; a no-op while it runs. */
+  /** Starts a brand-new session (never resumes the old conversation); a no-op while it runs. */
   start(): void {
     if (this.terminals.isRunning(this.terminalId)) return
-    this.launch(this.launched, false)
+    this.launch()
   }
 
   /** The owner stops it: it stays down at the next launch. */
@@ -118,13 +113,13 @@ export class MainSession {
     this.terminals.kill(this.terminalId)
   }
 
-  /** At launch: brings the session back if it was running when The ORC last quit. */
+  /** At launch: starts a new session if one was running when The ORC last quit. */
   restore(): void {
-    if (this.wanted) this.launch(this.launched, true)
+    if (this.wanted) this.launch()
   }
 
   view(): MainSessionView {
-    return { terminalId: this.terminalId, repoPath: this.repoPath, repoName: this.repoName, sessionName: this.sessionName, status: this.status, activity: this.activity, resumed: this.resumed }
+    return { terminalId: this.terminalId, repoPath: this.repoPath, repoName: this.repoName, sessionName: this.sessionName, status: this.status, activity: this.activity }
   }
 
   /** The permission mode the session runs with (what a mission it starts uses too). */
@@ -215,17 +210,19 @@ export class MainSession {
 
   // Internals ---------------------------------------------------------------
 
-  private launch(resume: boolean, restored: boolean): void {
+  private launch(): void {
+    // Every launch is a new conversation with a fresh session id.
+    this.sessionId = randomUUID()
     mkdirSync(this.dir, { recursive: true })
     mkdirSync(dirname(this.file), { recursive: true })
     this.token = randomBytes(24).toString('hex')
-    // Fresh start, resume and restore all launch bypassPermissions.
+    // Every launch uses bypassPermissions.
     this.mode = 'bypassPermissions'
     const { command, args } = this.launcher(
       claudeArgs({
         sessionName: this.sessionName,
         sessionId: this.sessionId,
-        resume,
+        resume: false,
         token: this.token,
         controlPort: this.controlPort,
         permissionMode: this.mode,
@@ -237,8 +234,6 @@ export class MainSession {
       })
     )
     this.wanted = true
-    this.launched = true
-    this.resumed = restored
     this.inTurn = false
     this.save()
     this.terminals.start({ id: this.terminalId, command, args, cwd: this.repoPath, env: sessionEnv() })
@@ -254,7 +249,7 @@ export class MainSession {
 
   /** Written only on start and stop, never at shutdown: a quit must not clear `wanted`. */
   private save(): void {
-    const saved: Saved = { sessionId: this.sessionId, wanted: this.wanted, launched: this.launched, permissionMode: this.mode }
+    const saved: Saved = { sessionId: this.sessionId, wanted: this.wanted, permissionMode: this.mode }
     try {
       writeFileSync(`${this.file}.tmp`, JSON.stringify(saved))
       renameOver(`${this.file}.tmp`, this.file)
