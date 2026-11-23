@@ -48,14 +48,26 @@ export class ClaudeAccounts {
     this.root = root
     this.file = path.join(root, 'accounts.json')
     try {
-      const p = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<Stored>
+      const p: unknown = JSON.parse(fs.readFileSync(this.file, 'utf8'))
+      if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('not a JSON object (unexpected shape)')
+      const s = p as Partial<Stored>
       this.data = {
-        accounts: (p.accounts ?? []).filter((a) => a?.id && a.configDir),
-        activeId: p.activeId ?? 'default',
-        missions: p.missions ?? {}
+        accounts: (Array.isArray(s.accounts) ? s.accounts : []).filter((a) => a?.id && a.configDir),
+        activeId: typeof s.activeId === 'string' ? s.activeId : 'default',
+        missions: s.missions && typeof s.missions === 'object' ? s.missions : {}
       }
-    } catch {
-      // first run
+    } catch (err) {
+      // A missing file is the normal first run: stay silent. Anything else is corrupt/unreadable:
+      // move it aside so the next save() cannot overwrite the saved accounts and mission mappings.
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        const aside = `${this.file}.corrupt`
+        console.error(`claude-accounts: ${this.file} is unreadable or corrupt; moving it to ${aside} and starting with defaults:`, err)
+        try {
+          fs.renameSync(this.file, aside)
+        } catch (renameErr) {
+          console.error(`claude-accounts: could not move ${this.file} to ${aside}:`, renameErr)
+        }
+      }
     }
     if (!this.find(this.data.activeId)) this.data.activeId = 'default'
   }
