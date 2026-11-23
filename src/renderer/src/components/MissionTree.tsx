@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Panel, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Crown, Maximize, ZoomIn, ZoomOut } from 'lucide-react'
@@ -6,8 +6,9 @@ import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
 import { layoutStacked, stackSizes } from '../../../shared/tree-layout'
 import { cn, formatTokens } from '../lib/utils'
 import { StatusDot, statusLabel } from './AgentCard'
+import { HoverDelay, NodeHoverCard, observeStatus } from './NodeHoverCard'
 
-type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean }
+type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean; parent: string | null; lastLine: string | null }
 type ChipNodeData = { kind: 'chip'; lead: string; count: number; expanded: boolean }
 type TreeNodeData = AgentNodeData | ChipNodeData
 
@@ -57,6 +58,20 @@ const labelColor: Record<AgentView['status'], string> = {
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element {
   const a = data.agent
   const far = useStore((s) => s.transform[2] < SemanticZoom)
+  observeStatus(a.name, a.status)
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => { if (far) setRect(null) }, [far])
+  const hover = {
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>): void => {
+      const el = e.currentTarget
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setRect(el.getBoundingClientRect()), HoverDelay)
+    },
+    onMouseLeave: (): void => { clearTimeout(timer.current); setRect(null) }
+  }
+  const card = rect && !far ? <NodeHoverCard agent={a} rect={rect} parent={data.parent} lastLine={data.lastLine} /> : null
   const base = cn(
     'cursor-pointer border border-border bg-card transition-colors hover:border-border-strong hover:bg-accent',
     a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10 shadow-[0_0_0_3px] shadow-needs/15 hover:bg-needs/15',
@@ -71,6 +86,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         data-testid="tree-node"
         data-agent={a.name}
         data-status={a.status}
+        {...hover}
         style={{ width: '100%', height: '100%' }}
         className={cn(base, 'relative flex items-center gap-1.5 rounded-md pl-2.5 pr-2')}
       >
@@ -79,6 +95,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} className={cn(far && 'size-3')} />
         <span className={cn('min-w-0 flex-1 truncate font-medium', far ? 'text-[15px]' : 'text-[11.5px]')}>{a.name}</span>
         {!far && a.tokens > 0 && <span className="text-[10.5px] tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
+        {card}
       </div>
     )
   }
@@ -87,6 +104,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       data-testid="tree-node"
       data-agent={a.name}
       data-status={a.status}
+      {...hover}
       style={{ width: stackSizes.cardW, height: stackSizes.cardH }}
       className={cn(base, 'relative rounded-lg py-1.5 pl-3 pr-2', far && 'flex items-center')}
     >
@@ -103,6 +121,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
           {a.tokens > 0 && <span className="ml-auto tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
         </div>
       )}
+      {card}
     </div>
   )
 }
@@ -256,6 +275,8 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
     const folded = new Map<string, string>() // agent -> chip id
     for (const [lead, names] of foldedBy) if (!expanded.has(lead)) for (const n of names) folded.set(n, `chip:${lead}`)
 
+    const lastLineOf = new Map<string, string>()
+    for (const f of feed) if (f.text) lastLineOf.set(f.from, f.text)
     const shown = agents.filter((a) => !folded.has(a.name))
     const input = [
       ...shown.map((a) => ({ id: a.name, parent: a.parent })),
@@ -269,7 +290,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         id: a.name,
         type: 'agent',
         position: { x: p?.x ?? 0, y: p?.y ?? 0 },
-        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2 },
+        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2, parent: parentOf(a), lastLine: lastLineOf.get(a.name) ?? null },
         // Fixed size: no node waits on a measurement to be shown.
         width: p?.w ?? stackSizes.cardW,
         height: p?.h ?? stackSizes.cardH,
