@@ -3,6 +3,7 @@ import { GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play
 import { ModelRoles, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { roleLabel } from './components/ModelFields'
 import { CommandPalette } from './components/CommandPalette'
+import { Banner } from './components/Banner'
 import { Feed } from './components/Feed'
 import { MergeScreen, OrcMergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
@@ -361,17 +362,8 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="relative grid h-full grid-rows-[44px_minmax(0,1fr)]" style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr) ${side.width}px` }}>
-      {actionError && (
-        <div className="absolute bottom-3 left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border border-destructive/40 bg-card px-3 py-2 text-[12px] shadow-lg" data-testid="action-error" role="alert">
-          <span className="shrink-0 font-medium text-destructive">Action failed:</span>
-          <span className="min-w-0 break-words">{actionError}</span>
-          <Button size="icon-sm" variant="ghost" className="ml-1 shrink-0" onClick={() => setActionError(null)} aria-label="Dismiss">
-            <X />
-          </Button>
-        </div>
-      )}
       {mergeNotice && (
-        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg', actionError ? 'bottom-16' : 'bottom-3')} data-testid="merge-notice" role="status">
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg', 'bottom-3')} data-testid="merge-notice" role="status">
           <span className="min-w-0 break-words">{mergeNotice}</span>
           <Button size="icon-sm" variant="ghost" className="ml-1 shrink-0" onClick={() => setMergeNotice(null)} aria-label="Dismiss">
             <X />
@@ -379,7 +371,7 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {resumed.length > 0 && (
-        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', actionError ? 'bottom-16' : 'bottom-3', 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="resumed-banner" role="status">
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', 'bottom-3', 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="resumed-banner" role="status">
           <RotateCcw className="size-3.5 shrink-0 text-primary" />
           <span className="min-w-0">
             Resumed {resumed.length} mission{resumed.length === 1 ? '' : 's'} after restart: <span className="font-medium">{resumed.map((m) => m.name).join(', ')}</span>
@@ -393,7 +385,7 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {appRestore && (
-        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', ['bottom-3', 'bottom-16', 'bottom-[116px]'][(actionError ? 1 : 0) + (resumed.length > 0 ? 1 : 0)], 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="app-restore-banner" role="status">
+        <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center', ['bottom-3', 'bottom-16'][resumed.length > 0 ? 1 : 0], 'gap-2 rounded-lg border bg-card px-3 py-2 text-[12px] shadow-lg')} data-testid="app-restore-banner" role="status">
           <MonitorPlay className="size-3.5 shrink-0 text-primary" />
           <span className="min-w-0">
             <span className="font-medium">{appRestore.missionName}</span>'s app was running before the restart
@@ -600,6 +592,8 @@ export function App(): React.JSX.Element {
 
       {/* Terminal */}
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
+        {/* Under the header; keep below the failure banner when both show. */}
+        {actionError && <Banner text={`Action failed: ${actionError}`} testId="action-error" onDismiss={() => setActionError(null)} />}
         {mission && <SplitPanel mission={mission} />}
         {mission && view === 'merge' ? (
           <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} />
