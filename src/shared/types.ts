@@ -299,3 +299,16 @@ export interface AutopilotView {
   emptyRounds: number
 }
 export type AutopilotPatch = { enabled?: boolean; maxTasks?: number; maxEmptyRounds?: number }
+
+/** The one app-level "main session": a Claude Code session above every mission (not a mission itself).
+ *  `off` = not started (or stopped by the owner); the others mirror an agent's status. */
+export const MainSessionTerminalId = 'orc-main'
+export interface MainSessionView {
+  terminalId: string
+  sessionName: string
+  status: 'off' | 'starting' | 'idle' | 'working' | 'needs-you' | 'exited'
+  /** One line, e.g. "thinking" or "needs your permission". */
+  activity: string
+  /** True when the session was resumed after a restart of The ORC. */
+  resumed: boolean
+}

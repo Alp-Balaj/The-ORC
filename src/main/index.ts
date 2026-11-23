@@ -3,11 +3,13 @@ import { join } from 'node:path'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import type { AutopilotPatch, MissionView, PermissionMode, StartMissionRequest } from '../shared/types.ts'
+import { MainSessionTerminalId } from '../shared/types.ts'
 import type { SpacePatch } from '../preload/index.ts'
 import { ControlServer } from './control-server.ts'
 import { HistoryIndex } from './history-index.ts'
 import { renameOver } from './rename-over.ts'
 import { Missions } from './missions.ts'
+import { MainSession } from './main-session.ts'
 import { startStatusPoller } from './agent-status.ts'
 import { runSmoke } from './smoke.ts'
 import { fakeLauncher } from './smoke-replay.ts'
@@ -45,6 +47,7 @@ const terminals = new TerminalHost(
   (id, data) => queueData(id, data),
   (id, code) => {
     missions.terminalExited(id, code)
+    mainSession.terminalExited(id, code)
     appRunner.terminalExited(id, code)
     flushData()
     send('terminal:exit', id, code)
@@ -157,8 +160,39 @@ function isOrphan(pid: number, sessionId: string): boolean {
   }
 }
 let historyIndex: HistoryIndex | null = null
+function historyIdx(): HistoryIndex {
+  historyIndex ??= new HistoryIndex(join(smoke ?? app.getPath('userData'), 'history-index.sqlite'))
+  return historyIndex
+}
+/** The read-only overview the main session gets from list_missions. */
+function missionsText(): string {
+  const views = missions.views()
+  const out: string[] = []
+  if (!views.length) out.push('No missions yet.')
+  for (const m of views) {
+    out.push(`## ${m.name} (${m.state}${m.paused ? ', paused' : ''}${m.integrating ? ', integrating' : ''})`)
+    out.push(`space: ${m.repoPath} | base: ${m.baseBranch} | main branch: ${m.mainBranch}`)
+    const integration = m.mergedToMain
+      ? `merged to main (${m.mergedToMain.commit.slice(0, 8)})`
+      : m.integrated
+        ? `integrated into the ORC branch (${m.integrated.commit.slice(0, 8)})`
+        : 'not integrated into the ORC branch'
+    out.push(`integration: ${integration}${m.integrateError ? `; last integration failed: ${m.integrateError.message}` : ''}`)
+    out.push(`gate: ${m.gate ? (m.gate.ok ? 'passed' : `failed (${m.gate.command})`) : 'not run'} | verifier: ${m.verifier?.status ?? 'not run'}`)
+    if (m.split?.status === 'pending') out.push('plan: the split waits for the owner to approve it')
+    for (const a of m.agents.filter((x) => !x.dismissed)) {
+      const q = a.question ? ` | question: ${a.question}` : ''
+      out.push(`- ${a.sessionName} | ${a.role} | ${a.status}: ${a.activity} | branch ${a.branch ?? '-'} | merge ${a.merge ?? '-'}${q}`)
+    }
+    out.push('')
+  }
+  const spaceList = spaces.list()
+  out.push(`Spaces (${spaceList.length}):`)
+  for (const s of spaceList) out.push(`- ${s.name}: ${s.root}`)
+  return out.join('\n')
+}
 const control = new ControlServer({
-  agentForToken: (t) => missions.agentForToken(t),
+  agentForToken: (t) => missions.agentForToken(t) ?? mainSession.agentForToken(t),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
   reportDone: (c, s) => missions.reportDone(c, s),
   askHuman: (c, q) => missions.askHuman(c, q),
@@ -166,10 +200,14 @@ const control = new ControlServer({
   proposeSplit: (c, s, w) => missions.proposeSplit(c, s, w),
   integrateMission: (c) => missions.integrateMission(c),
   searchHistory: (c, query, limit) => {
+    if (c === MainSessionTerminalId) {
+      // The main session oversees every space: search each space's records and docs.
+      const parts = spaces.list().map((s) => `### ${s.name} (${s.root})\n${historyIdx().search({ recordsDir: s.recordsPath, repoRoot: s.root, query, limit: limit ?? undefined })}`)
+      return parts.length ? parts.join('\n\n') : 'search_history: no spaces yet.'
+    }
     const m = missions.views().find((v) => v.agents.some((a) => a.terminalId === c))
     if (!m) return 'search_history: unknown caller (no mission found for this session).'
-    historyIndex ??= new HistoryIndex(join(smoke ?? app.getPath('userData'), 'history-index.sqlite'))
-    return historyIndex.search({ recordsDir: spaces.recordsPath(m.repoPath), repoRoot: m.repoPath, query, limit: limit ?? undefined })
+    return historyIdx().search({ recordsDir: spaces.recordsPath(m.repoPath), repoRoot: m.repoPath, query, limit: limit ?? undefined })
   },
   addToQueue: (c, tasks) => {
     const info = missions.callerInfo(c)
@@ -180,12 +218,26 @@ const control = new ControlServer({
     const titles = tasks.map((t) => `"${t.title.trim()}"`).join(', ')
     return `Added ${tasks.length} task${tasks.length === 1 ? '' : 's'} to the queue of ${info.repoPath}: ${titles}. The human starts the queue from the sidebar (or it continues if running).`
   },
+  listMissions: (c) => {
+    if (c !== MainSessionTerminalId) return 'list_missions: refused. Only the main session lists missions.'
+    return missionsText()
+  },
+  startMission: async (c, repoPath, name, brief) => {
+    if (c !== MainSessionTerminalId) return 'start_mission: refused. Only the main session starts missions.'
+    if (!spaces.list().some((s) => s.root === repoPath)) return `start_mission: refused. ${repoPath} is not a space in The ORC (list_missions shows the spaces).`
+    try {
+      const id = await missions.startMission({ repoPath, name, brief, permissionMode: mainSession.permissionModeInUse() })
+      return `Started mission "${name}" (id ${id}) in ${repoPath}. Its coordinator "${name}/coordinator" starts with the brief.`
+    } catch (err) {
+      return `start_mission: ${err instanceof Error ? err.message : String(err)}`
+    }
+  },
   hookEvent: (c, e) => {
     // Raw payloads, so status bugs can be diagnosed from a file.
     try {
       appendFileSync(join(app.getPath('userData'), 'hooks.jsonl'), JSON.stringify({ at: Date.now(), agent: c, ...e }) + '\n')
     } catch {}
-    return missions.hookEvent(c, e)
+    return c === MainSessionTerminalId ? mainSession.hookEvent(e) : missions.hookEvent(c, e)
   }
 })
 
@@ -227,6 +279,15 @@ autopilots = new Autopilots({
   file: smoke ? null : join(app.getPath('userData'), 'autopilot.json')
 })
 const autopilot = autopilots
+/** The app-level main session: one interactive claude above every mission. Not in missions.views(). */
+const mainSession = new MainSession({
+  terminals,
+  dataDir: smoke ?? app.getPath('userData'),
+  permissionMode: () => missions.views().at(-1)?.permissionMode ?? 'acceptEdits',
+  changed: (v) => send('main:changed', v)
+})
+mainSession.statusLine = (s) => planUsage.update(s)
+if (process.env.ORC_SMOKE_OUT && process.env.ORC_SMOKE_FAKE) mainSession.launcher = fakeLauncher
 if (smoke) {
   // A hidden window stops producing frames after a while; screenshots then never arrive.
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
@@ -270,6 +331,9 @@ function createWindow(): void {
 /** Missions that restore() brought back at launch, for the "Resumed N missions" banner. */
 let resumedAtLaunch: { id: string; name: string }[] = []
 ipcMain.handle('missions:list', () => missions.views())
+ipcMain.handle('main:get', () => mainSession.view())
+ipcMain.handle('main:start', () => mainSession.start())
+ipcMain.handle('main:stop', () => mainSession.stop())
 ipcMain.handle('missions:resumed-at-launch', () => resumedAtLaunch)
 ipcMain.handle('missions:stop-resumed', () => {
   for (const m of resumedAtLaunch) missions.stopMission(m.id)
@@ -405,7 +469,9 @@ async function restoreAppRun(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  missions.setControlPort(await control.listen())
+  const port = await control.listen()
+  missions.setControlPort(port)
+  mainSession.setControlPort(port)
   // Recovery before anything else: reattach the missions that were running.
   if (existsSync(stateFile())) {
     try {
@@ -425,9 +491,17 @@ app.whenReady().then(async () => {
       console.error('could not restore missions', err)
     }
   }
+  // The main session comes back only if it was running when The ORC last quit.
+  mainSession.restore()
   queue.onMissions(missions.views())
   await restoreAppRun()
-  startStatusPoller(() => missions.liveSessionIds(), (s) => missions.reconcile(s))
+  startStatusPoller(
+    () => [...missions.liveSessionIds(), ...mainSession.liveSessionIds()],
+    (s) => {
+      missions.reconcile(s)
+      mainSession.reconcile(s)
+    }
+  )
   setInterval(() => void missions.refreshTokens(), 5000).unref()
   createWindow()
   if (smoke) {

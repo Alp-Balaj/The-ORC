@@ -39,6 +39,10 @@ export interface ServerHandlers extends ControlHandlers {
   searchHistory(caller: string, query: string, limit: number | null): string
   /** Coordinator only: appends tasks to the caller's space backlog queue. */
   addToQueue(caller: string, tasks: { title: string; details?: string }[]): Promise<string> | string
+  /** Main session only: a read-only overview of every mission and space. */
+  listMissions(caller: string): string
+  /** Main session only: starts a mission in a space with the main session's permission mode. */
+  startMission(caller: string, repoPath: string, name: string, brief: string): Promise<string>
 }
 
 const MaxBody = 1024 * 1024
@@ -188,6 +192,33 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
       }
     },
     async ({ tasks }) => text(await h.addToQueue(caller, tasks))
+  )
+  server.registerTool(
+    'list_missions',
+    {
+      description:
+        'Main session only. Read-only overview of every mission across all spaces: state, each lead\'s ' +
+        'session name, status and activity, branch, merge and integration state, and the spaces.',
+      inputSchema: {}
+    },
+    async () => text(h.listMissions(caller))
+  )
+  server.registerTool(
+    'start_mission',
+    {
+      description:
+        'Main session only, and only when the human asked for a new mission: start a mission in a space ' +
+        '(repoPath must be a space root from list_missions). Its coordinator starts with the brief.',
+      inputSchema: {
+        repoPath: z.string().min(1).describe('The space root, as list_missions shows it'),
+        name: z
+          .string()
+          .regex(/^[a-z0-9][a-z0-9-]{0,39}$/)
+          .describe('Short kebab-case mission name, unique across every space, e.g. "search-api"'),
+        brief: z.string().min(1).describe('What the mission should build, self-contained')
+      }
+    },
+    async ({ repoPath, name, brief }) => text(await h.startMission(caller, repoPath, name, brief))
   )
   return server
 }

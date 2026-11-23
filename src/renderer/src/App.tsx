@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CircleCheck, GitMerge, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
-import { missionFailure, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
+import { MainSessionTerminalId, missionFailure, shownAgents, type AppRunView, type MainSessionView, type MissionView, type SpaceView } from '../../shared/types'
 import { CommandPalette } from './components/CommandPalette'
 import { Banner } from './components/Banner'
 import { EmptyState } from './components/EmptyState'
@@ -104,6 +104,9 @@ export function App(): React.JSX.Element {
   const [appRestore, setAppRestore] = useState<{ missionId: string; missionName: string } | null>(null)
   const [appRestoreBusy, setAppRestoreBusy] = useState(false)
   const [appRestoreError, setAppRestoreError] = useState<string | null>(null)
+  // The app-level main session (above all missions). Selecting it shows its terminal in place of a mission.
+  const [main, setMain] = useState<MainSessionView | null>(null)
+  const [mainSelected, setMainSelected] = useState(false)
   // Keyboard: the quick switcher or the cheat sheet (one at a time), and whether the sidebar shows.
   const [dialog, setDialog] = useState<'palette' | 'shortcuts' | null>(null)
   const dialogFromTerminal = useRef(false)
@@ -142,14 +145,22 @@ export function App(): React.JSX.Element {
     const offS = window.orc.onSpaces(setSpaces)
     const offN = window.orc.onNotifySelect((_m, tid) => {
       setView('terminal')
+      if (tid === MainSessionTerminalId) {
+        setMainSelected(true)
+        return
+      }
+      setMainSelected(false)
       setTerminalId(tid)
       setMissionId(tid.split(':')[0])
     })
+    void window.orc.mainSession().then(setMain)
+    const offMain = window.orc.onMainSession(setMain)
     return () => {
       offM()
       offS()
       offN()
       offA()
+      offMain()
     }
   }, [])
 
@@ -183,20 +194,29 @@ export function App(): React.JSX.Element {
   const agent = shown.find((a) => a.terminalId === terminalId) ?? shown.find((a) => a.role === 'coordinator') ?? null
 
   useEffect(() => {
-    window.orc.setSelection(mission?.id ?? null, agent?.terminalId ?? null)
-  }, [mission?.id, agent?.terminalId])
+    window.orc.setSelection(mainSelected ? null : mission?.id ?? null, mainSelected ? MainSessionTerminalId : agent?.terminalId ?? null)
+  }, [mainSelected, mission?.id, agent?.terminalId])
 
   // Stable (they only call setters), so the memoized tree skips renders on unrelated updates.
   const selectMission = useCallback((id: string): void => {
+    setMainSelected(false)
     setView('terminal')
     setMissionId(id)
     setTerminalId(`${id}:coordinator`)
   }, [])
   const selectAgent = useCallback((tid: string): void => {
+    setMainSelected(false)
     setView('terminal')
     setTerminalId(tid)
     setMissionId(tid.split(':')[0])
   }, [])
+  // Starting it on first select: a session nobody has started yet opens straight into a live terminal.
+  const selectMain = (): void => {
+    setMainSelected(true)
+    setView('terminal')
+    if (!main || main.status === 'off') void window.orc.startMainSession()
+  }
+  const mainRunning = !!main && main.status !== 'off' && main.status !== 'exited'
   const space = mission ? spaces.find((s) => s.root === mission.repoPath) : undefined
   const missionApp = appRun && mission && appRun.missionId === mission.id ? appRun : null
   const runApp = (): void => {
@@ -372,7 +392,7 @@ export function App(): React.JSX.Element {
   }, [needsTotal])
 
   return (
-    <div className={cn('relative grid h-full', showBand && mission ? 'grid-rows-[44px_auto_minmax(0,1fr)]' : 'grid-rows-[44px_minmax(0,1fr)]')} style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr) ${side.width}px` }}>
+    <div className={cn('relative grid h-full', showBand && mission ? 'grid-rows-[44px_auto_minmax(0,1fr)]' : 'grid-rows-[44px_minmax(0,1fr)]')} style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr)${mainSelected ? '' : ` ${side.width}px`}` }}>
       {mergeNotice && (
         <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg', 'bottom-3')} data-testid="merge-notice" role="status">
           <span className="min-w-0 break-words">{mergeNotice}</span>
@@ -426,7 +446,7 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {/* Header */}
-      <header className={cn('accent-hairline flex min-w-0 items-center gap-3 border-b bg-background px-3', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="header">
+      <header className={cn('accent-hairline flex min-w-0 items-center gap-3 border-b bg-background px-3', 'col-span-full')} data-testid="header">
         <div className="flex w-69 shrink-0 items-center gap-2">
           <div className="grid h-6 w-9 place-items-center rounded-md bg-primary/15 text-[10.5px] font-black tracking-tight text-primary">ORC</div>
           <span className="font-semibold tracking-tight">The ORC</span>
@@ -434,7 +454,25 @@ export function App(): React.JSX.Element {
             <PanelLeft />
           </Button>
         </div>
-        {mission ? (
+        {mainSelected ? (
+          <>
+            <div className="flex min-w-0 items-center gap-1.5 text-[13px]" data-testid="header-main">
+              <span className="shrink-0 font-semibold">Main session</span>
+              <span className="truncate text-muted-foreground">oversees all missions</span>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {mainRunning ? (
+                <Button size="sm" variant="ghost-destructive" className="text-xs" data-testid="main-stop" title="End the main session. Its conversation is kept, so Resume brings it back." onClick={() => void window.orc.stopMainSession()}>
+                  <Square /> Stop
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" className="text-xs" data-testid="main-start" onClick={() => void window.orc.startMainSession()}>
+                  <Play /> {main?.status === 'exited' ? 'Resume' : 'Start'}
+                </Button>
+              )}
+            </div>
+          </>
+        ) : mission ? (
           <>
             <div className="flex min-w-0 items-center gap-1.5 text-[13px]" data-testid="header-mission">
               <span className="shrink-0 text-muted-foreground">{mission.repoPath.split(/[\\/]/).pop()}</span>
@@ -567,8 +605,8 @@ export function App(): React.JSX.Element {
         <PlanUsageHeader warnAt={warnAt} warnOnly className="max-[1099px]:hidden" />
         <HeaderSettingsMenu mission={mission} warnAt={warnAt} onShortcuts={() => openDialog('shortcuts')} />
       </header>
-      {showBand && mission && (
-        <div className={cn('flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-xs', sidebarOpen ? 'col-span-3' : 'col-span-2')} data-testid="ready-band" role="status">
+      {showBand && mission && !mainSelected && (
+        <div className={cn('flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-xs', 'col-span-full')} data-testid="ready-band" role="status">
           <CircleCheck className="size-4 shrink-0 text-done" />
           <span className="min-w-0 truncate">
             <span className="font-medium">All leads are done.</span> <span className="text-muted-foreground">{readyChecks(mission).text}</span>
@@ -587,8 +625,11 @@ export function App(): React.JSX.Element {
         currentRoot={currentRoot}
         missions={missions}
         appRun={appRun}
-        selectedMission={mission?.id ?? null}
-        selectedTerminal={agent?.terminalId ?? null}
+        selectedMission={mainSelected ? null : mission?.id ?? null}
+        selectedTerminal={mainSelected ? null : agent?.terminalId ?? null}
+        main={main}
+        mainSelected={mainSelected}
+        onSelectMain={selectMain}
         onSelectMission={selectMission}
         onSelectAgent={selectAgent}
         onReview={(name) => setView({ review: name })}
@@ -596,7 +637,7 @@ export function App(): React.JSX.Element {
 
       {/* Terminal */}
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-panel">
-        {mission && failure && (
+        {!mainSelected && mission && failure && (
           <div className="flex min-h-9 shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/5 px-3 py-1 text-xs" role="alert" data-testid="failure-banner" data-kind={failure.kind}>
             <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
             <span className="min-w-0 flex-1 truncate text-foreground" title={failure.text}>{failure.text}</span>
@@ -620,8 +661,29 @@ export function App(): React.JSX.Element {
         )}
         {/* Under the header; keep below the failure banner when both show. */}
         {actionError && <Banner text={`Action failed: ${actionError}`} testId="action-error" onDismiss={() => setActionError(null)} />}
-        {mission && <SplitPanel mission={mission} />}
-        {mission && view === 'merge' ? (
+        {!mainSelected && mission && <SplitPanel mission={mission} />}
+        {mainSelected ? (
+          main && main.status !== 'off' ? (
+            <>
+              <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground" data-testid="terminal-head" data-agent="main-session">
+                <TerminalSquare className="size-3.5 shrink-0" />
+                <span className="shrink-0 font-medium text-foreground">{main.sessionName}</span>
+                <span className="min-w-0 truncate text-[11px] text-faint">{main.activity || (mainRunning ? '' : 'Ended. Resume to continue its conversation.')}</span>
+              </div>
+              <TerminalView key={MainSessionTerminalId} id={MainSessionTerminalId} />
+            </>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center" data-testid="main-empty">
+              <div className="text-sm font-medium">Main session</div>
+              <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">
+                One Claude Code session above all your missions. It sees every space and mission, and it does not own any of them.
+              </p>
+              <Button size="sm" data-testid="main-start-empty" onClick={() => void window.orc.startMainSession()}>
+                <Play /> Start main session
+              </Button>
+            </div>
+          )
+        ) : mission && view === 'merge' ? (
           <MergeScreen mission={mission} space={spaces.find((s) => s.root === mission.repoPath)} onBack={() => setView('terminal')} onRemoved={() => { setView('terminal'); setMissionId(null) }} />
         ) : mission && view === 'main-merge' ? (
           <OrcMergeScreen
@@ -673,7 +735,7 @@ export function App(): React.JSX.Element {
       </main>
 
       {/* Tree + feed */}
-      <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mission && 'pointer-events-none opacity-40')} aria-disabled={!mission}>
+      {!mainSelected && <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mission && 'pointer-events-none opacity-40')} aria-disabled={!mission}>
         {side.handle}
         <div className="panel-title flex h-8 items-center justify-between border-b px-3">
           <span className="text-[11px] font-medium uppercase tracking-wide text-faint">Mission tree</span>
@@ -699,7 +761,7 @@ export function App(): React.JSX.Element {
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="feed">
           <Feed feed={mission?.feed ?? []} />
         </div>
-      </aside>
+      </aside>}
 
       <CommandPalette
         open={dialog === 'palette'}

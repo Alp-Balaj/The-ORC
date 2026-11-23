@@ -1,5 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
-import type { AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
+import type { MainSessionView, AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
 
 export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; maxParallel?: number; notifications?: boolean }
 
@@ -10,6 +10,12 @@ function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void):
 }
 
 const api = {
+  /** The app-level main session (above all missions). */
+  mainSession: (): Promise<MainSessionView> => ipcRenderer.invoke('main:get'),
+  onMainSession: (cb: (v: MainSessionView) => void) => listen<[MainSessionView]>('main:changed', cb),
+  /** Starts (or resumes) it; no-op when already running. */
+  startMainSession: (): Promise<void> => ipcRenderer.invoke('main:start'),
+  stopMainSession: (): Promise<void> => ipcRenderer.invoke('main:stop'),
   listMissions: (): Promise<MissionView[]> => ipcRenderer.invoke('missions:list'),
   resumedAtLaunch: (): Promise<{ id: string; name: string }[]> => ipcRenderer.invoke('missions:resumed-at-launch'),
   stopResumed: (): Promise<void> => ipcRenderer.invoke('missions:stop-resumed'),

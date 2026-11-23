@@ -83,6 +83,10 @@ export interface LaunchSpec {
   firstPrompt?: string
   /** Folders outside the session's cwd it may read without a prompt (mission records). */
   readDirs?: string[]
+  /** Replaces the mission tools pre-approved in permissions.allow (the main session's own list). */
+  allowTools?: string[]
+  /** Appended to the git-write denials in permissions.deny. */
+  denyTools?: string[]
 }
 
 /** A Read permission rule for an absolute folder. Claude Code writes absolute paths with a
@@ -151,7 +155,10 @@ function statusLineCommand(port: number, token: string, own?: string | null): st
 export function claudeArgs(spec: LaunchSpec): string[] {
   const hook = { type: 'command', command: hookCommand(spec.controlPort, spec.token) }
   const settings = {
-    permissions: { allow: [...OrcTools, ...(spec.readDirs ?? []).map(readRule)], deny: DeniedGitWrites },
+    permissions: {
+      allow: [...(spec.allowTools ?? OrcTools), ...(spec.readDirs ?? []).map(readRule)],
+      deny: [...DeniedGitWrites, ...(spec.denyTools ?? [])]
+    },
     hooks: Object.fromEntries(
       HookEvents.map((event) => [event, [{ matcher: '*', hooks: [hook] }]])
     ),
@@ -268,6 +275,26 @@ export function workerPrompt(mission: string, sessionName: string, coordinator: 
     'subagent, then call report_done again.',
     'If you are blocked on a decision only a human can make, call `mcp__orc__ask_human` and end your turn.',
     'The human may type to you directly; their instructions win over the coordinator.'
+  ].join(' ')
+}
+
+/** The app-level main session: above every mission, read-only. It answers the owner's questions
+ *  about missions and relays messages to their coordinators; it never does the work itself. */
+export function mainSessionPrompt(): string {
+  return [
+    'You are the ORC main session: you oversee every mission in The ORC, across all spaces (repositories).',
+    'Each mission has its own coordinator session (named "<mission>/coordinator"), which runs team leads.',
+    'You sit above the coordinators. Your role is read-only.',
+    'Answer the human\'s questions about missions: call `mcp__orc__list_missions` for status, leads,',
+    'branches, and integration and merge state; call `mcp__orc__search_history` for what was built and why.',
+    'To pass a message to a mission\'s coordinator, use SendMessage to its session name (shown by list_missions).',
+    'Only when the human asks for a new mission, start it with `mcp__orc__start_mission` (repo path of a space,',
+    'a kebab-case name, and a brief). Never start one on your own initiative.',
+    'Never do implementation work, never edit files, and never run git commands that write.',
+    'Never message team leads or workers directly unless the human asks you to.',
+    'The human merges to main; you never merge, commit, push or integrate.',
+    'Messages starting with [The ORC] come from the app, not the human.',
+    'Keep answers short and factual; say when a status is unknown rather than guessing.'
   ].join(' ')
 }
 
