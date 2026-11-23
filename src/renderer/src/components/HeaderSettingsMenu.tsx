@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Keyboard, SlidersHorizontal } from 'lucide-react'
+import { Keyboard, SlidersHorizontal, UserRound } from 'lucide-react'
 import { ModelRoles, type MissionView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { withHint } from '../lib/shortcuts'
@@ -36,7 +36,7 @@ function Row({ label, children, title, testId }: { label: string; children: Reac
 }
 
 /** One muted header button that opens a popover with the per-mission config readouts and app-wide settings. */
-export function HeaderSettingsMenu({ mission, warnAt, onShortcuts }: { mission: MissionView | null; warnAt: number; onShortcuts: () => void }): React.JSX.Element {
+export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }: { mission: MissionView | null; warnAt: number; onShortcuts: () => void; onAccounts: () => void }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const id = useId()
@@ -101,6 +101,9 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts }: { mission: 
           <div className="px-1.5 pt-1">
             <Button variant="ghost" size="sm" className="w-full justify-start text-[12px] text-muted-foreground" title={withHint('Keyboard shortcuts', 'shortcuts')} data-testid="open-shortcuts" onClick={() => { setOpen(false); onShortcuts() }}>
               <Keyboard /> Keyboard shortcuts
+            </Button>
+            <Button variant="ghost" size="sm" className="w-full justify-start text-[12px] text-muted-foreground" data-testid="open-accounts" onClick={() => { setOpen(false); onAccounts() }}>
+              <UserRound /> Accounts
             </Button>
           </div>
         </div>
