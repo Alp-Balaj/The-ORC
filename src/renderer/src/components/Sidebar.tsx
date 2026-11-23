@@ -8,9 +8,9 @@ import { cn, formatTokens } from '../lib/utils'
 import { getMissionSort, MISSION_SORTS, saveMissionSort, sortMissions, type MissionSort } from '../lib/missionSort'
 import { missionAttention, tierBg, tierGlow, topTier } from '../lib/attention'
 import { AgentCard, StatusDot, statusLabel } from './AgentCard'
-import { AutopilotToggle } from './AutopilotToggle'
 import { LOOP_SETUP_EVENT, LoopSetupDialog } from './LoopSetupDialog'
 import { OnboardingDialog } from './OnboardingDialog'
+import { SPACE_SETTINGS_EVENT, SpaceSettingsModal } from './SpaceSettingsModal'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
 import { fromDraft, ModelFields, toDraft } from './ModelFields'
@@ -77,87 +77,6 @@ function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
   )
 }
 
-function SpaceSettings({ space, onClose, onRerunOnboarding }: { space: SpaceView; onClose: () => void; onRerunOnboarding: () => void }): React.JSX.Element {
-  const [gate, setGate] = useState(space.gateCommand ?? '')
-  const [max, setMax] = useState(String(space.maxLive))
-  const [records, setRecords] = useState(space.recordsDir ?? '')
-  const [run, setRun] = useState(space.runCommand ?? '')
-  const [models, setModels] = useState(toDraft(space.models))
-  const [threshold, setThreshold] = useState(String(space.usageThreshold))
-  const [idleStop, setIdleStop] = useState(String(space.idleStopMinutes))
-  const [parallel, setParallel] = useState(String(space.maxParallel))
-  const [notify, setNotify] = useState(space.notifications)
-  const suggested = space.suggestedGate
-  return (
-    <motion.form
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      data-testid="space-settings"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation()
-          onClose()
-        }
-      }}
-      className="mx-1 my-1.5 space-y-2 overflow-hidden rounded-lg border bg-card p-2.5 text-[12px]"
-      onSubmit={(e) => {
-        e.preventDefault()
-        void window.orc.updateSpace(space.root, { gateCommand: gate || null, maxLive: Number(max) || space.maxLive, recordsDir: records || null, runCommand: run || null, models: fromDraft(models), usageThreshold: Number(threshold) || space.usageThreshold, maxParallel: Number(parallel) || space.maxParallel, notifications: notify, idleStopMinutes: idleStop.trim() === '' || !Number.isFinite(Number(idleStop)) ? space.idleStopMinutes : Number(idleStop) }).then(onClose)
-      }}
-    >
-      <div className="space-y-1">
-        <label className="block text-[11px] leading-snug text-muted-foreground">Run command (Run app starts it in a mission's integration branch)</label>
-        <Input value={run} onChange={(e) => setRun(e.target.value)} placeholder="e.g. pnpm install && pnpm dev" data-testid="run-command" />
-      </div>
-      <div className="space-y-1">
-        <label className="block text-[11px] leading-snug text-muted-foreground">Gate command (runs on each merged result)</label>
-        <div className="flex items-center gap-1.5">
-          <Input value={gate} onChange={(e) => setGate(e.target.value)} placeholder={suggested ?? 'e.g. pnpm test'} data-testid="gate-command" />
-          {suggested && !gate && (
-            <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 px-2 font-mono text-[11px]" onClick={() => setGate(suggested)} title="Fills the field; Save to keep it">
-              Use {suggested}
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="space-y-1">
-        <label className="block text-[11px] leading-snug text-muted-foreground">Most live agents in this space</label>
-        <Input type="number" min={1} max={50} value={max} onChange={(e) => setMax(e.target.value)} data-testid="max-live" />
-      </div>
-      <div className="space-y-1">
-        <label className="block text-[11px] leading-snug text-muted-foreground">Mission records folder (empty: The ORC's own data folder)</label>
-        <Input value={records} onChange={(e) => setRecords(e.target.value)} placeholder={space.recordsDir ? '' : space.recordsPath} title={`Now: ${space.recordsPath}`} data-testid="records-dir" />
-      </div>
-      <div className="space-y-1">
-        <label className="block text-[11px] leading-snug text-muted-foreground">Pause the queue at plan usage % (5-hour or weekly)</label>
-        <Input type="number" min={1} max={100} value={threshold} onChange={(e) => setThreshold(e.target.value)} data-testid="usage-threshold" />
-      </div>
-      <div className="space-y-1">
-        <label className="block text-[11px] leading-snug text-muted-foreground">Queue: most tasks running at once (1 = one at a time, stacked)</label>
-        <Input type="number" min={1} max={10} value={parallel} onChange={(e) => setParallel(e.target.value)} data-testid="max-parallel" />
-      </div>
-      <AutopilotToggle root={space.root} />
-      <div className="space-y-1">
-        <label className="block text-[11px] leading-snug text-muted-foreground">Auto-stop finished leads after (min, 0 = off)</label>
-        <Input type="number" min={0} max={1440} value={idleStop} onChange={(e) => setIdleStop(e.target.value)} data-testid="idle-stop-minutes" />
-      </div>
-      <label className="flex items-center gap-2 text-[11px] leading-snug text-muted-foreground">
-        <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="accent-primary" data-testid="notifications-enabled" />
-        Desktop notifications when an agent needs you, finishes or exits
-      </label>
-      <ModelFields draft={models} onChange={setModels} label="Models for this space's missions" />
-      <div className="flex justify-end">
-        <Button type="button" size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-foreground" onClick={onRerunOnboarding} title="Walk through the setup checks again (keeps the space enrolled until you save)" data-testid="space-rerun-onboarding">Re-run onboarding</Button>
-      </div>
-      <div className="flex gap-1.5">
-        <Button type="submit" size="sm" className="h-7 flex-1">Save</Button>
-        <Button type="button" size="sm" variant="ghost" className="h-7 text-muted-foreground hover:text-foreground" onClick={onClose}>Cancel</Button>
-      </div>
-    </motion.form>
-  )
-}
-
 export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTerminal, currentRoot, main, mainSelected, onSelectMain, onSelectMission, onSelectAgent, onReview }: {
   spaces: SpaceView[]
   currentRoot: string | null
@@ -190,6 +109,11 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
     const open = (e: Event): void => setLoopRoot((e as CustomEvent<string>).detail)
     window.addEventListener(LOOP_SETUP_EVENT, open)
     return () => window.removeEventListener(LOOP_SETUP_EVENT, open)
+  }, [])
+  useEffect(() => {
+    const open = (e: Event): void => setSettingsFor((e as CustomEvent<string>).detail)
+    window.addEventListener(SPACE_SETTINGS_EVENT, open)
+    return () => window.removeEventListener(SPACE_SETTINGS_EVENT, open)
   }, [])
   const [usage, setUsage] = useState<PlanUsageView | null>(null)
   useEffect(() => {
@@ -336,7 +260,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   </Button>
                 )}
                 {space && (
-                  <Button size="icon" variant="ghost" className={cn('size-6 shrink-0 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100', settingsFor === root && 'text-foreground opacity-100')} title={withHint('Space settings', 'spaceSettings')} data-testid="space-settings-button" onClick={() => setSettingsFor(settingsFor === root ? null : root)}>
+                  <Button size="icon" variant="ghost" className={cn('size-6 shrink-0 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100', settingsFor === root && 'text-foreground opacity-100')} title={withHint('Space settings', 'spaceSettings')} data-testid="space-settings-button" onClick={() => setSettingsFor(root)}>
                     <Settings2 />
                   </Button>
                 )}
@@ -344,9 +268,6 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   {formFor === root ? <X /> : <Plus />}
                 </Button>
               </div>
-              <AnimatePresence>
-                {settingsFor === root && space && <SpaceSettings space={space} onClose={() => setSettingsFor(null)} onRerunOnboarding={() => { setSettingsFor(null); setOnboardFor({ root, rerun: true }) }} />}
-              </AnimatePresence>
               <AnimatePresence>
                 {formFor === root && (
                   <NewMissionForm
@@ -448,6 +369,16 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
       )}
       {loopRoot && spaces.find((s) => s.root === loopRoot) && (
         <LoopSetupDialog space={spaces.find((s) => s.root === loopRoot)!} queue={queues.find((q) => q.root === loopRoot)} onClose={() => setLoopRoot(null)} />
+      )}
+      {settingsFor && spaces.find((s) => s.root === settingsFor) && (
+        <SpaceSettingsModal
+          space={spaces.find((s) => s.root === settingsFor)!}
+          onClose={() => setSettingsFor(null)}
+          onRerunOnboarding={() => {
+            setOnboardFor({ root: settingsFor, rerun: true })
+            setSettingsFor(null)
+          }}
+        />
       )}
     </aside>
   )
