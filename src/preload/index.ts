@@ -16,6 +16,7 @@ const api = {
   githubCancel: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:cancel'),
   githubDisconnect: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:disconnect'),
   updateApp: (): Promise<string> => ipcRenderer.invoke('app-update:run'),
+  canRestartOnUpdate: (): Promise<boolean> => ipcRenderer.invoke('app-update:can-restart'),
   listClaudeAccounts: (): Promise<ClaudeAccountView[]> => ipcRenderer.invoke('claude-accounts:list'),
   addClaudeAccount: (name: string): Promise<string> => ipcRenderer.invoke('claude-accounts:add', name),
   loginClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:login', id),
