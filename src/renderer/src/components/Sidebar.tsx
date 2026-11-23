@@ -96,21 +96,33 @@ function NewMissionForm({ space, spaceView, onStarted, onCancel }: {
       data-testid="new-mission-form"
       className="mx-1 my-1.5 space-y-2 overflow-hidden rounded-lg border bg-card p-2.5"
     >
-      <Input autoFocus placeholder="Mission name, e.g. social feed" value={name} onChange={(e) => setName(e.target.value)} />
-      <NativeSelect value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)} title="Every session in the mission uses this permission mode">
-        {modeOptions.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-      </NativeSelect>
-      <NativeSelect value={gating} onChange={(e) => setGating(e.target.value as Gating)} title="When a finished team's work merges into the mission's integration branch" data-testid="gating-select">
-        <option value="none">No check: auto-merge (fastest)</option>
-        <option value="plan">Plan check: approve the split, then auto-merge</option>
-        <option value="checkpointed">Checkpointed: review every team's diff</option>
-      </NativeSelect>
+      <label className="block space-y-1">
+        <span className="text-[12px] font-medium text-foreground">Mission name</span>
+        <Input autoFocus placeholder="e.g. Add a search bar to the feed" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!name.trim() || undefined} />
+        {!name.trim() && <span className="block text-[11px] text-faint">Required. This is the name you will see in the sidebar.</span>}
+      </label>
+      <label className="block space-y-1">
+        <span className="text-[12px] font-medium text-foreground">Permission mode</span>
+        <NativeSelect value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)} title="Every session in the mission uses this permission mode">
+          {modeOptions.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </NativeSelect>
+        <span className="block text-[11px] text-faint">Applies to every session in this mission.</span>
+      </label>
+      <label className="block space-y-1">
+        <span className="text-[12px] font-medium text-foreground">Merge check</span>
+        <NativeSelect value={gating} onChange={(e) => setGating(e.target.value as Gating)} title="When a finished team's work merges into the mission's integration branch" data-testid="gating-select">
+          <option value="none">No check: auto-merge (fastest)</option>
+          <option value="plan">Plan check: approve the split, then auto-merge</option>
+          <option value="checkpointed">Checkpointed: review every team's diff</option>
+        </NativeSelect>
+        <span className="block text-[11px] text-faint">Decides whether you approve a team's work before it lands on the mission branch.</span>
+      </label>
       <ModelFields draft={models} onChange={setModels} inherited={spaceView?.models} />
-      <div className="flex gap-1.5">
-        <Button type="submit" size="sm" className="h-7 flex-1" disabled={busy || !name.trim()}>Start mission</Button>
+      <div className="flex gap-1.5 pt-0.5">
+        <Button type="submit" size="sm" className="h-7 flex-1" disabled={busy || !name.trim()}>{busy ? 'Starting…' : 'Start mission'}</Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 text-muted-foreground hover:text-foreground" onClick={onCancel}>Cancel</Button>
       </div>
-      {error && <div className="text-[12px] text-destructive" data-testid="new-mission-error">{error}</div>}
+      {error && <div role="alert" className="text-[12px] text-destructive" data-testid="new-mission-error">{error}</div>}
     </motion.form>
   )
 }

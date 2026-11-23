@@ -98,6 +98,9 @@ export function ClaudeAccountsSection(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
+  const trimmed = name.trim()
+  const duplicate = accounts?.some((a) => a.name.toLowerCase() === trimmed.toLowerCase()) ?? false
+  const nameError = trimmed && duplicate ? 'You already have an account with this name.' : null
 
   const refresh = useCallback(async () => {
     try {
@@ -141,29 +144,36 @@ export function ClaudeAccountsSection(): React.JSX.Element {
       </div>
       {adding && (
         <form
-          className="flex items-center gap-1.5"
+          className="space-y-1.5 rounded-md border border-border bg-muted/30 p-2.5"
           onSubmit={(e) => {
             e.preventDefault()
-            act(() => api().addClaudeAccount(name))
+            if (!trimmed || nameError) return
+            act(() => api().addClaudeAccount(trimmed))
             setName('')
             setAdding(false)
           }}
         >
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. Work" aria-label="Account name" className="h-7 flex-1 text-[12px]" />
-          <Button type="submit" size="sm" disabled={busy}>Sign in</Button>
-          <Button type="button" variant="ghost" size="icon" aria-label="Cancel" onClick={() => setAdding(false)}><X className="size-3.5" /></Button>
+          <label htmlFor="claude-account-name" className="block text-[12px] font-medium">Account name</label>
+          <div className="flex items-center gap-1.5">
+            <Input id="claude-account-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Work or Personal" aria-invalid={!!nameError} aria-describedby="claude-account-name-help" className="h-8 flex-1 text-[12px]" />
+            <Button type="submit" size="sm" disabled={busy || !trimmed || !!nameError}>Add &amp; sign in</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setAdding(false); setName('') }}>Cancel</Button>
+          </div>
+          <p id="claude-account-name-help" role={nameError ? 'alert' : undefined} className={cn('text-[11.5px] leading-snug', nameError ? 'text-destructive' : 'text-muted-foreground')}>
+            {nameError ?? 'Just a label for you. Next, your browser opens so you can sign in to Claude.'}
+          </p>
         </form>
       )}
       {error && <div role="alert" className="rounded-md border border-needs/40 bg-needs/10 px-3 py-1.5 text-[12px] text-needs">{error}</div>}
       {accounts === null ? (
-        <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" /> Checking logins…</div>
+        <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" /> Checking your Claude logins…</div>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {accounts.map((a) => <Row key={a.id} a={a} busy={busy} onAct={act} />)}
         </ul>
       )}
       {accounts?.length === 1 && accounts[0].state === 'logged-out' && (
-        <p className="text-[11.5px] text-muted-foreground">No Claude login found. Sign in to the default account, or add another.</p>
+        <p className="text-[11.5px] text-muted-foreground">No Claude login found yet. Sign in to the default account, or use Add account for another one.</p>
       )}
     </section>
   )

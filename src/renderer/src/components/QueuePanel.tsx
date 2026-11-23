@@ -33,6 +33,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
   const doneCount = items.length - pending
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
+  const [titleError, setTitleError] = useState<string | null>(null)
   const [details, setDetails] = useState('')
   const [showDetails, setShowDetails] = useState(false)
   const [mode, setMode] = useState<PermissionMode | null>(null)
@@ -49,7 +50,11 @@ export function QueuePanel({ root, queue, onSelectMission }: {
   }
 
   function add(): void {
-    if (!title.trim()) return
+    if (!title.trim()) {
+      setTitleError('Type a task name first.')
+      return
+    }
+    setTitleError(null)
     run(window.orc.queueAdd(root, title.trim(), details.trim()))
     setTitle('')
     setDetails('')
@@ -202,12 +207,36 @@ export function QueuePanel({ root, queue, onSelectMission }: {
               add()
             }}
           >
+            <label htmlFor="queue-title" className="block text-[11px] font-medium text-muted-foreground">New task</label>
             <div className="flex gap-1">
-              <Input className="h-7 text-[12px]" placeholder="Add a task, e.g. dark mode toggle" value={title} onChange={(e) => setTitle(e.target.value)} data-testid="queue-title" />
-              <Button type="button" size="icon-sm" variant="ghost" className={cn('size-7 shrink-0', showDetails && 'text-foreground')} title="Add details" aria-pressed={showDetails} onClick={() => setShowDetails(!showDetails)}>
+              <Input
+                id="queue-title"
+                autoFocus
+                className="h-7 text-[12px]"
+                placeholder="e.g. Add a dark mode toggle to settings"
+                value={title}
+                aria-invalid={titleError ? true : undefined}
+                aria-describedby="queue-title-help"
+                onChange={(e) => {
+                  setTitle(e.target.value)
+                  if (titleError) setTitleError(null)
+                }}
+                data-testid="queue-title"
+              />
+              <Button type="button" size="icon-sm" variant="ghost" className={cn('size-7 shrink-0', showDetails && 'text-foreground')} title="Add details" aria-label="Add details" aria-pressed={showDetails} onClick={() => setShowDetails(!showDetails)}>
                 <Plus />
               </Button>
+              <Button type="submit" size="sm" className="h-7 shrink-0 px-2.5" data-testid="queue-add">
+                Add
+              </Button>
             </div>
+            {titleError ? (
+              <div className="text-[11px] text-destructive" role="alert">{titleError}</div>
+            ) : (
+              <div id="queue-title-help" className="text-[11px] leading-snug text-faint">
+                Each task runs as its own mission, one after another. Press Enter to add.
+              </div>
+            )}
             {showDetails && (
               <textarea
                 className="block min-h-14 w-full resize-y rounded-md border border-border-strong bg-background px-2.5 py-1.5 text-[12px] placeholder:text-faint focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
