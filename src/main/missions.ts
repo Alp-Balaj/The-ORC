@@ -1607,6 +1607,10 @@ export class Missions implements ControlHandlers {
   async restore(saved: SavedState, opts: { isOrphan: (pid: number, sessionId: string) => boolean; kill: (pid: number) => void }): Promise<string[]> {
     const log: string[] = []
     if (saved?.version !== 1) return log
+    // A repo folder moved or renamed while the app was closed leaves every worktree's git links stale.
+    for (const repo of new Set(saved.missions.map((m) => m.repoPath))) {
+      await missionGit.repairWorktreesSerialized(repo).catch(() => {})
+    }
     for (const sm of saved.missions) {
       if (this.missions.has(sm.id)) continue
       const { agents: savedAgents, model: legacyModel, models, mainBranch, queueItemId, integrated, integrateError, ...rest } = sm
