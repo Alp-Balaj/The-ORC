@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { getResolvedTheme, onThemeChange } from './lib/theme'
+import { getResolvedTheme } from './lib/theme'
+import { onBackgroundChange, terminalBackground } from './lib/background'
 import { matchShortcut } from './lib/shortcuts'
 
 // The mounted terminal, for focusActiveTerminal. pendingFocus carries a focus request across a
@@ -75,6 +76,13 @@ const LIGHT: ITheme = {
   brightWhite: '#b4b6bb'
 }
 
+/** Base palette for the resolved mode, painted on the chosen background palette's surface. */
+function termTheme(): ITheme {
+  const bg = terminalBackground()
+  const base = getResolvedTheme() === 'light' ? LIGHT : DARK
+  return bg ? { ...base, background: bg, cursorAccent: bg } : base
+}
+
 /** Shows one host terminal. Re-mounting with another id replays that
  *  terminal's buffered output, so switching between agents is lossless.
  *  Copy: select with the mouse, then Ctrl+C (Ctrl+C with nothing selected still interrupts),
@@ -87,10 +95,10 @@ export function TerminalView({ id }: { id: string }): React.JSX.Element {
       fontFamily: 'JetBrainsMono Nerd Font, monospace',
       fontSize: 13,
       cursorBlink: true,
-      theme: getResolvedTheme() === 'light' ? LIGHT : DARK
+      theme: termTheme()
     })
-    const offTheme = onThemeChange((resolved) => {
-      term.options.theme = resolved === 'light' ? LIGHT : DARK
+    const offTheme = onBackgroundChange(() => {
+      term.options.theme = termTheme()
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
