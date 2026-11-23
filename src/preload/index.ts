@@ -1,5 +1,6 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
-import type { AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
+import type { GithubAccountView, AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
+import type { ClaudeAccountView } from '../shared/claude-accounts-types.ts'
 
 export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; maxParallel?: number; notifications?: boolean }
 
@@ -10,6 +11,18 @@ function listen<A extends unknown[]>(channel: string, cb: (...args: A) => void):
 }
 
 const api = {
+  githubStatus: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:status'),
+  githubConnect: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:connect'),
+  githubCancel: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:cancel'),
+  githubDisconnect: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:disconnect'),
+  listClaudeAccounts: (): Promise<ClaudeAccountView[]> => ipcRenderer.invoke('claude-accounts:list'),
+  addClaudeAccount: (name: string): Promise<string> => ipcRenderer.invoke('claude-accounts:add', name),
+  loginClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:login', id),
+  cancelClaudeLogin: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:cancel-login', id),
+  submitClaudeLoginCode: (id: string, code: string): Promise<void> => ipcRenderer.invoke('claude-accounts:submit-code', id, code),
+  setActiveClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:set-active', id),
+  renameClaudeAccount: (id: string, name: string): Promise<void> => ipcRenderer.invoke('claude-accounts:rename', id, name),
+  removeClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:remove', id),
   listMissions: (): Promise<MissionView[]> => ipcRenderer.invoke('missions:list'),
   resumedAtLaunch: (): Promise<{ id: string; name: string }[]> => ipcRenderer.invoke('missions:resumed-at-launch'),
   stopResumed: (): Promise<void> => ipcRenderer.invoke('missions:stop-resumed'),
