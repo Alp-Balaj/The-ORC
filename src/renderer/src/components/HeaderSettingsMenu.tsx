@@ -22,7 +22,7 @@ const gatingLabel = { plan: 'plan check', checkpointed: 'checkpointed', none: 'n
 function Section({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <div className="px-3 py-2">
-      <div className="mb-1.5 text-[10.5px] font-medium uppercase tracking-wider text-faint">{label}</div>
+      <div className="mb-1.5 section-title">{label}</div>
       <div className="space-y-1.5">{children}</div>
     </div>
   )

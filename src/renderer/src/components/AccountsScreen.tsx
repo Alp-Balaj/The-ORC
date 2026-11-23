@@ -161,7 +161,7 @@ export function AccountsScreen({ open, onClose }: { open: boolean; onClose: () =
         </div>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto border-t px-4 py-4">
           <section>
-            <h3 className="mb-2 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-wider text-faint uppercase">
+            <h3 className="mb-2 flex items-center gap-1.5 section-title">
               <UserRound className="size-3" /> GitHub
             </h3>
             {github}

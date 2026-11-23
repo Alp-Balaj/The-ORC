@@ -219,7 +219,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
   return (
     <aside className="flex h-full min-h-0 flex-col border-r bg-background">
       <div className="panel-title flex items-center justify-between px-3 pb-2 pt-3">
-        <div className="text-[11px] font-medium uppercase tracking-wide text-faint">Spaces</div>
+        <div className="section-title">Spaces</div>
         <div className="flex items-center gap-0.5">
           <label className="relative flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors focus-within:ring-2 focus-within:ring-ring/25 hover:bg-accent hover:text-foreground" title={`Sort missions: ${MISSION_SORTS.find((o) => o.id === sort)?.label}`}>
             <ArrowUpDown className="size-3.5" />

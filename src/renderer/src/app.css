@@ -168,3 +168,6 @@
 /* Section divider: a hairline with a short accent segment at its start. */
 .accent-rule { position: relative; height: 1px; background: var(--color-border); }
 .accent-rule::before { content: ""; position: absolute; left: 0; top: 0; width: 24px; height: 1px; background: var(--color-primary); }
+
+/* Shared section/panel title: matches the "Mission tree" title, in the accent color. */
+.section-title { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.025em; color: var(--color-primary); }

@@ -809,7 +809,7 @@ export function App(): React.JSX.Element {
       <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', asideIdle && 'pointer-events-none opacity-40')} aria-disabled={asideIdle}>
         {side.handle}
         <div className="panel-title flex h-8 items-center justify-between border-b px-3">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-faint">{mainSelected ? 'Repo coordinators' : 'Mission tree'}</span>
+          <span className="section-title">{mainSelected ? 'Repo coordinators' : 'Mission tree'}</span>
           <Button
             size="sm"
             variant="ghost"
@@ -830,7 +830,7 @@ export function App(): React.JSX.Element {
             <div className="p-4 text-xs text-muted-foreground">A node appears whenever an agent spawns a worker.</div>
           )}
         </div>
-        <div className="panel-title flex h-8 items-center border-b px-3 text-[11px] font-medium uppercase tracking-wide text-faint">Feed</div>
+        <div className="panel-title flex h-8 items-center border-b px-3 section-title">Feed</div>
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="feed">
           <Feed feed={mainSelected || dashRoot ? [] : mission?.feed ?? []} />
         </div>
