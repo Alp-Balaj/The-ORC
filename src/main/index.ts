@@ -453,6 +453,7 @@ ipcMain.handle('orc:merge-to-main', async (_e, repo: string) => {
   for (const m of missions.views()) if (m.repoPath === repo && m.integrated && !m.mergedToMain) await appRunner.stopFor(m.id)
   return missions.mergeToMain(repo)
 })
+ipcMain.handle('orc:update-from-main', (_e, repo: string) => missions.updateFromMain(repo))
 ipcMain.handle('github:status', () => githubStatus())
 ipcMain.handle('github:connect', () => githubConnect())
 ipcMain.handle('github:cancel', () => githubCancel())
