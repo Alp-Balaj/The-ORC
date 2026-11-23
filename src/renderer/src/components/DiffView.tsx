@@ -80,7 +80,7 @@ export function DiffView({ diff }: { diff: Diff }): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border" data-testid="diff">
       <div className="hidden min-[1600px]:flex w-52 shrink-0 flex-col overflow-y-auto border-r border-border bg-background pb-1">
-        <div className="flex items-center px-3 pt-2.5 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">
+        <div className="flex items-center px-3 pt-2.5 pb-1.5 section-title">
           Files <span className="ml-auto tabular-nums normal-case">{diff.files.length}</span>
         </div>
         <button

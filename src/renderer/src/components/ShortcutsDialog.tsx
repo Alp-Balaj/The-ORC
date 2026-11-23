@@ -70,7 +70,7 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
             <div className="gap-x-8 sm:columns-2">
               {groups.map(({ group, items }) => (
                 <section key={group} className="mb-4 break-inside-avoid">
-                  <h3 className="mb-1.5 text-[10.5px] font-semibold tracking-wider text-faint uppercase">{group}</h3>
+                  <h3 className="mb-1.5 section-title">{group}</h3>
                   <ul>
                     {items.map((s) => (
                       <li key={s.id} className="flex min-h-7 items-center justify-between gap-3 text-[12.5px]">

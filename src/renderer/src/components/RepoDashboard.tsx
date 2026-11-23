@@ -6,7 +6,7 @@ import { ago, cn, formatTokens } from '../lib/utils'
 import { StatusDot, statusLabel } from './AgentCard'
 import { Button } from './ui/button'
 
-const sectionTitle = 'mb-2 text-[11px] font-medium uppercase tracking-wide text-faint'
+const sectionTitle = 'mb-2 section-title'
 
 /** One repo's overview: its missions, main session, backlog and recent activity. Read-only except for opening things. */
 export function RepoDashboard({ root, space, missions, main, onOpenMission, onOpenMain }: {
