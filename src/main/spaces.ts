@@ -98,8 +98,16 @@ export class Spaces {
             })
           }
         }
+      } else {
+        console.error(`spaces: ${file} is not a JSON array (unexpected shape); starting with defaults`)
       }
-    } catch {}
+    } catch (err) {
+      // A missing file is the normal first run: stay silent. Anything else (unreadable, corrupt JSON) is logged.
+      // On failure we fall back to defaults (no spaces, default settings); the next save() will overwrite the corrupt file.
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        console.error(`spaces: failed to load ${file}; falling back to defaults (the next save will overwrite it):`, err)
+      }
+    }
   }
 
   private get(root: string): Settings {
