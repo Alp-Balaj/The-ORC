@@ -3,6 +3,7 @@ import { GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play
 import { ModelRoles, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { roleLabel } from './components/ModelFields'
 import { CommandPalette } from './components/CommandPalette'
+import { EmptyState } from './components/EmptyState'
 import { Feed } from './components/Feed'
 import { MergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
@@ -613,26 +614,12 @@ export function App(): React.JSX.Element {
             <TerminalView key={agent.terminalId} id={agent.terminalId} />
           </>
         ) : (
-          <div className="m-auto flex w-full max-w-[380px] flex-col items-center px-4 text-center">
-            <div className="mb-4 grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
-              <TerminalSquare className="size-5" />
-            </div>
-            <h2 className="text-[15px] font-semibold text-foreground">No mission open</h2>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">Each mission runs a coordinator, a real Claude Code session you talk to, and the team leads it spawns.</p>
-            <ol className="mt-5 w-full space-y-2.5 rounded-lg border bg-card p-3 text-left text-[12.5px]">
-              {['Add a repository in the sidebar', 'Start a mission with +', 'Talk to its coordinator here'].map((step, i) => (
-                <li key={step} className="flex items-center gap-2.5">
-                  <span className="grid size-5 shrink-0 place-items-center rounded-full border border-border-strong bg-secondary text-[11px] font-medium tabular-nums text-muted-foreground">{i + 1}</span>
-                  <span className="text-foreground/90">{step}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
+          <EmptyState hasRepo={spaces.length > 0} hasMission={missions.length > 0} sidebarOpen={sidebarOpen} openSidebar={() => setSidebarOpen(true)} />
         )}
       </main>
 
       {/* Tree + feed */}
-      <aside className="relative flex min-h-0 flex-col border-l bg-background">
+      <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mission && 'pointer-events-none opacity-40')} aria-disabled={!mission}>
         {side.handle}
         <div className="flex h-8 items-center justify-between border-b px-3">
           <span className="text-[11px] font-medium uppercase tracking-wide text-faint">Mission tree</span>
