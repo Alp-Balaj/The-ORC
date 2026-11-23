@@ -42,10 +42,16 @@ function useDiff(load: () => Promise<Diff | null>, deps: unknown[]): Diff | null
   const [diff, setDiff] = useState<Diff | null>(null)
   useEffect(() => {
     let live = true
-    void load().then((d) => live && setDiff(d))
+    setDiff(null)
+    load()
+      .then((d) => live && setDiff(d))
+      .catch(() => {
+        if (live) setDiff(null)
+      })
     return () => {
       live = false
     }
+    // deps are caller-supplied and load is an inline closure that changes every render, so neither can be listed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
   return diff
@@ -89,7 +95,7 @@ export function ReviewScreen({ mission, agent, onBack }: { mission: MissionView;
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
-        <DiffArea diff={diff} empty="Loading diff…" />
+        <DiffArea diff={diff} empty="No diff to show." />
       </div>
       {a?.merge === 'review' ? (
         <div className="flex items-center gap-2 border-t border-border bg-background px-4 py-2.5">
