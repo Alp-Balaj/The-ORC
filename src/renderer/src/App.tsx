@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
+import { CircleCheck, GitMerge, Keyboard, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
 import { ModelRoles, shownAgents, type AppRunView, type MissionView, type SpaceView } from '../../shared/types'
 import { roleLabel } from './components/ModelFields'
 import { CommandPalette } from './components/CommandPalette'
@@ -18,6 +18,7 @@ import { focusActiveTerminal, TerminalView } from './TerminalView'
 import { emitShortcut, installGlobalShortcuts, onShortcut, withHint, type ShortcutId } from './lib/shortcuts'
 import { getThemePref, setThemePref } from './lib/theme'
 import { cn, formatTokens } from './lib/utils'
+import { markReadyBandSeen, missionReady, readyBandSeen, readyChecks } from './lib/ready'
 
 const modeLabel: Record<string, string> = {
   acceptEdits: 'accept edits',
@@ -219,6 +220,17 @@ export function App(): React.JSX.Element {
     : appRun?.status === 'running' && appRun.missionId !== mission?.id
       ? `Stops ${appRun.missionName}'s app, then runs "${space.runCommand}" from this mission's integration branch`
       : `Runs "${space.runCommand}" from this mission's integration branch`
+  const ready = !!mission && missionReady(mission)
+  // One-time band: shown while ready, until dismissed or the merge view has been opened.
+  const [bandGone, setBandGone] = useState<Set<string>>(new Set())
+  const showBand = !!mission && ready && view !== 'merge' && !bandGone.has(mission.id) && !readyBandSeen(mission.id)
+  const dismissBand = (id: string): void => {
+    markReadyBandSeen(id)
+    setBandGone((s) => new Set(s).add(id))
+  }
+  useEffect(() => {
+    if (mission && view === 'merge') markReadyBandSeen(mission.id)
+  }, [mission?.id, view])
   const canMerge = !!mission && (mission.merged.length > 0 || !!mission.mergedToMain)
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
   const currentRoot = mission?.repoPath ?? roots[0] ?? null
@@ -544,6 +556,7 @@ export function App(): React.JSX.Element {
               </div>
               <Button
                 size="sm"
+                variant={ready ? 'default' : 'outline'}
                 className="ml-1 text-[12px]"
                 disabled={!canMerge}
                 onClick={() => setView('merge')}
@@ -567,6 +580,20 @@ export function App(): React.JSX.Element {
           <Keyboard />
         </Button>
       </header>
+      {showBand && mission && (
+        <div className="flex shrink-0 items-center gap-2 border-b bg-done/8 px-3 py-1.5 text-[12px]" data-testid="ready-band" role="status">
+          <CircleCheck className="size-4 shrink-0 text-done" />
+          <span className="min-w-0 truncate">
+            <span className="font-medium">All leads are done.</span> <span className="text-muted-foreground">{readyChecks(mission).text}</span>
+          </span>
+          <Button size="xs" variant="outline" className="ml-auto shrink-0" data-testid="ready-review-merge" onClick={() => { dismissBand(mission.id); setView('merge') }}>
+            Review &amp; merge
+          </Button>
+          <Button size="icon-sm" variant="ghost" className="shrink-0" onClick={() => dismissBand(mission.id)} aria-label="Dismiss">
+            <X />
+          </Button>
+        </div>
+      )}
 
       {sidebarOpen && <Sidebar
         spaces={spaces}

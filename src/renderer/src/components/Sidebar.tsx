@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
+import { ChevronDown, CircleCheck, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
 import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type PlanUsageView, type QueueView, type SpaceView } from '../../../shared/types'
 import { isMac, onShortcut, withHint } from '../lib/shortcuts'
+import { missionReady } from '../lib/ready'
 import { cn, formatTokens } from '../lib/utils'
 import { AgentCard, StatusDot } from './AgentCard'
 import { Button } from './ui/button'
@@ -323,6 +324,8 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                       <span className="ml-auto flex shrink-0 items-center gap-1.5">
                         {needs > 0 ? (
                           <span className="rounded-full bg-needs px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-background shadow-[0_0_0_3px] shadow-needs/20" title={`${needs} agent${needs === 1 ? '' : 's'} need${needs === 1 ? 's' : ''} you`}>{needs}</span>
+                        ) : missionReady(m) ? (
+                          <CircleCheck className="size-3.5 text-done" aria-label="Ready to merge" data-testid="mission-ready"><title>Ready to merge</title></CircleCheck>
                         ) : working ? (
                           <span title="working" className="flex items-center"><StatusDot status="working" className="size-1.5" /></span>
                         ) : null}
