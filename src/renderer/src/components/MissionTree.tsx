@@ -8,8 +8,8 @@ import { cn, formatTokens } from '../lib/utils'
 import { StatusDot, statusLabel } from './AgentCard'
 import { HoverDelay, NodeHoverCard, observeStatus } from './NodeHoverCard'
 
-type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean; parent: string | null; lastLine: string | null }
-type ChipNodeData = { kind: 'chip'; lead: string; count: number; expanded: boolean }
+type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean; parent: string | null; lastLine: string | null; dim: boolean; hit: boolean }
+type ChipNodeData = { kind: 'chip'; lead: string; count: number; expanded: boolean; dim: boolean; hit: boolean }
 type TreeNodeData = AgentNodeData | ChipNodeData
 
 /** Below this zoom a node shows only a larger dot and its name. */
@@ -78,7 +78,9 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
     a.status === 'exited' && a.exitKind !== 'crashed' && 'opacity-60',
     a.exitKind === 'crashed' && !data.selected && 'border-destructive/50',
     a.status === 'done' && !data.selected && 'opacity-70',
-    data.selected && 'border-primary/60 bg-selected shadow-[0_0_0_1px] shadow-primary/25 hover:bg-selected'
+    data.selected && 'border-primary/60 bg-selected shadow-[0_0_0_1px] shadow-primary/25 hover:bg-selected',
+    data.hit && 'outline outline-2 outline-offset-1 outline-primary/60',
+    data.dim && '!opacity-25'
   )
   if (data.row) {
     return (
@@ -134,7 +136,7 @@ function ChipNode({ data }: NodeProps<Node<ChipNodeData>>): React.JSX.Element {
       data-testid="tree-chip"
       data-lead={data.lead}
       style={{ width: '100%', height: '100%' }}
-      className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-card/60 pl-2.5 pr-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]')}
+      className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-card/60 pl-2.5 pr-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]', data.hit && 'outline outline-2 outline-offset-1 outline-primary/60', data.dim && 'opacity-25')}
     >
       <Handles card={false} />
       <span className="inline-block size-2 shrink-0 rounded-full bg-done/70" />
@@ -198,6 +200,55 @@ function AutoFit({ shape }: { shape: string }): null {
   return null
 }
 
+const summaryOrder: { status: AgentStatus; label: string }[] = [
+  { status: 'needs-you', label: 'needs you' },
+  { status: 'working', label: 'working' },
+  { status: 'idle', label: 'idle' },
+  { status: 'starting', label: 'starting' },
+  { status: 'done', label: 'done' },
+  { status: 'exited', label: 'exited' }
+]
+
+/** Slim strip above the canvas: a count per status (zeros omitted). Click one to highlight those nodes. */
+function SummaryBar({ counts, filter, onPick }: { counts: Map<AgentStatus, number>; filter: AgentStatus | null; onPick: (s: AgentStatus) => void }): React.JSX.Element {
+  return (
+    <div data-testid="tree-summary" className="flex shrink-0 flex-wrap items-center gap-0.5 border-b bg-background px-1.5 py-1">
+      {summaryOrder.filter((o) => counts.has(o.status)).map((o) => (
+        <button
+          key={o.status}
+          type="button"
+          aria-pressed={filter === o.status}
+          title={filter === o.status ? 'Clear highlight (Esc)' : o.status === 'needs-you' ? 'Highlight and jump to the first agent that needs you' : `Highlight ${o.label} agents`}
+          onClick={() => onPick(o.status)}
+          className={cn(
+            'flex h-6 items-center gap-1.5 rounded-md border border-transparent px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            filter === o.status && 'border-border bg-selected text-foreground',
+            o.status === 'needs-you' && filter !== o.status && 'text-needs'
+          )}
+        >
+          <StatusDot status={o.status} />
+          <span className="tabular-nums font-medium">{counts.get(o.status)}</span>
+          <span>{o.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Pans and zooms to a node when `focus` changes (zoom never drops below 0.8 so the node is readable). */
+function JumpTo({ focus }: { focus: { id: string; n: number } | null }): null {
+  const { getNode, setCenter, getZoom } = useReactFlow()
+  useEffect(() => {
+    if (!focus) return
+    const n = getNode(focus.id)
+    if (!n) return
+    const w = n.width ?? n.measured?.width ?? stackSizes.cardW
+    const h = n.height ?? n.measured?.height ?? stackSizes.cardH
+    void setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: Math.max(getZoom(), 0.8), duration: 250 })
+  }, [focus, getNode, setCenter, getZoom])
+  return null
+}
+
 const zoomButton = 'flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40'
 
 /** Floating zoom pill: [out] [NN%] [in] | [fit]. Zoom steps and Fit use the same store as the canvas. */
@@ -238,6 +289,33 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
   showMessages: boolean
 }): React.JSX.Element {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [picked, setPicked] = useState<AgentStatus | null>(null)
+  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
+  const counts = useMemo(() => {
+    const c = new Map<AgentStatus, number>()
+    for (const a of agents) c.set(a.status, (c.get(a.status) ?? 0) + 1)
+    return c
+  }, [agents])
+  // A filter whose status no longer has any agent clears itself.
+  const filter = picked && counts.has(picked) ? picked : null
+  useEffect(() => {
+    if (!filter) return
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null
+      if (e.key === 'Escape' && !(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'))) setPicked(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [filter])
+  const pick = (s: AgentStatus): void => {
+    if (filter === s) { setPicked(null); return }
+    setPicked(s)
+    if (s === 'needs-you') {
+      const first = agents.find((a) => a.status === 'needs-you')
+      if (first) { onSelect(first.terminalId); setFocus({ id: first.name, n: Date.now() }) }
+    }
+  }
+  const starting = agents.length === 1 && agents[0].role === 'coordinator' && agents[0].status === 'starting'
 
   const { nodes, edges, shape } = useMemo(() => {
     const byName = new Map(agents.map((a) => [a.name, a]))
@@ -290,7 +368,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         id: a.name,
         type: 'agent',
         position: { x: p?.x ?? 0, y: p?.y ?? 0 },
-        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2, parent: parentOf(a), lastLine: lastLineOf.get(a.name) ?? null },
+        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2, parent: parentOf(a), lastLine: lastLineOf.get(a.name) ?? null, dim: !!filter && a.status !== filter, hit: !!filter && a.status === filter },
         // Fixed size: no node waits on a measurement to be shown.
         width: p?.w ?? stackSizes.cardW,
         height: p?.h ?? stackSizes.cardH,
@@ -305,7 +383,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         id: `chip:${lead}`,
         type: 'chip',
         position: { x: p.x, y: p.y },
-        data: { kind: 'chip', lead, count: names.length, expanded: expanded.has(lead) },
+        data: { kind: 'chip', lead, count: names.length, expanded: expanded.has(lead), dim: !!filter && filter !== 'done', hit: filter === 'done' },
         width: p.w,
         height: p.h,
         draggable: false,
@@ -359,7 +437,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       }
     }
     return { nodes, edges, shape: nodes.map((n) => `${n.id}@${n.position.x},${n.position.y}`).join(',') }
-  }, [agents, feed, selected, showMessages, expanded])
+  }, [agents, feed, selected, showMessages, expanded, filter])
 
   // Nodes live in React Flow state. Each update keeps what React Flow already knows about a
   // node (its measurement) and changes only position, size and data. Replacing node objects on
@@ -372,9 +450,16 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
     }))
   }, [nodes, setRfNodes])
 
+  if (starting) {
+    return <div className="p-4 text-xs text-muted-foreground" data-testid="tree-empty">Waiting for the coordinator to spawn team leads…</div>
+  }
   return (
+    <div className="flex h-full flex-col">
+    <SummaryBar counts={counts} filter={filter} onPick={pick} />
+    <div className="relative min-h-0 flex-1">
     <ReactFlowProvider>
     <AutoFit shape={shape} />
+    <JumpTo focus={focus} />
     <ReactFlow
       nodes={rfNodes}
       onNodesChange={onNodesChange}
@@ -401,6 +486,8 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       <ZoomControls />
     </ReactFlow>
     </ReactFlowProvider>
+    </div>
+    </div>
   )
 }
 
