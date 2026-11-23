@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CircleCheck, GitMerge, MessagesSquare, MonitorPlay, PanelLeft, Pause, Play, RotateCcw, Square, TerminalSquare, X } from 'lucide-react'
-import { MainSessionTerminalId, missionFailure, shownAgents, type AppRunView, type MainSessionView, type MissionView, type SpaceView } from '../../shared/types'
+import { MainSessionTerminalId, missionFailure, shownAgents, type AgentView, type AppRunView, type MainSessionView, type MissionView, type SpaceView } from '../../shared/types'
 import { CommandPalette } from './components/CommandPalette'
 import { Banner } from './components/Banner'
 import { EmptyState } from './components/EmptyState'
@@ -192,6 +192,13 @@ export function App(): React.JSX.Element {
   )
   // A removed (exited) worker's terminal falls back to the coordinator's.
   const shown = useMemo(() => (mission ? shownAgents(mission) : []), [mission])
+  // The main session's graph: it at the top, every mission's coordinator under it (live: missions push).
+  const mainGraph = useMemo<AgentView[]>(() => {
+    const blank: Pick<AgentView, 'lastInstructionBy' | 'lastInstructionAt' | 'task' | 'question' | 'doneSummary' | 'tokens' | 'contextTokens' | 'merge' | 'conflictFiles' | 'branch' | 'cwd'> = { lastInstructionBy: null, lastInstructionAt: null, task: '', question: null, doneSummary: null, tokens: 0, contextTokens: 0, merge: null, conflictFiles: [], branch: null, cwd: '' }
+    const root: AgentView = { ...blank, name: 'main', sessionName: main?.sessionName ?? 'orc-main', role: 'coordinator', parent: null, status: !main || main.status === 'off' ? 'exited' : main.status, activity: main?.activity ?? '', sessionId: '', terminalId: MainSessionTerminalId, startedAt: 0 }
+    const coords = missions.flatMap((m) => m.agents.filter((a) => a.role === 'coordinator').map((a) => ({ ...a, name: a.sessionName, parent: 'main' })))
+    return [root, ...coords]
+  }, [missions, main])
   const agent = shown.find((a) => a.terminalId === terminalId) ?? shown.find((a) => a.role === 'coordinator') ?? null
 
   useEffect(() => {
@@ -393,7 +400,7 @@ export function App(): React.JSX.Element {
   }, [needsTotal])
 
   return (
-    <div className={cn('relative grid h-full', showBand && mission ? 'grid-rows-[44px_auto_minmax(0,1fr)]' : 'grid-rows-[44px_minmax(0,1fr)]')} style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr)${mainSelected ? '' : ` ${side.width}px`}` }}>
+    <div className={cn('relative grid h-full', showBand && mission ? 'grid-rows-[44px_auto_minmax(0,1fr)]' : 'grid-rows-[44px_minmax(0,1fr)]')} style={{ gridTemplateColumns: `${sidebarOpen ? '300px ' : ''}minmax(0,1fr)${` ${side.width}px`}` }}>
       {mergeNotice && (
         <div className={cn('absolute left-1/2 z-50 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg', 'bottom-3')} data-testid="merge-notice" role="status">
           <span className="min-w-0 break-words">{mergeNotice}</span>
@@ -736,10 +743,10 @@ export function App(): React.JSX.Element {
       </main>
 
       {/* Tree + feed */}
-      {!mainSelected && <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mission && 'pointer-events-none opacity-40')} aria-disabled={!mission}>
+      <aside className={cn('relative flex min-h-0 flex-col border-l bg-background transition-opacity', !mainSelected && !mission && 'pointer-events-none opacity-40')} aria-disabled={!mainSelected && !mission}>
         {side.handle}
         <div className="panel-title flex h-8 items-center justify-between border-b px-3">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-faint">Mission tree</span>
+          <span className="text-[11px] font-medium uppercase tracking-wide text-faint">{mainSelected ? 'All coordinators' : 'Mission tree'}</span>
           <Button
             size="sm"
             variant="ghost"
@@ -752,7 +759,9 @@ export function App(): React.JSX.Element {
           </Button>
         </div>
         <div className="h-[46%] min-h-45 border-b" data-testid="tree">
-          {mission ? (
+          {mainSelected ? (
+            <MissionTree agents={mainGraph} feed={[]} selected={null} onSelect={(tid) => { if (tid !== MainSessionTerminalId) selectAgent(tid) }} showMessages={false} />
+          ) : mission ? (
             <MissionTree agents={shown} feed={mission.feed} selected={agent?.terminalId ?? null} onSelect={selectAgent} showMessages={showMessages} />
           ) : (
             <div className="p-4 text-xs text-muted-foreground">A node appears whenever an agent spawns a worker.</div>
@@ -760,9 +769,9 @@ export function App(): React.JSX.Element {
         </div>
         <div className="panel-title flex h-8 items-center border-b px-3 text-[11px] font-medium uppercase tracking-wide text-faint">Feed</div>
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="feed">
-          <Feed feed={mission?.feed ?? []} />
+          <Feed feed={mainSelected ? [] : mission?.feed ?? []} />
         </div>
-      </aside>}
+      </aside>
 
       <CommandPalette
         open={dialog === 'palette'}
