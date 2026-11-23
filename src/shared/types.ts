@@ -12,7 +12,8 @@ export interface AgentView {
   task: string
   status: AgentStatus
   activity: string
-  lastInstructionBy: 'you' | 'coordinator' | null
+  /** 'you' for the human, otherwise the sending session's name ('coordinator' in old saved state). */
+  lastInstructionBy: string | null
   lastInstructionAt: number | null
   branch: string | null
   cwd: string
