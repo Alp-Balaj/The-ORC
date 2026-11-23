@@ -7,6 +7,7 @@ import { missionReady } from '../lib/ready'
 import { cn, formatTokens } from '../lib/utils'
 import { missionAttention, tierBg, tierGlow, topTier } from '../lib/attention'
 import { AgentCard, StatusDot } from './AgentCard'
+import { AutopilotToggle } from './AutopilotToggle'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
 import { fromDraft, ModelFields, toDraft } from './ModelFields'
@@ -133,6 +134,7 @@ function SpaceSettings({ space, onClose }: { space: SpaceView; onClose: () => vo
         <label className="block text-[11px] leading-snug text-muted-foreground">Queue: most tasks running at once (1 = one at a time, stacked)</label>
         <Input type="number" min={1} max={10} value={parallel} onChange={(e) => setParallel(e.target.value)} data-testid="max-parallel" />
       </div>
+      <AutopilotToggle root={space.root} />
       <div className="space-y-1">
         <label className="block text-[11px] leading-snug text-muted-foreground">Auto-stop finished leads after (min, 0 = off)</label>
         <Input type="number" min={0} max={1440} value={idleStop} onChange={(e) => setIdleStop(e.target.value)} data-testid="idle-stop-minutes" />
