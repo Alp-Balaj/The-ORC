@@ -1,3 +1,4 @@
+import { dialogPanel } from './ui/dialog'
 import { useEffect, useState } from 'react'
 import { AlertTriangle, CircleCheck, CircleDashed, Repeat, X } from 'lucide-react'
 import type { AutopilotPatch, AutopilotView, PlanUsageView, QueueView, SpaceView } from '../../../shared/types'
@@ -134,7 +135,7 @@ export function LoopSetupDialog({ space, queue, onClose }: { space: SpaceView; q
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Loop setup" data-testid="loop-setup" className="flex max-h-[85vh] w-full max-w-[520px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Loop setup" data-testid="loop-setup" className={dialogPanel("md")}>
         <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-2">
           <div className="flex items-start gap-2.5">
             <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Repeat className="size-3.5" /></div>
