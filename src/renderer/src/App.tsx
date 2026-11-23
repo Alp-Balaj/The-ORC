@@ -289,6 +289,9 @@ export function App(): React.JSX.Element {
       case 'shortcuts':
         openDialog(id)
         return
+      case 'integrate':
+        if (mission && (mission.merged.length > 0 || !!mission.mergedToMain)) setView('merge')
+        return
       case 'mergeScreen':
         if (mission) setView('main-merge')
         return
@@ -542,7 +545,7 @@ export function App(): React.JSX.Element {
                 onClick={() => setView('merge')}
                 data-testid="open-merge"
                 aria-label="Integrate into the ORC branch"
-                title={mission.merged.length ? 'Review the combined diff, gate and Verifier, then integrate this mission into the ORC branch' : 'Nothing merged into the integration branch yet'}
+                title={mission.merged.length ? withHint('Review the combined diff, gate and Verifier, then integrate this mission into the ORC branch', 'integrate') : 'Nothing merged into the integration branch yet'}
               >
                 <GitMerge /> <span className="max-[1599px]:hidden">{mission.integrated ? (isOnOrc(mission) ? 'Integrated' : 'Integrate new work') : 'Integrate'}</span>
               </Button>
