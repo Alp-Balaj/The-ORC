@@ -1,3 +1,4 @@
+import { dialogPanel } from './ui/dialog'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, CircleCheck, LoaderCircle, RotateCw, X } from 'lucide-react'
 import type { EnrollmentScan } from '../../../shared/types'
@@ -100,7 +101,7 @@ export function OnboardingDialog({ root, rerun = false, onClose, onFinish }: { r
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={rerun ? 'Re-run onboarding' : 'Set up space'} data-testid="onboarding-dialog" className="flex outline-none max-h-[85vh] w-full max-w-[600px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={rerun ? 'Re-run onboarding' : 'Set up space'} data-testid="onboarding-dialog" className={dialogPanel("lg", "outline-none")}>
         <div className="flex items-start gap-3 border-b px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-semibold text-foreground">{rerun ? 'Re-run onboarding' : 'Set up space'}: <span className="font-mono">{name}</span></div>

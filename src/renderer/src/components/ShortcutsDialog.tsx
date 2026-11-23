@@ -1,3 +1,4 @@
+import { dialogPanel } from './ui/dialog'
 import { useEffect, useState } from 'react'
 import { SquareTerminal, X } from 'lucide-react'
 import { SHORTCUTS, type ShortcutGroup } from '../lib/shortcuts'
@@ -39,7 +40,7 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
         aria-modal="true"
         aria-label="Keyboard shortcuts"
         data-testid="shortcuts-dialog"
-        className="flex max-h-[80vh] w-full max-w-[640px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl"
+        className={dialogPanel("lg")}
       >
         <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
           <h2 className="text-[14px] font-semibold">Keyboard shortcuts</h2>

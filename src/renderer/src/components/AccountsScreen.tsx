@@ -1,3 +1,4 @@
+import { dialogPanel } from './ui/dialog'
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Copy, Loader2, UserRound, X } from 'lucide-react'
 import type { GithubAccountView } from '../../../shared/types'
@@ -151,7 +152,7 @@ export function AccountsScreen({ open, onClose }: { open: boolean; onClose: () =
         aria-modal="true"
         aria-label="Accounts"
         data-testid="accounts-screen"
-        className="flex max-h-[80vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl"
+        className={dialogPanel("md")}
       >
         <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
           <h2 className="text-[14px] font-semibold">Accounts</h2>
