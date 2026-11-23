@@ -530,7 +530,10 @@ app.whenReady().then(async () => {
         kill: (pid) => {
           try {
             process.kill(pid, 'SIGKILL')
-          } catch {}
+          } catch (err) {
+            // ESRCH: already gone, which is the goal. Anything else (EPERM) is worth a line.
+            if ((err as NodeJS.ErrnoException).code !== 'ESRCH') console.error('orphan kill: could not kill process', pid, err)
+          }
         }
       })
       if (done.length) console.log(`recovered:\n  ${done.join('\n  ')}`)
