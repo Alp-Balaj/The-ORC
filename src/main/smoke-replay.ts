@@ -170,8 +170,13 @@ export async function runReplay(c: ReplayCtx): Promise<void> {
   for (const k of ['spawn', 'message:sent', 'message:failed', 'delivered', 'done', 'question', 'steer']) {
     check(`feed shows ${k}`, kinds.includes(k), kinds.join(' '))
   }
-  const tokensText = await js<string>(`document.querySelector('[data-testid=header]')?.textContent ?? ''`)
-  check('header shows mission tokens', /\d+(\.\d)?k tokens/.test(tokensText), tokensText.slice(0, 160))
+  // Mission tokens moved from the header into its settings menu.
+  await js(`document.querySelector('[data-testid=header-settings]')?.click()`)
+  await sleep(300)
+  const tokensText = await js<string>(`document.querySelector('[data-testid=header-settings-menu]')?.textContent ?? ''`)
+  check('the settings menu shows mission tokens', /Tokens\s*\d+(\.\d)?k/.test(tokensText), tokensText.slice(0, 160))
+  await js(`document.querySelector('[data-testid=header-settings]')?.click()`)
+  await sleep(300)
   const cardTokens = await js<string>(`document.querySelector('[data-testid=agent-card][data-agent=navbar]')?.textContent ?? ''`)
   check('cards show tokens', /k tok/.test(cardTokens), cardTokens)
   const navbarLast = await js<string>(`document.querySelector('[data-testid=agent-card][data-agent=navbar] [data-testid=last-instruction]')?.textContent ?? ''`)
