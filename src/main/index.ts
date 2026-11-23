@@ -22,6 +22,7 @@ import { Queues } from './queue.ts'
 import { Autopilots } from './autopilot.ts'
 import { PlanUsage } from './plan-usage.ts'
 import { registerClaudeAccountsIpc } from './claude-accounts-ipc.ts'
+import { registerAppUpdateIpc } from './app-update.ts'
 import { githubCancel, githubConnect, githubDisconnect, githubStatus } from './github-account.ts'
 
 let win: BrowserWindow | null = null
@@ -420,6 +421,7 @@ ipcMain.handle('github:connect', () => githubConnect())
 ipcMain.handle('github:cancel', () => githubCancel())
 ipcMain.handle('github:disconnect', () => githubDisconnect())
 registerClaudeAccountsIpc(ipcMain)
+registerAppUpdateIpc(ipcMain)
 ipcMain.handle('orc:push-target', (_e, repo: string) => missions.pushTarget(repo))
 ipcMain.handle('orc:push', (_e, repo: string) => missions.pushMain(repo))
 ipcMain.handle('spaces:set-gate', (_e, root: string, command: string | null) => {

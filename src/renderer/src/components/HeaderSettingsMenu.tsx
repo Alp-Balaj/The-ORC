@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Keyboard, Settings2, SlidersHorizontal, UserRound } from 'lucide-react'
+import { Download, Keyboard, Loader2, Settings2, SlidersHorizontal, UserRound } from 'lucide-react'
 import { ModelRoles, type MissionView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { withHint } from '../lib/shortcuts'
@@ -41,6 +41,14 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const id = useId()
+  const [updating, setUpdating] = useState(false)
+  const [updated, setUpdated] = useState(false)
+  // A failure rejects the invoke: App's unhandledrejection handler shows it in the action-error banner.
+  const updateApp = (): void => {
+    setUpdating(true)
+    setUpdated(false)
+    void window.orc.updateApp().then(() => setUpdated(true)).finally(() => setUpdating(false))
+  }
 
   useEffect(() => {
     if (!open) return
@@ -98,6 +106,14 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
           <Section label="Appearance">
             <Row label="Theme"><ThemeToggle /></Row>
             <Row label="Accent"><AccentPicker /></Row>
+          </Section>
+          <Section label="App">
+            <Button variant="outline" size="sm" className="w-full justify-start text-[12px]" disabled={updating} title="Rebuilds the stable copy of main (scripts/orc-app.sh). The running app is not restarted." data-testid="update-app" onClick={updateApp}>
+              {updating ? <Loader2 className="animate-spin" /> : <Download />} {updating ? 'Updating…' : 'Update app'}
+            </Button>
+            <p className="text-[11.5px] leading-snug text-muted-foreground" data-testid="update-app-status" role="status">
+              {updating ? 'Rebuilding the stable copy of main. This can take a few minutes.' : updated ? 'Updated. Quit and reopen The ORC to run the new version.' : 'Rebuilds the stable copy from the latest main. Restart to use it.'}
+            </p>
           </Section>
           <div className="px-1.5 pt-1">
             <Button variant="ghost" size="sm" className="w-full justify-start text-[12px] text-muted-foreground" title={withHint('Keyboard shortcuts', 'shortcuts')} data-testid="open-shortcuts" onClick={() => { setOpen(false); onShortcuts() }}>
