@@ -151,3 +151,20 @@
   background: color-mix(in srgb, var(--color-needs) 12%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--color-needs) 35%, transparent);
 }
+
+/* Accent lines: thin, quiet uses of --color-primary (follows the chosen accent + theme). */
+/* Hairline along the bottom edge of a bar (header): fades out at both ends. */
+.accent-hairline { position: relative; }
+.accent-hairline::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-primary) 55%, transparent) 30%, color-mix(in srgb, var(--color-primary) 55%, transparent) 70%, transparent);
+}
+/* Short accent segment on the top edge of a panel title bar ("Mission tree", "Feed", "Spaces"). */
+.panel-title { position: relative; }
+.panel-title::before {
+  content: ""; position: absolute; top: -1px; left: 12px; width: 20px; height: 2px; border-radius: 0 0 2px 2px; pointer-events: none;
+  background: var(--color-primary); opacity: .8;
+}
+/* Section divider: a hairline with a short accent segment at its start. */
+.accent-rule { position: relative; height: 1px; background: var(--color-border); }
+.accent-rule::before { content: ""; position: absolute; left: 0; top: 0; width: 24px; height: 1px; background: var(--color-primary); }
