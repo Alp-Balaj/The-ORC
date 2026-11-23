@@ -1,7 +1,7 @@
 import { githubGitArgs } from './github-account.ts'
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { shareCodegraph } from './codegraph.ts'
 import { ensureOrcExcluded } from './git-worktrees.ts'
 
@@ -74,6 +74,73 @@ export async function commitAll(repo: string, worktree: string, message: string)
   })
 }
 
+const normPath = (p: string): string => {
+  const n = resolve(p).replace(/\\/g, '/').replace(/\/+$/, '')
+  return process.platform === 'win32' ? n.toLowerCase() : n
+}
+
+/** Worktree dirs under <repo>/.orc/worktrees: `_orc`, `<mission>/_integration`, `<mission>/<worker>`,
+ *  `<mission>/_merge-*`. Only dirs holding a `.git` file count. */
+function orcWorktreeDirs(repo: string): string[] {
+  const root = join(repo, '.orc', 'worktrees')
+  const out: string[] = []
+  const subdirs = (d: string): string[] => {
+    try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(d, e.name)) } catch { return [] }
+  }
+  const isWt = (d: string): boolean => { try { return statSync(join(d, '.git')).isFile() } catch { return false } }
+  for (const d of subdirs(root)) {
+    if (isWt(d)) out.push(d)
+    else for (const s of subdirs(d)) if (isWt(s)) out.push(s)
+  }
+  return out
+}
+
+/** True when a worktree's `.git` file or its `.git/worktrees/<name>/gitdir` link no longer
+ *  matches where the worktree and repo really are (the repo folder was moved or renamed). Pure
+ *  file reads, no git. */
+function worktreeStale(repo: string, dir: string): boolean {
+  try {
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(join(dir, '.git'), 'utf8'))
+    if (!m) return true
+    const adminDir = resolve(dir, m[1])
+    if (!normPath(adminDir).startsWith(`${normPath(join(repo, '.git', 'worktrees'))}/`)) return true
+    const link = readFileSync(join(adminDir, 'gitdir'), 'utf8').trim()
+    return normPath(link) !== normPath(join(dir, '.git'))
+  } catch {
+    return true
+  }
+}
+
+/** Repairs worktrees whose recorded paths went stale after the repo folder moved or was renamed.
+ *  Cheap when nothing is stale (no git spawned). Call inside serialized() or while nothing else
+ *  runs git in the repo; it never nests serialized() itself. */
+export async function repairWorktrees(repo: string): Promise<void> {
+  const stale = orcWorktreeDirs(repo).filter((d) => worktreeStale(repo, d))
+  if (stale.length === 0) return
+  await git(repo, ['worktree', 'repair', ...stale], { allowFail: true })
+  await git(repo, ['worktree', 'prune'], { allowFail: true })
+}
+
+/** Startup entry point: same as repairWorktrees, under the repo's lock. */
+export function repairWorktreesSerialized(repo: string): Promise<void> {
+  return serialized(repo, () => repairWorktrees(repo))
+}
+
+/** Call inside serialized(). Makes sure `path` is a working worktree of `branch`: repairs stale
+ *  links first; one that is still broken is removed and recreated from its branch (the branch and
+ *  its commits are never touched). Returns true when it recreated the worktree. */
+async function ensureHealthyWorktree(repo: string, path: string, branch: string): Promise<boolean> {
+  if (!existsSync(path)) return false
+  await repairWorktrees(repo)
+  if ((await git(path, ['rev-parse', '--git-dir'], { allowFail: true })).code === 0) return false
+  await git(repo, ['worktree', 'remove', '--force', path], { allowFail: true })
+  rmSync(path, { recursive: true, force: true })
+  await git(repo, ['worktree', 'prune'], { allowFail: true })
+  await git(repo, ['worktree', 'add', '-q', path, branch])
+  await shareCodegraph(repo, path)
+  return true
+}
+
 export const integrationBranch = (mission: string): string => `integration/${mission}`
 /** Worker names are [a-z0-9-], so "_integration" can never collide with one. */
 export const integrationPath = (repo: string, mission: string): string => join(repo, '.orc', 'worktrees', mission, '_integration')
@@ -83,7 +150,11 @@ export const integrationPath = (repo: string, mission: string): string => join(r
 export async function ensureIntegration(repo: string, mission: string, base: string): Promise<string> {
   return serialized(repo, async () => {
     const path = integrationPath(repo, mission)
-    if (!existsSync(path)) {
+    if (existsSync(path)) {
+      const branchOk = (await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${integrationBranch(mission)}`], { allowFail: true })).code === 0
+      if (branchOk) await ensureHealthyWorktree(repo, path, integrationBranch(mission))
+    } else {
+      await repairWorktrees(repo)
       await ensureOrcExcluded(repo)
       const exists = await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${integrationBranch(mission)}`], { allowFail: true })
       if (exists.code === 0) await git(repo, ['worktree', 'add', '-q', path, integrationBranch(mission)])
@@ -137,6 +208,7 @@ export function markersLeft(wt: string, files: string[]): string[] {
 }
 
 async function removeMergeWorktree(repo: string, mission: string, worker: string): Promise<void> {
+  await repairWorktrees(repo)
   await git(repo, ['worktree', 'remove', '--force', mergePath(repo, mission, worker)], { allowFail: true })
   await git(repo, ['worktree', 'prune'], { allowFail: true })
   await git(repo, ['branch', '-D', mergeBranchName(mission, worker)], { allowFail: true })
@@ -293,8 +365,11 @@ const isAncestor = async (cwd: string, a: string, b: string): Promise<boolean> =
 async function ensureOrcLocked(repo: string, main: string): Promise<string> {
   const path = orcPath(repo)
   const exists = (await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${OrcBranch}`], { allowFail: true })).code === 0
-  if (!existsSync(path)) {
+  if (existsSync(path)) {
+    if (exists) await ensureHealthyWorktree(repo, path, OrcBranch)
+  } else {
     await ensureOrcExcluded(repo)
+    await repairWorktrees(repo)
     await git(repo, ['worktree', 'prune'], { allowFail: true })
     if (exists) await git(repo, ['worktree', 'add', '-q', path, OrcBranch])
     else await git(repo, ['worktree', 'add', '-q', '-b', OrcBranch, path, main])
