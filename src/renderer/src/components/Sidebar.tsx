@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, S
 import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type PlanUsageView, type QueueView, type SpaceView } from '../../../shared/types'
 import { isMac, onShortcut, withHint } from '../lib/shortcuts'
 import { cn, formatTokens } from '../lib/utils'
+import { missionAttention, tierBg, tierGlow, topTier } from '../lib/attention'
 import { AgentCard, StatusDot } from './AgentCard'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
@@ -248,6 +249,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
           const ms = missions.filter((m) => m.repoPath === root)
           const open = !collapsed.has(root)
           const space = spaces.find((s) => s.root === root)
+          const spaceTier = topTier(ms.map((m) => missionAttention(m).tier))
           const live = ms.filter((m) => m.state === 'running').flatMap((m) => m.agents).filter((a) => a.status !== 'done' && a.status !== 'exited').length
           return (
             <div key={root} className="mb-1.5" data-testid="space" data-space={name}>
@@ -257,6 +259,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 truncate font-medium">{name}</span>
                   {ms.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-faint">{ms.length}</span>}
+                  {!open && spaceTier && spaceTier !== 'done' && <span className={cn('size-1.5 shrink-0 rounded-full', tierBg[spaceTier], tierGlow[spaceTier])} title="Something in this space needs a look" data-testid="space-marker" />}
                 </button>
                 {space && (
                   <span className={cn('shrink-0 px-0.5 text-[10.5px] tabular-nums text-faint', live >= space.maxLive && 'font-medium text-needs')} title="Live agents in this space / most allowed" data-testid="live-count">
@@ -293,9 +296,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
               {ms.map((m) => {
                 const active = m.id === selectedMission
                 const expanded = active && !closedMissions.has(m.id)
-                const agents = shownAgents(m)
-                const needs = agents.filter((a) => a.status === 'needs-you').length
-                const working = agents.some((a) => a.status === 'working')
+                const att = missionAttention(m)
                 return (
                   <div key={m.id} className="min-w-0" data-testid="mission" data-mission={m.name}>
                     <button
@@ -309,7 +310,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                         if (!active) onSelectMission(m.id)
                       }}
                       aria-expanded={expanded}
-                      title={(expanded ? 'Hide its agents' : 'Show its agents') + jumpHint(m.id)}
+                      title={(att.title ? att.title + '\n' : '') + (expanded ? 'Hide its agents' : 'Show its agents') + jumpHint(m.id)}
                       className={cn(
                         'flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                         active && 'bg-selected text-foreground hover:bg-selected'
@@ -321,14 +322,17 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                         <MonitorPlay className="size-3 shrink-0 text-working" aria-label="Its app is running" data-testid="app-running-marker" />
                       )}
                       <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                        {needs > 0 ? (
-                          <span className="rounded-full bg-needs px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-background shadow-[0_0_0_3px] shadow-needs/20" title={`${needs} agent${needs === 1 ? '' : 's'} need${needs === 1 ? 's' : ''} you`}>{needs}</span>
-                        ) : working ? (
-                          <span title="working" className="flex items-center"><StatusDot status="working" className="size-1.5" /></span>
+                        {att.tier === 'error' || att.tier === 'needs' ? (
+                          <span className={cn('rounded-full px-1.5 text-[11px] font-semibold leading-[18px] tabular-nums text-background', tierBg[att.tier], tierGlow[att.tier])} title={att.title} data-testid="attention-pill" data-tier={att.tier}>{att.tier === 'error' ? att.errors : att.needs}</span>
+                        ) : att.tier === 'ready' || att.tier === 'working' ? (
+                          <span title={att.tier === 'ready' ? att.title : 'working'} className="flex items-center"><span className={cn('size-1.5 rounded-full', tierBg[att.tier], att.tier === 'working' && 'animate-orc-pulse')} /></span>
                         ) : null}
                         {m.tokens > 0 && <span className="text-[10.5px] font-normal tabular-nums text-faint">{formatTokens(m.tokens)}</span>}
                       </span>
                     </button>
+                    {!expanded && att.question && (att.tier === 'needs') && (
+                      <div className="truncate pb-0.5 pl-6 pr-2 text-[11px] font-normal text-needs/90" title={att.question} data-testid="mission-question">{att.question}</div>
+                    )}
                     {expanded && (
                       <div className="mt-1 space-y-1 pb-2">
                         <AnimatePresence initial={false}>
