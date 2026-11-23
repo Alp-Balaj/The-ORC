@@ -790,6 +790,18 @@ export class Missions implements ControlHandlers {
     return this.git.orcDiff(repo, main)
   }
 
+  /** The branch the human merges to, and the remote it would be pushed to (null: no remote). */
+  async pushTarget(repo: string): Promise<{ branch: string; remote: string | null }> {
+    const branch = this.integratedIn(repo)[0]?.mainBranch ?? (await this.git.currentBranch(repo))
+    return { branch, remote: await missionGit.pushRemote(repo) }
+  }
+
+  /** The human pressed Push to GitHub: pushes the main branch (never forced). */
+  async pushMain(repo: string): Promise<missionGit.PushResult> {
+    const { branch } = await this.pushTarget(repo)
+    return missionGit.pushBranch(repo, branch)
+  }
+
   /** The human pressed Merge to main: everything on the repo's ORC branch goes into main. Missions
    *  fully on the ORC branch are then ended and cleared out; the rest keep running. */
   async mergeToMain(repo: string): Promise<{ ok: boolean; message: string; cleared?: number; files?: string[] }> {
