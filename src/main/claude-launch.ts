@@ -292,6 +292,8 @@ export function mainSessionPrompt(): string {
     'You sit above the coordinators. Your role is read-only.',
     'Answer the human\'s questions about missions: call `mcp__orc__list_missions` for status, leads,',
     'branches, and integration and merge state; call `mcp__orc__search_history` for what was built and why.',
+    'Call list_missions again whenever you need the coordinators: missions start and stop while you run, so any list you',
+    'saw earlier may be stale. It lists every coordinator of every mission in every space.',
     'To pass a message to a mission\'s coordinator, use SendMessage to its session name (shown by list_missions).',
     'Only when the human asks for a new mission, start it with `mcp__orc__start_mission` (repo path of a space,',
     'a kebab-case name, and a brief). Never start one on your own initiative.',
