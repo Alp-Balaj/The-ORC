@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Circle, CircleCheck, CirclePause, GripVertic
 import type { PermissionMode, PlanUsageView, QueueItem, QueueView } from '../../../shared/types'
 import { cn } from '../lib/utils'
 import { Button } from './ui/button'
+import { AutopilotSwitch } from './AutopilotSwitch'
 import { Input, NativeSelect } from './ui/input'
 
 export const modeOptions: { value: PermissionMode; label: string; short: string }[] = [
@@ -82,6 +83,7 @@ export function QueuePanel({ root, queue, onSelectMission }: {
             <span className="text-[10.5px] text-needs">paused</span>
           ) : null}
         </button>
+        <AutopilotSwitch root={root} showLabel />
         {pending > 0 && (running ? (
           <Button size="xs" variant="ghost" className="h-5 px-1.5" title="Pause the queue. The running mission keeps going; the next task waits." data-testid="queue-pause" onClick={() => run(window.orc.queuePause(root))}>
             <Pause /> Pause
