@@ -13,8 +13,15 @@ export function defaultRecordsDir(base: string, repoRoot: string): string {
   return join(base, `${basename(repoRoot) || 'repo'}-${hash}`)
 }
 
+/** Local calendar date as YYYY-MM-DD (not UTC, so a 23:30 mission keeps its own day). */
+function localDate(ms: number): string {
+  const d = new Date(ms)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 export function recordPath(dir: string, mission: string, createdAt: number): string {
-  const date = new Date(createdAt).toISOString().slice(0, 10)
+  const date = localDate(createdAt)
   return join(dir, `${date} - ${mission}.md`)
 }
 
@@ -44,7 +51,7 @@ export function appendRecord(
   const file = recordPath(dir, m.name, m.createdAt)
   const now = new Date()
   if (!existsSync(file)) {
-    const date = new Date(m.createdAt).toISOString().slice(0, 10)
+    const date = localDate(m.createdAt)
     appendFileSync(
       file,
       [
