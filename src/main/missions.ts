@@ -975,7 +975,7 @@ export class Missions implements ControlHandlers {
           activity: cross ? `message from ${fromName}` : taskDone ? 'subagent finished' : 'thinking',
           question: null,
           waitingOn: null,
-          ...(cross && agent.role === 'worker' ? { lastInstructionBy: 'coordinator' as const, lastInstructionAt: Date.now() } : {}),
+          ...(cross && agent.role === 'worker' ? { lastInstructionBy: fromName ?? 'coordinator', lastInstructionAt: Date.now() } : {}),
           ...(human ? { lastInstructionBy: 'you' as const, lastInstructionAt: Date.now() } : {})
         })
         if (cross) this.feed(mission, { kind: 'delivered', from: fromName!, to: agent.name, text: oneLine(cross.body) })
