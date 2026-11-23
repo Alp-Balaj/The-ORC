@@ -67,7 +67,9 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
     // Written as it happens, so a hang still leaves a trail.
     try {
       appendFileSync(join(dir, 'timeline.log'), `${entry.t}s ${event}\n`)
-    } catch {}
+    } catch {
+      // The timeline file is only a trail; the entry is already in memory, and log() cannot log its own failure.
+    }
   }
   const check = (name: string, ok: boolean, detail?: string): void => {
     checks.push({ name, ok, detail })
@@ -243,7 +245,9 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
             const c = r.message?.content
             const t = Array.isArray(c) ? c.map((x: { text?: string }) => x.text ?? '').join(' ') : String(c ?? '')
             if (t.trim()) last = t.trim()
-          } catch {}
+          } catch {
+            // Blank or partially written transcript lines are not JSON; skip them.
+          }
         }
       }
       check('the resumed session remembers the conversation from before the crash', /PELICAN/i.test(last), `last answer: ${last.slice(0, 80)}`)
@@ -556,7 +560,9 @@ export async function runSmoke(dir: string, d: SmokeDeps): Promise<boolean> {
   for (const pid of survivors) {
     try {
       process.kill(pid, 'SIGKILL')
-    } catch {}
+    } catch (err) {
+      log(`smoke cleanup: could not SIGKILL surviving pid ${pid}: ${String(err)}`)
+    }
   }
   writeFileSync(join(dir, 'report.json'), JSON.stringify({ ...report, survivorsKilled: survivors }, null, 2))
   console.log(`SMOKE ${ok ? 'PASS' : 'FAIL'} → ${dir}`)
