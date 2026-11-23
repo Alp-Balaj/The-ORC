@@ -204,6 +204,7 @@ function missionsText(): string {
   for (const s of spaceList) out.push(`- ${s.name}: ${s.root}`)
   return out.join('\n')
 }
+let hooksLogFailed = false
 const control = new ControlServer({
   agentForToken: (t) => missions.agentForToken(t) ?? mainSession.agentForToken(t),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
@@ -247,9 +248,16 @@ const control = new ControlServer({
   },
   hookEvent: (c, e) => {
     // Raw payloads, so status bugs can be diagnosed from a file.
+    const hooksLog = join(app.getPath('userData'), 'hooks.jsonl')
     try {
-      appendFileSync(join(app.getPath('userData'), 'hooks.jsonl'), JSON.stringify({ at: Date.now(), agent: c, ...e }) + '\n')
-    } catch {}
+      appendFileSync(hooksLog, JSON.stringify({ at: Date.now(), agent: c, ...e }) + '\n')
+    } catch (err) {
+      // Log once: a persistent failure (disk full) must not spam on every hook event.
+      if (!hooksLogFailed) {
+        hooksLogFailed = true
+        console.error('could not append to', hooksLog, err)
+      }
+    }
     return c === MainSessionTerminalId ? mainSession.hookEvent(e) : missions.hookEvent(c, e)
   }
 })
