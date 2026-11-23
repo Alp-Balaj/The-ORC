@@ -283,9 +283,14 @@ export class Autopilots {
     const mode = q?.permissionMode ?? 'bypassPermissions'
     const known = [...new Set([...(q?.items.map((i) => i.title) ?? []), ...s.known])]
     let reply: string | null = null
+    let failure: string | null = null
     try {
       reply = await (this.deps.discover ?? runDiscovery)({ cwd: root, permissionMode: mode, maxTasks: s.maxTasks, known })
-    } catch {}
+    } catch (err) {
+      console.error('autopilot discovery failed', err)
+      const msg = (err instanceof Error ? err.message : String(err)).replace(/\s+/g, ' ').trim()
+      failure = (msg.length > 200 ? `${msg.slice(0, 200)}…` : msg) || null
+    }
     s.busy = false
     if (!s.enabled) {
       // Switched off while scanning: drop the result.
@@ -296,10 +301,10 @@ export class Autopilots {
     if (tasks === null) {
       s.emptyRounds += 1
       if (s.emptyRounds >= s.maxEmptyRounds) {
-        this.setStatus(s, 'stopped', `Stopped: discovery failed ${s.emptyRounds} time${s.emptyRounds === 1 ? '' : 's'} in a row`)
+        this.setStatus(s, 'stopped', `Stopped: discovery failed ${s.emptyRounds} time${s.emptyRounds === 1 ? '' : 's'} in a row${failure ? ` (${failure})` : ''}`)
         this.changed()
       } else {
-        this.setStatus(s, 'idle', 'Discovery failed: will retry when the queue is next checked')
+        this.setStatus(s, 'idle', failure ? `Discovery failed: ${failure}: will retry when the queue is next checked` : 'Discovery failed: will retry when the queue is next checked')
         this.changed()
         this.armTimer()
       }
