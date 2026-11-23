@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown, CircleCheck, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, CircleCheck, ChevronRight, FolderGit2, FolderPlus, MonitorPlay, Plus, Settings2, X } from 'lucide-react'
 import { shownAgents, type AppRunView, type Gating, type MissionView, type PermissionMode, type PlanUsageView, type QueueView, type SpaceView } from '../../../shared/types'
 import { isMac, onShortcut, withHint } from '../lib/shortcuts'
 import { missionReady } from '../lib/ready'
 import { cn, formatTokens } from '../lib/utils'
+import { getMissionSort, MISSION_SORTS, saveMissionSort, sortMissions, type MissionSort } from '../lib/missionSort'
 import { missionAttention, tierBg, tierGlow, topTier } from '../lib/attention'
 import { AgentCard, StatusDot } from './AgentCard'
 import { AutopilotToggle } from './AutopilotToggle'
@@ -171,6 +172,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
   const [formFor, setFormFor] = useState<string | null>(null)
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [sort, setSort] = useState<MissionSort>(getMissionSort)
   const [queues, setQueues] = useState<QueueView[]>([])
   const [loopRoot, setLoopRoot] = useState<string | null>(null)
   useEffect(() => {
@@ -193,7 +195,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
   // Every repository with a mission is a space, even if it was never added explicitly.
   const roots = [...spaces.map((s) => s.root), ...missions.map((m) => m.repoPath)].filter((r, i, a) => a.indexOf(r) === i)
   // Sidebar order, for the Mod+1..9 jump hints on mission rows (9 is the last).
-  const ordered = roots.flatMap((root) => missions.filter((m) => m.repoPath === root))
+  const ordered = roots.flatMap((root) => sortMissions(missions.filter((m) => m.repoPath === root), sort))
   const jumpHint = (id: string): string => {
     const i = ordered.findIndex((m) => m.id === id)
     const n = i >= 0 && i < 8 ? i + 1 : i >= 8 && i === ordered.length - 1 ? 9 : null
@@ -243,9 +245,29 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
     <aside className="flex h-full min-h-0 flex-col border-r bg-background">
       <div className="panel-title flex items-center justify-between px-3 pb-2 pt-3">
         <div className="text-[11px] font-medium uppercase tracking-wide text-faint">Spaces</div>
-        <Button size="sm" variant="ghost" className="-mr-1.5 h-7 px-2 text-muted-foreground hover:text-foreground" onClick={openRepo} title="Open a repository as a space" data-testid="open-repo">
-          <FolderPlus /> Open repo
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <label className="relative flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors focus-within:ring-2 focus-within:ring-ring/25 hover:bg-accent hover:text-foreground" title={`Sort missions: ${MISSION_SORTS.find((o) => o.id === sort)?.label}`}>
+            <ArrowUpDown className="size-3.5" />
+            <select
+              aria-label="Sort missions"
+              data-testid="mission-sort"
+              className="absolute inset-0 cursor-pointer opacity-0"
+              value={sort}
+              onChange={(e) => {
+                const v = e.target.value as MissionSort
+                setSort(v)
+                saveMissionSort(v)
+              }}
+            >
+              {MISSION_SORTS.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <Button size="sm" variant="ghost" className="-mr-1.5 h-7 px-2 text-muted-foreground hover:text-foreground" onClick={openRepo} title="Open a repository as a space" data-testid="open-repo">
+            <FolderPlus /> Open repo
+          </Button>
+        </div>
       </div>
       {error && <div className="px-3 pb-2 text-[12px] text-destructive">{error}</div>}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
@@ -256,7 +278,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
         )}
         {roots.map((root) => {
           const name = root.split(/[\\/]/).pop()
-          const ms = missions.filter((m) => m.repoPath === root)
+          const ms = sortMissions(missions.filter((m) => m.repoPath === root), sort)
           const open = !collapsed.has(root)
           const space = spaces.find((s) => s.root === root)
           const spaceTier = topTier(ms.map((m) => missionAttention(m).tier))
