@@ -366,6 +366,4 @@ export interface MainSessionView {
   status: 'off' | 'starting' | 'idle' | 'working' | 'needs-you' | 'exited'
   /** One line, e.g. "thinking" or "needs your permission". */
   activity: string
-  /** True when the session was resumed after a restart of The ORC. */
-  resumed: boolean
 }
