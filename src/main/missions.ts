@@ -541,7 +541,7 @@ export class Missions implements ControlHandlers {
   statusLine: (status: unknown) => string | null = () => null
 
   /** The human pressed Merge to main. */
-  async mergeToMain(missionId: string): Promise<{ ok: boolean; message: string }> {
+  async mergeToMain(missionId: string): Promise<{ ok: boolean; message: string; cleared?: number }> {
     const mission = this.missions.get(missionId)
     if (!mission) return { ok: false, message: 'no such mission' }
     if (mission.merged.length === 0) return { ok: false, message: 'Nothing is merged into the integration branch yet.' }
@@ -575,7 +575,14 @@ export class Missions implements ControlHandlers {
       const kept = await this.endMerged(m)
       if (m === mission && kept.length) keptNote = ` Kept (not merged): ${kept.map((x) => `${x.name} on ${x.branch}`).join(', ')}.`
     }
-    return { ok: true, message: `Merged into ${mission.mainBranch} at ${r.commit.slice(0, 8)}. Merged workers' worktrees and branches removed.${keptNote}` }
+    // Clear out every mission in this repo whose work is now in main (the record notes were written above).
+    // endMerged stopped the ones just merged; earlier merged ones are already stopped. Running ones stay.
+    let cleared = 0
+    for (const x of [...this.missions.values()]) {
+      if (x.repoPath === mission.repoPath && x.mergedToMain && x.state === 'stopped' && this.removeMission(x.id)) cleared++
+    }
+    const clearedNote = cleared ? ` Cleared ${cleared} merged mission${cleared === 1 ? '' : 's'}.` : ''
+    return { ok: true, cleared, message: `Merged into ${mission.mainBranch} at ${r.commit.slice(0, 8)}. Merged workers' worktrees and branches removed.${keptNote}${clearedNote}` }
   }
 
   /** The work is in main: end the sessions, then remove merged workers' worktrees and branches
