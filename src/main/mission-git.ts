@@ -477,6 +477,16 @@ export async function pushRemote(repo: string): Promise<string | null> {
   return remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0] : null
 }
 
+/** Commits on `branch` that `remote` doesn't have yet (local refs only, no fetch). When the remote
+ *  has no such branch, counts what no remote ref has. Null when it can't be told. */
+export async function aheadOfRemote(repo: string, branch: string, remote: string): Promise<number | null> {
+  const has = (await git(repo, ['rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${branch}`], { allowFail: true })).code === 0
+  const args = has ? ['rev-list', '--count', `refs/remotes/${remote}/${branch}..refs/heads/${branch}`] : ['rev-list', '--count', `refs/heads/${branch}`, '--not', `--remotes=${remote}`]
+  const r = await git(repo, args, { allowFail: true })
+  const n = r.code === 0 ? Number.parseInt(r.stdout.trim(), 10) : NaN
+  return Number.isFinite(n) ? n : null
+}
+
 export type PushResult = { ok: true; remote: string; branch: string; message: string } | { ok: false; message: string }
 
 /** `git push -u <remote> <branch>`: never forced, never prompts, times out. */

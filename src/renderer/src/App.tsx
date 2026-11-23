@@ -5,7 +5,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { Banner } from './components/Banner'
 import { EmptyState } from './components/EmptyState'
 import { Feed } from './components/Feed'
-import { MergeScreen, OrcMergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
+import { MergedScreen, MergeScreen, OrcMergeScreen, ReviewScreen, SplitPanel } from './components/MissionScreens'
 import { MissionTree } from './components/MissionTree'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { AccountsScreen } from './components/AccountsScreen'
@@ -99,6 +99,8 @@ export function App(): React.JSX.Element {
   // A failed action (IPC rejected) shows here instead of disappearing into the console.
   const [actionError, setActionError] = useState<string | null>(null)
   // "Merged into main; cleared N missions": shown after the open mission was cleared out.
+  // After Merge to main: stays on a result screen with Push to GitHub until dismissed (or the selection moves).
+  const [merged, setMerged] = useState<{ repo: string; branch: string; message: string; sel: string | null } | null>(null)
   const [mergeNotice, setMergeNotice] = useState<string | null>(null)
   // Missions The ORC brought back on its own at launch (each one is live, billed sessions).
   const [resumed, setResumed] = useState<{ id: string; name: string }[]>([])
@@ -343,6 +345,9 @@ export function App(): React.JSX.Element {
   }
   const onKeyRef = useRef(onKey)
   onKeyRef.current = onKey
+  useEffect(() => {
+    if (merged && (merged.sel !== missionId || view !== 'main-merge')) setMerged(null)
+  }, [merged, missionId, view])
   const escRef = useRef(() => {})
   escRef.current = () => {
     if (!dialog && view !== 'terminal') setView('terminal')
@@ -670,7 +675,9 @@ export function App(): React.JSX.Element {
         {/* Under the header; keep below the failure banner when both show. */}
         {actionError && <Banner text={`Action failed: ${actionError}`} testId="action-error" onDismiss={() => setActionError(null)} />}
         {!mainSelected && mission && <SplitPanel mission={mission} />}
-        {mainSelected ? (
+        {!mainSelected && merged && merged.sel === missionId && view === 'main-merge' ? (
+          <MergedScreen repo={merged.repo} branch={merged.branch} message={merged.message} onDone={() => { setMerged(null); setView('terminal') }} />
+        ) : mainSelected ? (
           main && main.status !== 'off' ? (
             <>
               <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs text-muted-foreground" data-testid="terminal-head" data-agent="main-session">
@@ -698,10 +705,11 @@ export function App(): React.JSX.Element {
             repo={mission.repoPath}
             missions={missions}
             onBack={() => setView('terminal')}
-            onCleared={(n) => {
-              setView('terminal')
+            onCleared={(n, message) => {
               // The open mission went to main with the rest: it is cleared out.
-              if (isOnOrc(mission)) { setMissionId(null); setTerminalId(null) }
+              const gone = isOnOrc(mission)
+              if (gone) { setMissionId(null); setTerminalId(null) }
+              setMerged({ repo: mission.repoPath, branch: mission.mainBranch, message, sel: gone ? null : missionId })
               setMergeNotice(`Merged the ORC branch into ${mission.mainBranch}; cleared ${n} mission${n === 1 ? '' : 's'}`)
             }}
           />

@@ -281,8 +281,45 @@ export function MergeScreen({ mission, space, onBack, onRemoved }: { mission: Mi
   )
 }
 
+/** After Merge to main succeeded and the merged missions were cleared: the result, and the
+ *  Push to GitHub button, until dismissed. Push is the human's click only and never forced. */
+export function MergedScreen({ repo, branch, message, onDone }: { repo: string; branch: string; message: string; onDone: () => void }): React.JSX.Element {
+  const [target, setTarget] = useState<{ branch: string; remote: string | null; ahead: number | null } | null>(null)
+  const [pushing, setPushing] = useState(false)
+  const [pushed, setPushed] = useState<{ ok: boolean; message: string } | null>(null)
+  useEffect(() => { void window.orc.pushTarget(repo).then(setTarget) }, [repo, pushed])
+  const noRemote = !!target && !target.remote
+  const upToDate = !!target && target.ahead === 0
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center" data-testid="merged-screen">
+      <CheckCircle2 className="size-6 text-working" />
+      <div className="text-[15px] font-semibold">Merged into {branch}</div>
+      <p className="max-w-md text-[13px] leading-relaxed text-muted-foreground" data-testid="merged-message">{message}</p>
+      <Button
+        disabled={pushing || !target || noRemote || upToDate}
+        title={noRemote ? 'No git remote configured. Add one with: git remote add origin <url>' : `git push -u ${target?.remote ?? 'origin'} ${target?.branch ?? branch}`}
+        onClick={async () => {
+          setPushing(true)
+          setPushed(null)
+          setPushed(await window.orc.pushToRemote(repo))
+          setPushing(false)
+        }}
+        data-testid="merged-push"
+      >
+        {pushing ? <Loader2 className="animate-spin" /> : <Upload />} {pushing ? 'Pushing…' : 'Push to GitHub'}
+        {!!target?.ahead && !pushing && <span className="rounded bg-primary-foreground/20 px-1 font-mono text-[11px]">{target.ahead}</span>}
+      </Button>
+      <p className="max-w-md text-[11.5px] leading-relaxed text-faint">
+        {noRemote ? 'No git remote is configured for this repository.' : upToDate ? `${target?.remote ?? 'The remote'} already has ${branch}.` : `Pushes ${target?.branch ?? branch} to ${target?.remote ?? 'the remote'}. Never forced.`}
+      </p>
+      {pushed && <p className={cn('max-w-md text-[12px]', pushed.ok ? 'text-working' : 'text-destructive')} data-testid="merged-push-result">{pushed.message}</p>}
+      <Button size="sm" variant="ghost" onClick={onDone} data-testid="merged-dismiss">Done</Button>
+    </div>
+  )
+}
+
 /** Merge to main: everything on the repo's ORC branch, and the missions it holds. */
-export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: string; missions: MissionView[]; onBack: () => void; onCleared?: (n: number) => void }): React.JSX.Element {
+export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: string; missions: MissionView[]; onBack: () => void; onCleared?: (n: number, message: string) => void }): React.JSX.Element {
   const inRepo = missions.filter((m) => m.repoPath === repo && !m.mergedToMain)
   const ready = inRepo.filter((m) => m.integrated && m.integrated.integrationCommit === m.integrationCommit)
   const pending = inRepo.filter((m) => m.merged.length > 0 && !ready.includes(m))
@@ -290,7 +327,7 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
   const diff = useDiff(() => window.orc.orcDiff(repo), [repo, ready.map((m) => m.integrated!.commit).join()])
   const [result, setResult] = useState<{ ok: boolean; message: string; files?: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [target, setTarget] = useState<{ branch: string; remote: string | null } | null>(null)
+  const [target, setTarget] = useState<{ branch: string; remote: string | null; ahead: number | null } | null>(null)
   const [pushing, setPushing] = useState(false)
   const [pushed, setPushed] = useState<{ ok: boolean; message: string } | null>(null)
   useEffect(() => { void window.orc.pushTarget(repo).then(setTarget) }, [repo, result])
@@ -355,7 +392,7 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
                 setResult(r)
                 setBusy(false)
                 // The merged missions are cleared out of the list.
-                if (r.ok) onCleared?.(r.cleared ?? 0)
+                if (r.ok) onCleared?.(r.cleared ?? 0, r.message)
               }}
               data-testid="confirm-main-merge"
             >
