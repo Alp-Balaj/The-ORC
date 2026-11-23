@@ -515,7 +515,7 @@ export class Missions implements ControlHandlers {
   async runGate(missionId: string, command: string | null): Promise<void> {
     const mission = this.missions.get(missionId)
     if (!mission || mission.merged.length === 0 || !command) return
-    mission.gate = { command, ok: false, exitCode: null, output: 'running…', at: Date.now() }
+    mission.gate = { command, ok: false, exitCode: null, output: 'running…', at: Date.now(), running: true }
     this.emit()
     mission.gate = await this.git.runGate(missionGit.integrationPath(mission.repoPath, mission.name), command)
     this.feed(mission, { kind: 'gate', from: 'orc', to: null, text: `${command}: ${mission.gate.ok ? 'passed' : `failed (exit ${mission.gate.exitCode})`}`, status: mission.gate.ok ? 'ok' : 'failed' })
