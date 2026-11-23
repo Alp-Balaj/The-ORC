@@ -1,5 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
-import type { GithubAccountView, AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
+import type { GithubAccountView, MainSessionView, AppRunView, AutopilotPatch, AutopilotView, DiffView, MissionView, PermissionMode, PlanUsageView, QueueView, RoleModels, SpaceView, StartMissionRequest } from '../shared/types.ts'
 import type { ClaudeAccountView } from '../shared/claude-accounts-types.ts'
 
 export type SpacePatch = { gateCommand?: string | null; maxLive?: number; recordsDir?: string | null; runCommand?: string | null; models?: Partial<RoleModels>; usageThreshold?: number; idleStopMinutes?: number; maxParallel?: number; notifications?: boolean }
@@ -23,6 +23,12 @@ const api = {
   setActiveClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:set-active', id),
   renameClaudeAccount: (id: string, name: string): Promise<void> => ipcRenderer.invoke('claude-accounts:rename', id, name),
   removeClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:remove', id),
+  /** The app-level main session (above all missions). */
+  mainSession: (): Promise<MainSessionView> => ipcRenderer.invoke('main:get'),
+  onMainSession: (cb: (v: MainSessionView) => void) => listen<[MainSessionView]>('main:changed', cb),
+  /** Starts (or resumes) it; no-op when already running. */
+  startMainSession: (): Promise<void> => ipcRenderer.invoke('main:start'),
+  stopMainSession: (): Promise<void> => ipcRenderer.invoke('main:stop'),
   listMissions: (): Promise<MissionView[]> => ipcRenderer.invoke('missions:list'),
   resumedAtLaunch: (): Promise<{ id: string; name: string }[]> => ipcRenderer.invoke('missions:resumed-at-launch'),
   stopResumed: (): Promise<void> => ipcRenderer.invoke('missions:stop-resumed'),
