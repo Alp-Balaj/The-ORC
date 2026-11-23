@@ -288,7 +288,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                   {!open && spaceTier && spaceTier !== 'done' && <span className={cn('size-1.5 shrink-0 rounded-full', tierBg[spaceTier], tierGlow[spaceTier])} title="Something in this space needs a look" data-testid="space-marker" />}
                 </button>
                 <SpacePush root={root} refreshKey={ms.map((m) => m.mergedToMain?.commit ?? '').join()} />
-                {space && space.enrolledAt !== null && <AutopilotSwitch root={root} />}
+                                {space && space.enrolledAt !== null && <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"><AutopilotSwitch root={root} /></span>}
                 {space && (
                   <span className={cn('shrink-0 px-0.5 text-[10.5px] tabular-nums text-faint', live >= space.maxLive && 'font-medium text-needs')} title="Live agents in this space / most allowed" data-testid="live-count">
                     {live}/{space.maxLive}
@@ -328,29 +328,27 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                 const mainSubtitle = !main || main.status === 'off' ? 'Not started' : main.activity || statusLabel[mainDot]
                 const mainSelected = mainRoot === root
                 return (
-                  <div className="ml-2.5 mt-0.5 border-l border-border pl-1.5" data-testid="main-session-entry">
+                  <div className="ml-2.5 mt-0.5 border-l border-border/50 pl-1.5" data-testid="main-session-entry">
                     <button
                       type="button"
                       onClick={() => onSelectMain(root)}
                       aria-current={mainSelected ? 'page' : undefined}
                       title={`Main session: oversees ${name}'s missions${main?.status === 'needs-you' ? ' (needs you)' : ''}`}
                       className={cn(
-                        'flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                        'flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                         mainSelected && 'bg-selected text-foreground hover:bg-selected'
                       )}
                     >
                       <Compass className="size-3.5 shrink-0" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">Main session</span>
-                        <span className="block truncate text-[11px] font-normal text-faint" data-testid="main-session-subtitle">{mainSubtitle}</span>
-                      </span>
+                      <span className="min-w-0 flex-1 truncate">Main session</span>
+                      <span className="max-w-[45%] shrink truncate text-[11px] font-normal text-faint" data-testid="main-session-subtitle">{mainSubtitle}</span>
                       <StatusDot status={mainDot} />
                     </button>
                   </div>
                 )
               })()}
               {open && ms.length > 0 && (
-              <div className="ml-2.5 mt-0.5 space-y-px border-l border-border pl-1.5">
+              <div className="ml-2.5 mt-0.5 space-y-px border-l border-border/50 pl-1.5">
               {ms.map((m) => {
                 const active = m.id === selectedMission
                 const expanded = active && !closedMissions.has(m.id)
@@ -370,7 +368,7 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                       aria-expanded={expanded}
                       title={(att.title ? att.title + '\n' : '') + (expanded ? 'Hide its agents' : 'Show its agents') + jumpHint(m.id)}
                       className={cn(
-                        'flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+                        'group/m flex h-7 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
                         active && 'bg-selected text-foreground hover:bg-selected'
                       )}
                     >
@@ -389,14 +387,14 @@ export function Sidebar({ spaces, missions, appRun, selectedMission, selectedTer
                           <span title={att.tier === 'ready' ? att.title : 'working'} className="flex items-center"><span className={cn('size-1.5 rounded-full', tierBg[att.tier], att.tier === 'working' && 'animate-orc-pulse')} /></span>
                         ) : null}
                         </span>
-                        {m.tokens > 0 && <span className="text-[10.5px] font-normal tabular-nums text-faint">{formatTokens(m.tokens)}</span>}
+                        {m.tokens > 0 && <span className="hidden text-[10.5px] font-normal tabular-nums text-faint group-hover/m:inline">{formatTokens(m.tokens)}</span>}
                       </span>
                     </button>
                     {!expanded && att.question && (att.tier === 'needs') && (
                       <div className="truncate pb-0.5 pl-6 pr-1.5 text-[11px] font-normal text-needs/90" title={att.question} data-testid="mission-question">{att.question}</div>
                     )}
                     {expanded && (
-                      <div className="mt-1 space-y-1 pb-2">
+                      <div className="mt-0.5 space-y-px pb-1.5">
                         <AnimatePresence initial={false}>
                           {shownAgents(m).map((a) => (
                             <AgentCard key={a.terminalId} a={a} selected={a.terminalId === selectedTerminal} onSelect={() => onSelectAgent(a.terminalId)} onReview={() => onReview(a.name)}
