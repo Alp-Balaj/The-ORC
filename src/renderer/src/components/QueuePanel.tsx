@@ -1,3 +1,4 @@
+import { openLoopSetup } from './LoopSetupDialog'
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Circle, CircleCheck, CirclePause, GripVertical, ListOrdered, LoaderCircle, Pause, Play, Plus, Trash2 } from 'lucide-react'
 import type { PermissionMode, PlanUsageView, QueueItem, QueueView } from '../../../shared/types'
@@ -102,7 +103,8 @@ export function QueuePanel({ root, queue, onSelectMission }: {
         <div className="space-y-1 pb-1.5 pt-0.5">
           {items.length === 0 && (
             <div className="px-1.5 text-[11px] leading-snug text-faint" data-testid="queue-empty">
-              No tasks yet. Each task becomes its own mission, started when the one before it is verified.
+              No tasks yet. Each task becomes its own mission, started when the one before it is verified.{' '}
+              <button type="button" className="cursor-pointer underline hover:text-foreground" onClick={() => openLoopSetup(root)} data-testid="queue-loop-setup">Set up a loop</button> to have it fill itself.
             </div>
           )}
           {items.length > 0 && (
