@@ -17,6 +17,7 @@ const api = {
   githubDisconnect: (): Promise<GithubAccountView> => ipcRenderer.invoke('github:disconnect'),
   updateApp: (): Promise<string> => ipcRenderer.invoke('app-update:run'),
   canRestartOnUpdate: (): Promise<boolean> => ipcRenderer.invoke('app-update:can-restart'),
+  createDesktopShortcut: (): Promise<{ status: 'created' | 'exists' | 'unsupported'; path?: string; message: string }> => ipcRenderer.invoke('desktop-shortcut:create'),
   listClaudeAccounts: (): Promise<ClaudeAccountView[]> => ipcRenderer.invoke('claude-accounts:list'),
   addClaudeAccount: (name: string): Promise<string> => ipcRenderer.invoke('claude-accounts:add', name),
   loginClaudeAccount: (id: string): Promise<void> => ipcRenderer.invoke('claude-accounts:login', id),
@@ -104,6 +105,7 @@ const api = {
   /** The mission/agent on screen, so notifications skip what the owner is already looking at. */
   setSelection: (missionId: string | null, terminalId: string | null): void => ipcRenderer.send('ui:selection', missionId, terminalId),
   onNotifySelect: (cb: (missionId: string, terminalId: string) => void) => listen<[string, string]>('notify:select', cb),
+  setIconAccent: (hex: string): void => ipcRenderer.send('icon:set-accent', hex),
   setNativeTheme: (pref: 'light' | 'dark' | 'system'): void => ipcRenderer.send('theme:set-native', pref),
   write: (id: string, data: string): void => ipcRenderer.send('terminal:write', id, data),
   resize: (id: string, cols: number, rows: number): void =>
