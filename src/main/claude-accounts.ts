@@ -145,7 +145,8 @@ export class ClaudeAccounts {
             plan: j.planTier ?? j.subscriptionType ?? null,
             expiresAt: j.loginExpiresAt ?? null
           })
-        } catch {
+        } catch (parseErr) {
+          console.error(`claude-accounts: \`claude auth status\` probe failed for account ${a.id} (${a.name}, configDir ${a.configDir ?? 'default'}):`, err ?? parseErr)
           resolve(err ? { state: 'error', error: 'Could not run `claude auth status`.' } : { state: 'logged-out' })
         }
       })
