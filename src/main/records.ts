@@ -36,7 +36,8 @@ export function pastRecords(dir: string | null, exclude: string | null = null, l
       .sort()
       .reverse()
       .slice(0, limit)
-  } catch {
+  } catch (err) {
+    console.error(`records: could not list ${dir}; returning no past records:`, err)
     return []
   }
 }
