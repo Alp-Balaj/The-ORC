@@ -700,7 +700,7 @@ export class Missions implements ControlHandlers {
       return { wait: promise }
     } catch (err) {
       this.dropMerger(mission.id, key)
-      await this.git.discardMerge(mission.repoPath, mission.name, key).catch(() => {})
+      await this.git.discardMerge(mission.repoPath, mission.name, key).catch((e) => this.orcNote(mission, `could not discard the merge worktree for ${key} (mission ${mission.name}): ${String((e as Error).message ?? e)}`))
       this.orcNote(mission, `could not start a merge agent for ${orcBranch}: ${String((err as Error).message ?? err)}`)
       return null
     }
@@ -762,7 +762,7 @@ export class Missions implements ControlHandlers {
   /** The merge agent for the ORC branch failed: throw its worktree away and refuse, naming the files. */
   private async orcMergerFailed(mission: Mission, m: Agent, st: MergerState, why: string): Promise<void> {
     this.dropMerger(mission.id, missionGit.OrcMergeKey)
-    await this.git.discardMerge(mission.repoPath, mission.name, missionGit.OrcMergeKey).catch(() => {})
+    await this.git.discardMerge(mission.repoPath, mission.name, missionGit.OrcMergeKey).catch((e) => this.orcNote(mission, `could not discard the merge worktree for ${m.name} (mission ${mission.name}): ${String((e as Error).message ?? e)}`))
     if (!m.shutDown) this.endAgent(mission, m, 'orc', `merge agent failed: ${oneLine(why, 120)}`)
     const files = st.files
     st.onDone?.(this.integrateFailed(mission, `Conflicts with work already on ${missionGit.OrcBranch} in ${files.join(', ')}; the merge agent ${why}. Nothing was integrated.`, files, `integrating into ${missionGit.OrcBranch} refused: merge agent ${oneLine(why, 120)} (conflict in ${files.join(', ')})`))
@@ -1313,8 +1313,8 @@ export class Missions implements ControlHandlers {
       return true
     } catch (err) {
       this.dropMerger(mission.id, a.name)
-      await this.git.discardMerge(mission.repoPath, mission.name, a.name).catch(() => {})
-      this.orcNote(mission, `could not start a merge agent: ${String((err as Error).message ?? err)}`)
+      await this.git.discardMerge(mission.repoPath, mission.name, a.name).catch((e) => this.orcNote(mission, `could not discard the merge worktree for ${a.name} (mission ${mission.name}): ${String((e as Error).message ?? e)}`))
+      this.orcNote(mission, `could not start a merge agent:${String((err as Error).message ?? err)}`)
       return false
     }
   }
