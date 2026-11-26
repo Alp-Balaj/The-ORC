@@ -160,7 +160,8 @@ function isOrphan(pid: number, sessionId: string): boolean {
       return cmdline.includes(sessionId)
     }
     return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(sessionId)
-  } catch {
+  } catch (err) {
+    console.error(`[orc] process command-line lookup failed for pid ${pid}: ${err instanceof Error ? err.message : String(err)}`)
     return false
   }
 }
