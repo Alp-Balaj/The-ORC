@@ -34,7 +34,9 @@ export class TranscriptTally {
     let fh
     try {
       fh = await open(this.path, 'r')
-    } catch {
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code
+      if (code !== 'ENOENT') console.error('tokens: could not open transcript', this.path, code)
       return this.count()
     }
     try {
