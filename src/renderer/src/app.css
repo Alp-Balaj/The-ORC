@@ -279,3 +279,8 @@
 /* Folded workers fade/slide in when a lead's "+N done" chip is expanded; none for reduced motion. */
 @keyframes orc-fold-in { from { opacity: 0; transform: translateY(-4px); } }
 @media (prefers-reduced-motion: no-preference) { .orc-fold-in { animation: orc-fold-in 160ms ease-out 1; } }
+
+.react-flow__minimap.tree-minimap { background: var(--color-panel); border: 1px solid var(--color-border); border-radius: 6px; box-shadow: none; opacity: 0.85; overflow: hidden; margin: 12px; }
+.react-flow__minimap.tree-minimap:hover { opacity: 1; }
+.react-flow__minimap-mask { stroke: var(--color-border-strong); stroke-width: 1; }
+.react-flow__minimap-node.tree-minimap-dim { opacity: 0.25; }
