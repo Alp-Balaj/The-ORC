@@ -815,7 +815,8 @@ export function App(): React.JSX.Element {
             variant="ghost"
             className={cn('h-6 px-1.5 text-[11px]', showMessages && 'bg-selected text-foreground hover:bg-selected')}
             onClick={() => setShowMessages((v) => !v)}
-            title="Draw messages between agents on the tree"
+            aria-pressed={showMessages}
+            title={showMessages ? 'Messages shown on the tree: click to hide' : 'Draw messages between agents on the tree'}
             data-testid="toggle-messages"
           >
             <MessagesSquare /> messages
