@@ -1624,7 +1624,9 @@ export class Missions implements ControlHandlers {
     if (saved?.version !== 1) return log
     // A repo folder moved or renamed while the app was closed leaves every worktree's git links stale.
     for (const repo of new Set(saved.missions.map((m) => m.repoPath))) {
-      await missionGit.repairWorktreesSerialized(repo).catch(() => {})
+      await missionGit.repairWorktreesSerialized(repo).catch((err) => {
+        log.push(`could not repair worktree links for ${repo}: ${String((err as Error).message ?? err)}`)
+      })
     }
     for (const sm of saved.missions) {
       if (this.missions.has(sm.id)) continue
