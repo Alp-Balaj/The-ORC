@@ -4,11 +4,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
 import { join } from 'node:path'
 
-// Parses icon.svg: a rounded-square background plus the polygon glyph paths (M/L/Z only) in <g id="orc-icon">.
+// Parses icon.svg: the polygon glyph paths (M/L/Z only) in <g id="orc-icon">.
 const svg = readFileSync(join(import.meta.dirname, 'icon.svg'), 'utf8')
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
-const BG = hex(svg.match(/<rect[^>]*fill="(#[0-9a-f]{6})"/i)[1]), FG = hex(svg.match(/<g id="orc-icon"[^>]*fill="(#[0-9a-f]{6})"/i)[1])
-const RX = Number(svg.match(/<rect[^>]*rx="(\d+)"/)[1])
+const FG = hex(svg.match(/<g id="orc-icon"[^>]*fill="(#[0-9a-f]{6})"/i)[1])
 const [, TX, TY, SC] = svg.match(/translate\(([\d.-]+) ([\d.-]+)\) scale\(([\d.]+)\)/).map(Number)
 const paths = [...svg.matchAll(/<path\b[^>]*?\bd="([^"]+)"[^>]*>/g)].map((m) => ({
   evenodd: /fill-rule="evenodd"/.test(m[0]),
@@ -33,11 +32,7 @@ function inGlyph(x, y) {
 
 // One point of the 512 design space: [r, g, b, a]
 function sample(x, y) {
-  const dx = x - 256, dy = y - 256
-  const qx = Math.abs(dx) - (256 - RX), qy = Math.abs(dy) - (256 - RX)
-  const inBg = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) <= RX
-  if (!inBg) return [0, 0, 0, 0]
-  return [...(inGlyph(x, y) ? FG : BG), 255]
+  return inGlyph(x, y) ? [...FG, 255] : [0, 0, 0, 0] // no background: transparent outside the glyph
 }
 
 function render(size) {
