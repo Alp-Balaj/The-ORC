@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification } from 'electron'
 import { basename, join } from 'node:path'
+import { applyAccentIcon, currentAccentIcon } from './icon-color.ts'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import type { AutopilotPatch, MissionView, PermissionMode, StartMissionRequest } from '../shared/types.ts'
@@ -366,6 +367,8 @@ function createWindow(): void {
       offscreen: !!smoke
     }
   })
+  const accentImg = currentAccentIcon()
+  if (accentImg) win.setIcon(accentImg)
   win.on('focus', () => notifier.onFocus())
   // Catch the renderer up on mission pushes it missed while hidden or minimized.
   const catchUp = (): void => {
@@ -542,6 +545,7 @@ ipcMain.on('terminal:write', (_e, id: string, data: string) => {
   terminals.write(id, data)
 })
 ipcMain.on('ui:selection', (_e, missionId: string | null, terminalId: string | null) => notifier.setSelection(missionId, terminalId))
+ipcMain.on('icon:set-accent', (_e, hex: string) => applyAccentIcon(hex))
 ipcMain.on('theme:set-native', (_e, pref: 'light' | 'dark' | 'system') => {
   nativeTheme.themeSource = pref
   for (const w of BrowserWindow.getAllWindows()) w.setBackgroundColor(windowBackground())

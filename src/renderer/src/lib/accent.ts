@@ -29,6 +29,9 @@ function apply(a: Accent): void {
   if (a === 'indigo') delete root.dataset.accent
   else root.dataset.accent = a
   for (const cb of listeners) cb(a)
+  // Tint the window/taskbar icon with the live primary color (theme-aware).
+  const hex = getComputedStyle(root).getPropertyValue('--color-primary').trim()
+  if (/^#[0-9a-f]{6}$/i.test(hex)) window.orc?.setIconAccent(hex)
 }
 
 export function setAccent(a: Accent): void {

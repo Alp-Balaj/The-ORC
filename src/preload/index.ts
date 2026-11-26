@@ -104,6 +104,7 @@ const api = {
   /** The mission/agent on screen, so notifications skip what the owner is already looking at. */
   setSelection: (missionId: string | null, terminalId: string | null): void => ipcRenderer.send('ui:selection', missionId, terminalId),
   onNotifySelect: (cb: (missionId: string, terminalId: string) => void) => listen<[string, string]>('notify:select', cb),
+  setIconAccent: (hex: string): void => ipcRenderer.send('icon:set-accent', hex),
   setNativeTheme: (pref: 'light' | 'dark' | 'system'): void => ipcRenderer.send('theme:set-native', pref),
   write: (id: string, data: string): void => ipcRenderer.send('terminal:write', id, data),
   resize: (id: string, cols: number, rows: number): void =>
