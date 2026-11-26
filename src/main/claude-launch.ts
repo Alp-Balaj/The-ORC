@@ -115,8 +115,11 @@ export function ownerStatusLine(cwd: string, home = os.homedir()): string | null
     try {
       const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
       if (parsed && typeof parsed === 'object' && 'statusLine' in parsed) found = (parsed as { statusLine: unknown }).statusLine
-    } catch {
-      // missing or invalid: skip
+    } catch (err) {
+      // missing file: skip silently; unreadable or invalid JSON: log, then skip
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        console.error(`ownerStatusLine: skipping ${file}: ${err instanceof Error ? err.message : String(err)}`)
+      }
     }
   }
   if (!found || typeof found !== 'object') return null
