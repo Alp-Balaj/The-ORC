@@ -11,7 +11,8 @@ async function git(cwd: string, ...args: string[]): Promise<string | null> {
   try {
     const { stdout } = await run('git', args, { cwd })
     return stdout.trim()
-  } catch {
+  } catch (err) {
+    console.error(`onboarding: git ${args.join(' ')} failed in ${cwd}; treating it as no result:`, err)
     return null
   }
 }
