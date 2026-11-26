@@ -1,22 +1,43 @@
-// Regenerates build/icon.png (512px) and build/icon.ico (16-256px) from the geometry in icon.svg.
+// Regenerates build/icon.png (512px) and build/icon.ico (16-256px) by rasterizing icon.svg.
 // Run: node build/make-icons.mjs   (no dependencies)
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
 import { join } from 'node:path'
 
-const BG = [22, 24, 29], FG = [255, 138, 61]
-const GAP = [(-62 * Math.PI) / 180, (-18 * Math.PI) / 180] // opening in the ring, upper right
+// Parses icon.svg: a rounded-square background plus the polygon glyph paths (M/L/Z only) in <g id="orc-icon">.
+const svg = readFileSync(join(import.meta.dirname, 'icon.svg'), 'utf8')
+const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
+const BG = hex(svg.match(/<rect[^>]*fill="(#[0-9a-f]{6})"/i)[1]), FG = hex(svg.match(/<g id="orc-icon"[^>]*fill="(#[0-9a-f]{6})"/i)[1])
+const RX = Number(svg.match(/<rect[^>]*rx="(\d+)"/)[1])
+const [, TX, TY, SC] = svg.match(/translate\(([\d.-]+) ([\d.-]+)\) scale\(([\d.]+)\)/).map(Number)
+const paths = [...svg.matchAll(/<path\b[^>]*?\bd="([^"]+)"[^>]*>/g)].map((m) => ({
+  evenodd: /fill-rule="evenodd"/.test(m[0]),
+  polys: m[1].split(/(?=M)/).map((p) => (p.match(/-?[\d.]+/g) || []).map(Number)).filter((n) => n.length >= 6)
+    .map((n) => { const pts = []; for (let i = 0; i < n.length; i += 2) pts.push([n[i] * SC + TX, n[i + 1] * SC + TY]); return pts }),
+}))
+function inPoly(pts, x, y) { // crossing count + winding
+  let wn = 0, cr = 0
+  for (let i = 0, n = pts.length; i < n; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % n]
+    if ((y1 > y) !== (y2 > y) && x < x1 + ((y - y1) / (y2 - y1)) * (x2 - x1)) { cr++; wn += y2 > y1 ? 1 : -1 }
+  }
+  return [cr & 1, wn]
+}
+function inGlyph(x, y) {
+  return paths.some((p) => {
+    let cr = 0, wn = 0
+    for (const poly of p.polys) { const [c, w] = inPoly(poly, x, y); cr += c; wn += w }
+    return p.evenodd ? cr & 1 : wn !== 0
+  })
+}
 
-// Coverage (0..1) at a point of the 512 design space: [r, g, b, a]
+// One point of the 512 design space: [r, g, b, a]
 function sample(x, y) {
   const dx = x - 256, dy = y - 256
-  // rounded-square background, radius 112
-  const qx = Math.abs(dx) - (256 - 112), qy = Math.abs(dy) - (256 - 112)
-  const inBg = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) <= 112
+  const qx = Math.abs(dx) - (256 - RX), qy = Math.abs(dy) - (256 - RX)
+  const inBg = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) <= RX
   if (!inBg) return [0, 0, 0, 0]
-  const d = Math.hypot(dx, dy), a = Math.atan2(dy, dx)
-  const ring = d <= 150 && d >= 98 && !(a > GAP[0] && a < GAP[1])
-  return d <= 38 || ring ? [...FG, 255] : [...BG, 255]
+  return [...(inGlyph(x, y) ? FG : BG), 255]
 }
 
 function render(size) {

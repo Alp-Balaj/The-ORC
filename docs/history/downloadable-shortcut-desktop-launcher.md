@@ -20,8 +20,8 @@ stable copy of main, see `scripts/orc-app.sh`), so they start, and first-time bu
 
 ## Icon
 
-`build/icon.svg` is the source (dark rounded square, amber open ring, centre dot).
-`node build/make-icons.mjs` regenerates `icon.png` (512px) and `icon.ico` (16-256px) with no
+`build/icon.svg` is the source (the owner's orc glyph, green on a dark rounded square; see `build/ICON-CREDITS.md`).
+`node build/make-icons.mjs` regenerates `icon.png` (512px) and `icon.ico` (16-256px) by rasterizing the SVG's polygon paths itself, with no
 dependencies. `src/main/index.ts` sets the `BrowserWindow` icon (`.ico` on Windows, `.png` elsewhere)
 from `../../build/` relative to `out/main`, so the taskbar shows it in dev and in the stable copy.
 
