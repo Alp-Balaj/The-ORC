@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MarkerType, ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Panel, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
+import { MarkerType, ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, MiniMap, Panel, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Crown, Maximize, ZoomIn, ZoomOut } from 'lucide-react'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
@@ -268,6 +268,51 @@ function JumpTo({ focus }: { focus: { id: string; n: number } | null }): null {
     void setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: Math.max(getZoom(), 0.8), duration: 250 })
   }, [focus, getNode, setCenter, getZoom])
   return null
+}
+
+const miniColor: Record<AgentStatus, string> = {
+  starting: 'var(--color-faint)',
+  working: 'var(--color-working)',
+  idle: 'var(--color-muted-foreground)',
+  'needs-you': 'var(--color-needs)',
+  done: 'var(--color-done)',
+  exited: 'var(--color-exited)'
+}
+
+/** Minimap, shown only when the tree extends past the viewport (live: reads transform, size and node bounds). */
+function TreeMiniMap(): React.JSX.Element | null {
+  const overflows = useStore((s) => {
+    const { width: W, height: H, transform: [tx, ty, z] } = s
+    if (!W || !H || !s.nodeLookup.size) return false
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity
+    for (const n of s.nodeLookup.values()) {
+      const { x, y } = n.internals.positionAbsolute
+      x1 = Math.min(x1, x); y1 = Math.min(y1, y)
+      x2 = Math.max(x2, x + (n.measured.width ?? stackSizes.cardW)); y2 = Math.max(y2, y + (n.measured.height ?? stackSizes.cardH))
+    }
+    const e = 2
+    return x1 * z + tx < -e || y1 * z + ty < -e || x2 * z + tx > W + e || y2 * z + ty > H + e
+  })
+  if (!overflows) return null
+  return (
+    <MiniMap
+      pannable
+      zoomable
+      position="bottom-right"
+      className="tree-minimap"
+      style={{ width: 160, height: 110 }}
+      ariaLabel="Mission tree minimap"
+      nodeBorderRadius={2}
+      nodeStrokeWidth={0}
+      maskColor="color-mix(in srgb, var(--color-background) 70%, transparent)"
+      nodeColor={(n) => {
+        const d = n.data as TreeNodeData
+        const base = d.kind === 'agent' ? (d.agent.exitKind === 'crashed' ? 'var(--color-destructive)' : miniColor[d.agent.status]) : 'var(--color-border-strong)'
+        return base
+      }}
+      nodeClassName={(n) => ((n.data as TreeNodeData).dim ? 'tree-minimap-dim' : '')}
+    />
+  )
 }
 
 const zoomButton = 'flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40'
@@ -563,6 +608,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--color-border)" />
       <ZoomControls />
+      <TreeMiniMap />
     </ReactFlow>
     </ReactFlowProvider>
     </div>
