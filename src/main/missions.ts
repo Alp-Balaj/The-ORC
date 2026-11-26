@@ -1156,8 +1156,11 @@ export class Missions implements ControlHandlers {
       const left = a.conflictFiles.filter((f) => {
         try {
           return /^<{7}( |$)/m.test(readFileSync(join(a.cwd, f), 'utf8'))
-        } catch {
-          return false
+        } catch (err) {
+          // A deleted file is resolved; an unreadable one is not (it may still hold markers).
+          if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return false
+          console.error(`missions: afterDone could not read conflicted file ${f} in ${a.cwd}; treating it as unresolved:`, err)
+          return true
         }
       })
       if (left.length) {

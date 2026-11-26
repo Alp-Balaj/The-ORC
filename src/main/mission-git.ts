@@ -205,8 +205,11 @@ export function markersLeft(wt: string, files: string[]): string[] {
   return files.filter((f) => {
     try {
       return /^(<{7}( |$)|>{7}( |$))/m.test(readFileSync(join(wt, f), 'utf8'))
-    } catch {
-      return false
+    } catch (err) {
+      // A deleted file is resolved; an unreadable one is not (it may still hold markers).
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return false
+      console.error(`mission-git: markersLeft could not read ${f} in ${wt}; treating it as still conflicted:`, err)
+      return true
     }
   })
 }
