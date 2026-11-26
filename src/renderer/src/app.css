@@ -235,6 +235,8 @@
 .react-flow__edge.message .react-flow__edge-path { stroke: var(--color-done); stroke-dasharray: 4 4; }
 .react-flow__edge.message.failed .react-flow__edge-path { stroke: var(--color-destructive); }
 .react-flow__handle { opacity: 0; }
+/* Keyboard focus on a mission tree node or chip: a primary ring outside the card (beats the .hit outline). */
+[data-tree-id]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 
 @keyframes orc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .animate-orc-pulse { animation: orc-pulse 1.6s ease-in-out infinite; }

@@ -1,15 +1,16 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Panel, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Crown, Maximize, ZoomIn, ZoomOut } from 'lucide-react'
+import { Check, Circle, CircleDashed, Crown, LoaderCircle, Maximize, TriangleAlert, X, ZoomIn, ZoomOut } from 'lucide-react'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
 import { layoutStacked, stackSizes } from '../../../shared/tree-layout'
 import { cn, formatTokens } from '../lib/utils'
 import { StatusDot, statusLabel } from './AgentCard'
 import { HoverDelay, NodeHoverCard, observeStatus } from './NodeHoverCard'
 
-type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean; parent: string | null; lastLine: string | null; dim: boolean; hit: boolean; progress: Progress | null; reveal: boolean }
-type ChipNodeData = { kind: 'chip'; lead: string; count: number; crashed: number; expanded: boolean; dim: boolean; hit: boolean }
+/** `tab`: this node is the one stop in the tree that Tab reaches (roving tabindex). `level`: 1 coordinator, 2 lead, 3+ workers. `kids`: children shown under it. */
+type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean; parent: string | null; lastLine: string | null; dim: boolean; hit: boolean; progress: Progress | null; reveal: boolean; tab: boolean; level: number; kids: number }
+type ChipNodeData = { kind: 'chip'; lead: string; count: number; crashed: number; expanded: boolean; dim: boolean; hit: boolean; tab: boolean; level: number }
 /** A lead's workers by outcome: finished OK, crashed, waiting on the owner, still going. */
 type Progress = { total: number; done: number; crashed: number; needs: number; active: number }
 type TreeNodeData = AgentNodeData | ChipNodeData
@@ -74,6 +75,17 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
     onMouseLeave: (): void => { clearTimeout(timer.current); setRect(null) }
   }
   const card = rect && !far ? <NodeHoverCard agent={a} rect={rect} parent={data.parent} lastLine={data.lastLine} /> : null
+  const roleWord = a.role === 'coordinator' ? 'coordinator' : data.level === 2 ? 'team lead' : 'worker'
+  const state = a.exitKind === 'crashed' ? 'crashed' : statusLabel[a.status]
+  const item = {
+    role: 'treeitem',
+    tabIndex: data.tab ? 0 : -1,
+    'data-tree-id': a.name,
+    'aria-level': data.level,
+    'aria-selected': data.selected,
+    'aria-expanded': data.kids > 0 ? true : undefined,
+    'aria-label': `${a.name}, ${roleWord}, ${state}${data.progress ? `, ${data.progress.done} of ${data.progress.total} done` : ''}`
+  } as const
   const base = cn(
     'cursor-pointer border border-border bg-card transition-colors hover:border-border-strong hover:bg-accent',
     a.status === 'needs-you' && !data.selected && 'border-needs/50 bg-needs/10 shadow-[0_0_0_3px] shadow-needs/15 hover:bg-needs/15',
@@ -90,13 +102,16 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         data-testid="tree-node"
         data-agent={a.name}
         data-status={a.status}
+        {...item}
         {...hover}
         style={{ width: '100%', height: '100%' }}
         className={cn(base, 'relative flex items-center gap-1.5 rounded-md pl-2.5 pr-2', data.reveal && 'orc-fold-in')}
       >
         <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-md', a.exitKind === 'crashed' ? 'bg-destructive' : barColor[a.status])} />
         <Handles card={false} />
-        <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} className={cn(far && 'size-3')} />
+        {far
+          ? <StatusGlyph status={a.status} crashed={a.exitKind === 'crashed'} className="size-3" />
+          : <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} />}
         <span className={cn('min-w-0 flex-1 truncate font-medium', far ? 'text-[15px]' : 'text-[11.5px]')}>{a.name}</span>
         {!far && a.tokens > 0 && <span className="text-[10.5px] tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
         {card}
@@ -108,6 +123,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       data-testid="tree-node"
       data-agent={a.name}
       data-status={a.status}
+      {...item}
       {...hover}
       style={{ width: stackSizes.cardW, height: stackSizes.cardH }}
       className={cn(base, 'relative rounded-lg py-1.5 pl-3 pr-2', far && 'flex items-center')}
@@ -116,7 +132,9 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       <Handles card />
       {!far && data.progress && <ProgressBar p={data.progress} />}
       <div className="flex min-w-0 items-center gap-1.5">
-        <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} className={cn(far && 'size-3.5')} />
+        {far
+          ? <StatusGlyph status={a.status} crashed={a.exitKind === 'crashed'} className="size-3.5" />
+          : <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} />}
         <span className={cn('truncate font-medium', far ? 'text-[17px]' : 'text-[12px]')}>{a.name}</span>
         {a.role === 'coordinator' && <Crown aria-label="coordinator" className={cn('ml-auto shrink-0 text-muted-foreground', far ? 'size-4' : 'size-3')} />}
       </div>
@@ -148,20 +166,38 @@ function ProgressBar({ p }: { p: Progress }): React.JSX.Element {
   )
 }
 
-/** "+N done": a lead's finished workers, folded. Click to show them, again to fold. */
+/** Far zoom hides labels, so each status also has its own shape, not just its colour. */
+function StatusGlyph({ status, crashed, className }: { status: AgentStatus; crashed: boolean; className?: string }): React.JSX.Element {
+  if (crashed) return <X aria-hidden className={cn('shrink-0 text-destructive', className)} strokeWidth={3} />
+  switch (status) {
+    case 'needs-you': return <TriangleAlert aria-hidden className={cn('shrink-0 text-needs', className)} />
+    case 'done': return <Check aria-hidden className={cn('shrink-0 text-done', className)} strokeWidth={3} />
+    case 'working': return <LoaderCircle aria-hidden className={cn('shrink-0 text-working motion-safe:animate-spin', className)} />
+    case 'exited': return <X aria-hidden className={cn('shrink-0 text-exited-foreground', className)} />
+    case 'starting': return <CircleDashed aria-hidden className={cn('shrink-0 text-faint', className)} />
+    case 'idle': return <Circle aria-hidden className={cn('shrink-0 text-muted-foreground', className)} />
+  }
+}
+
+/** "+N done": a lead's finished workers, folded. A real button: Enter or Space (or a click) shows them, again to fold. */
 function ChipNode({ data }: NodeProps<Node<ChipNodeData>>): React.JSX.Element {
   const far = useStore((s) => s.transform[2] < SemanticZoom)
+  const label = `${data.count} finished workers, ${data.expanded ? 'shown' : 'folded'}${data.crashed ? `, ${data.crashed} crashed` : ''}`
   return (
-    <div
-      data-testid="tree-chip"
-      data-lead={data.lead}
-      style={{ width: '100%', height: '100%' }}
-      className={cn('flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-card/60 pl-2.5 pr-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]', data.hit && 'outline outline-2 outline-offset-1 outline-primary/60', data.dim && 'opacity-25')}
-    >
+    <div data-testid="tree-chip" data-lead={data.lead} style={{ width: '100%', height: '100%' }}>
       <Handles card={false} />
-      <span className="inline-block size-2 shrink-0 rounded-full bg-done/70" />
-      {data.expanded ? `hide ${data.count} done` : `+${data.count} done`}
-      {data.crashed > 0 && !data.expanded && <span className="text-destructive">· {data.crashed} crashed</span>}
+      <button
+        type="button"
+        data-tree-id={`chip:${data.lead}`}
+        tabIndex={data.tab ? 0 : -1}
+        aria-expanded={data.expanded}
+        aria-label={label}
+        className={cn('flex h-full w-full cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-border-strong bg-card/60 pl-2.5 pr-2 text-left text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', far ? 'text-[15px]' : 'text-[11px]', data.hit && 'outline outline-2 outline-offset-1 outline-primary/60', data.dim && 'opacity-25')}
+      >
+        <span aria-hidden className="inline-block size-2 shrink-0 rounded-full bg-done/70" />
+        {data.expanded ? `hide ${data.count} done` : `+${data.count} done`}
+        {data.crashed > 0 && !data.expanded && <span className="text-destructive">· {data.crashed} crashed</span>}
+      </button>
     </div>
   )
 }
@@ -312,6 +348,9 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [picked, setPicked] = useState<AgentStatus | null>(null)
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
+  // The node that holds keyboard focus (a tree item id, or `chip:<lead>`); null when focus is outside the tree.
+  const [active, setActive] = useState<string | null>(null)
+  const treeRef = useRef<HTMLDivElement>(null)
   const counts = useMemo(() => {
     const c = new Map<AgentStatus, number>()
     for (const a of agents) c.set(a.status, (c.get(a.status) ?? 0) + 1)
@@ -396,6 +435,13 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       ...[...foldedBy.keys()].map((lead) => ({ id: `chip:${lead}`, parent: lead }))
     ]
     const placed = new Map(layoutStacked(input).map((p) => [p.id, p]))
+    // Roving tab stop: the focused node if it is still shown, else the selected agent, else the coordinator.
+    const presentIds = new Set([...shown.map((a) => a.name), ...[...foldedBy.keys()].map((lead) => `chip:${lead}`)])
+    const selectedName = shown.find((a) => a.terminalId === selected)?.name
+    const rootName = shown.find((a) => !parentOf(a))?.name
+    const tabStop = [active, selectedName, rootName].find((id) => id && presentIds.has(id))
+    const childCount = new Map<string, number>()
+    for (const i of input) if (i.parent) childCount.set(i.parent, (childCount.get(i.parent) ?? 0) + 1)
     const nodes: Node<TreeNodeData>[] = []
     for (const a of shown) {
       const p = placed.get(a.name)
@@ -403,7 +449,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         id: a.name,
         type: 'agent',
         position: { x: p?.x ?? 0, y: p?.y ?? 0 },
-        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2, parent: parentOf(a), lastLine: lastLineOf.get(a.name) ?? null, dim: !!filter && a.status !== filter, hit: !!filter && a.status === filter, progress: progressOf.get(a.name) ?? null, reveal: revealed.has(a.name) },
+        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2, parent: parentOf(a), lastLine: lastLineOf.get(a.name) ?? null, dim: !!filter && a.status !== filter, hit: !!filter && a.status === filter, progress: progressOf.get(a.name) ?? null, reveal: revealed.has(a.name), tab: a.name === tabStop, level: (p?.depth ?? 0) + 1, kids: childCount.get(a.name) ?? 0 },
         // Fixed size: no node waits on a measurement to be shown.
         width: p?.w ?? stackSizes.cardW,
         height: p?.h ?? stackSizes.cardH,
@@ -418,7 +464,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         id: `chip:${lead}`,
         type: 'chip',
         position: { x: p.x, y: p.y },
-        data: { kind: 'chip', lead, count: names.length, crashed: names.filter((n) => byName.get(n)?.exitKind === 'crashed').length, expanded: expanded.has(lead), dim: !!filter && filter !== 'done', hit: filter === 'done' },
+        data: { kind: 'chip', lead, count: names.length, crashed: names.filter((n) => byName.get(n)?.exitKind === 'crashed').length, expanded: expanded.has(lead), dim: !!filter && filter !== 'done', hit: filter === 'done', tab: `chip:${lead}` === tabStop, level: (p.depth ?? 0) + 1 },
         width: p.w,
         height: p.h,
         draggable: false,
@@ -472,7 +518,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       }
     }
     return { nodes, edges, shape: nodes.map((n) => `${n.id}@${n.position.x},${n.position.y}`).join(',') }
-  }, [agents, feed, selected, showMessages, expanded, filter])
+  }, [agents, feed, selected, showMessages, expanded, filter, active])
 
   // Nodes live in React Flow state. Each update keeps what React Flow already knows about a
   // node (its measurement) and changes only position, size and data. Replacing node objects on
@@ -485,13 +531,75 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
     }))
   }, [nodes, setRfNodes])
 
+  // Keyboard map over the nodes on screen. Siblings run in layout order (top to bottom, then left to right).
+  const nav = useMemo(() => {
+    const byId = new Map(nodes.map((n) => [n.id, n]))
+    const parentOfNode = (n: Node<TreeNodeData>): string | null => {
+      const p = n.data.kind === 'agent' ? n.data.parent : n.data.lead
+      return p && byId.has(p) ? p : null
+    }
+    const kids = new Map<string | null, Node<TreeNodeData>[]>()
+    for (const n of nodes) { const p = parentOfNode(n); kids.set(p, [...(kids.get(p) ?? []), n]) }
+    for (const list of kids.values()) list.sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)
+    /** The node an arrow key moves to: Up = parent, Down = first child, Left/Right = previous/next sibling. */
+    const move = (id: string, key: string): string | null => {
+      const node = byId.get(id)
+      if (!node) return null
+      const parent = parentOfNode(node)
+      const sibs = kids.get(parent) ?? []
+      const i = sibs.indexOf(node)
+      switch (key) {
+        case 'ArrowUp': return parent
+        case 'ArrowDown': return kids.get(id)?.[0]?.id ?? null
+        case 'ArrowLeft': return i > 0 ? sibs[i - 1].id : null
+        case 'ArrowRight': return i >= 0 && i < sibs.length - 1 ? sibs[i + 1].id : null
+        default: return null
+      }
+    }
+    return { byId, move }
+  }, [nodes])
+
+  /** Keyboard: arrows move focus (and selection, for an agent); Enter selects an agent; Esc clears
+   *  focus and the status highlight. A chip's Enter and Space are its button's own click, so they are not handled here. */
+  const onTreeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    const el = (e.target as Element).closest<HTMLElement>('[data-tree-id]')
+    if (e.key === 'Escape') {
+      if (!active && !filter) return
+      e.preventDefault()
+      setPicked(null)
+      setActive(null)
+      el?.blur()
+      return
+    }
+    const id = el?.dataset.treeId
+    const node = id ? nav.byId.get(id) : undefined
+    if (!id || !node) return
+    if (e.key === 'Enter') {
+      if (node.data.kind === 'agent') { e.preventDefault(); onSelect(node.data.agent.terminalId) }
+      return
+    }
+    if (!e.key.startsWith('Arrow')) return
+    e.preventDefault()
+    const next = nav.move(id, e.key)
+    if (!next) return
+    const target = nav.byId.get(next)
+    if (target?.data.kind === 'agent') onSelect(target.data.agent.terminalId)
+    setFocus({ id: next, n: Date.now() })
+    treeRef.current?.querySelector<HTMLElement>(`[data-tree-id="${CSS.escape(next)}"]`)?.focus({ preventScroll: true })
+  }
+  // Whatever takes DOM focus becomes the active node, so the roving tab stop follows the focus.
+  const onTreeFocus = (e: React.FocusEvent<HTMLDivElement>): void => {
+    const id = (e.target as Element).closest<HTMLElement>('[data-tree-id]')?.dataset.treeId
+    if (id) setActive(id)
+  }
+
   if (starting) {
     return <div className="p-4 text-xs text-muted-foreground" data-testid="tree-empty">Waiting for the coordinator to spawn team leads…</div>
   }
   return (
     <div className="flex h-full flex-col">
     <SummaryBar counts={counts} filter={filter} onPick={pick} />
-    <div className="relative min-h-0 flex-1">
+    <div ref={treeRef} role="tree" aria-label="Mission tree" onKeyDown={onTreeKeyDown} onFocus={onTreeFocus} className="relative min-h-0 flex-1">
     <ReactFlowProvider>
     <AutoFit shape={shape} />
     <JumpTo focus={focus} />
@@ -514,6 +622,8 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       panOnScrollMode={PanOnScrollMode.Vertical}
       nodesDraggable={false}
       nodesConnectable={false}
+      nodesFocusable={false}
+      edgesFocusable={false}
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
     >
