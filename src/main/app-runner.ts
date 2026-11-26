@@ -71,7 +71,8 @@ export class AppRunner {
     try {
       const o = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<SavedAppRun>
       return typeof o.missionId === 'string' && typeof o.command === 'string' ? { missionId: o.missionId, command: o.command } : null
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') console.error(`app runner: could not read ${this.file}`, err)
       return null
     }
   }
