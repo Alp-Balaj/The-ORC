@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { DefaultRoleModels, ModelRoles, type AgentView, type DiffView, type FeedEntry, type GateView, type Gating, type IntegratedView, type MissionView, type RoleModels, type SplitView, type StartMissionRequest, type VerifierView } from '../shared/types.ts'
 import { claudeAccounts } from './claude-accounts.ts'
@@ -1153,16 +1153,7 @@ export class Missions implements ControlHandlers {
     if (!a.branch || mission.mergedToMain) return
     // A conflict hand-back is only finished when the markers are gone.
     if (a.merge === 'conflict') {
-      const left = a.conflictFiles.filter((f) => {
-        try {
-          return /^<{7}( |$)/m.test(readFileSync(join(a.cwd, f), 'utf8'))
-        } catch (err) {
-          // A deleted file is resolved; an unreadable one is not (it may still hold markers).
-          if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return false
-          console.error(`missions: afterDone could not read conflicted file ${f} in ${a.cwd}; treating it as unresolved:`, err)
-          return true
-        }
-      })
+      const left = missionGit.markersLeft(a.cwd, a.conflictFiles)
       if (left.length) {
         this.deliver(a, `[The ORC] Conflict markers are still in ${left.join(', ')}. Resolve them, then call report_done again.`)
         return
