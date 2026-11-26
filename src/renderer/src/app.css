@@ -240,6 +240,8 @@
 .react-flow__node.focus-dim, .react-flow__edge.focus-dim { opacity: 0.35 !important; }
 .react-flow__edge.message.focus-hot .react-flow__edge-path { stroke: var(--color-primary); stroke-width: 2; }
 .react-flow__edge.message.failed.focus-hot .react-flow__edge-path { stroke: var(--color-destructive); }
+/* Keyboard focus on a mission tree node or chip: a primary ring outside the card (beats the .hit outline). */
+[data-tree-id]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 
 @keyframes orc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .animate-orc-pulse { animation: orc-pulse 1.6s ease-in-out infinite; }
