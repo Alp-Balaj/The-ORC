@@ -165,7 +165,10 @@ export class HistoryIndex {
         let text: string
         try {
           text = readFileSync(p, 'utf8')
-        } catch {
+        } catch (e) {
+          // Unreadable file: skip it, but leave a trace so it does not vanish from search silently.
+          if ((e as NodeJS.ErrnoException).code !== 'ENOENT')
+            console.error(`history-index: skipped ${p}: ${e instanceof Error ? e.message : String(e)}`)
           continue
         }
         changed++
