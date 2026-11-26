@@ -24,8 +24,8 @@ async function copyAndSync(repo: string, worktree: string): Promise<void> {
     const child = spawn('codegraph', ['sync', worktree], { cwd: worktree, stdio: 'ignore', detached: true, timeout: 120_000 })
     child.on('error', () => {}) // ENOENT: codegraph isn't installed
     child.unref()
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error(`codegraph: could not start background sync in ${worktree}:`, err instanceof Error ? err.message : err)
   }
 }
 
