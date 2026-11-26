@@ -1,0 +1,3 @@
+# Tree minimap (tree-minimap lead)
+
+`TreeMiniMap` in `src/renderer/src/components/MissionTree.tsx`: React Flow `<MiniMap pannable zoomable>` at bottom-right, rendered only when node bounds (screen space, from store transform/size/nodeLookup) extend past the viewport; updates live. Node colours map from agent status (same tokens as `barColor`, crashed = destructive, chips = border-strong); nodes dimmed by the summary-bar filter get `tree-minimap-dim` (opacity .25). Styling: `.tree-minimap` rules at the end of `app.css` (panel bg, thin border, muted mask). Zoom pill is bottom-left; hover card is portaled/fixed so no overlap.
