@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Panel, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
+import { MarkerType, ReactFlow, ReactFlowProvider, Background, BackgroundVariant, BaseEdge, Handle, Panel, Position, PanOnScrollMode, useNodesState, useReactFlow, useStore, useStoreApi, type Edge, type EdgeProps, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Crown, Maximize, ZoomIn, ZoomOut } from 'lucide-react'
 import type { AgentStatus, AgentView, FeedEntry } from '../../../shared/types'
@@ -312,6 +312,8 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [picked, setPicked] = useState<AgentStatus | null>(null)
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [dismissed, setDismissed] = useState<string | null>(null) // selection cleared by a pane click
   const counts = useMemo(() => {
     const c = new Map<AgentStatus, number>()
     for (const a of agents) c.set(a.status, (c.get(a.status) ?? 0) + 1)
@@ -474,6 +476,44 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
     return { nodes, edges, shape: nodes.map((n) => `${n.id}@${n.position.x},${n.position.y}`).join(',') }
   }, [agents, feed, selected, showMessages, expanded, filter])
 
+  // Focus mode: hovered node wins, else the selected one (unless the pane was clicked).
+  const selectedName = selected && dismissed !== selected ? agents.find((a) => a.terminalId === selected)?.name ?? null : null
+  const focusId = hovered ?? selectedName
+  const focusSet = useMemo(() => {
+    if (!focusId || !nodes.some((n) => n.id === focusId)) return null
+    const set = new Set<string>([focusId])
+    const parentOfId = new Map<string, string>()
+    for (const e of edges) if (e.id.startsWith('tree:')) parentOfId.set(e.target, e.source)
+    for (let p = parentOfId.get(focusId); p && !set.has(p); p = parentOfId.get(p)) set.add(p)
+    for (const e of edges) {
+      if (e.id.startsWith('tree:') && e.source === focusId) set.add(e.target)
+      else if (e.id.startsWith('msg:')) {
+        if (e.source === focusId) set.add(e.target)
+        else if (e.target === focusId) set.add(e.source)
+      }
+    }
+    return set
+  }, [focusId, nodes, edges])
+  const shownEdges = useMemo(() => {
+    if (!focusSet || !focusId) return edges
+    return edges.map((e): Edge => {
+      const msg = e.id.startsWith('msg:')
+      const touches = e.source === focusId || e.target === focusId
+      if (msg && touches) {
+        const color = e.className?.includes('failed') ? 'var(--color-destructive)' : 'var(--color-primary)'
+        return {
+          ...e,
+          className: cn(e.className, 'focus-hot'),
+          style: { ...e.style, opacity: 1 },
+          markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
+          zIndex: 2
+        }
+      }
+      const keep = !msg && focusSet.has(e.source) && focusSet.has(e.target)
+      return keep ? e : { ...e, className: cn(e.className, 'focus-dim') }
+    })
+  }, [edges, focusSet, focusId])
+
   // Nodes live in React Flow state. Each update keeps what React Flow already knows about a
   // node (its measurement) and changes only position, size and data. Replacing node objects on
   // every status change could leave nodes unmeasured, and hidden, after bursts of updates.
@@ -481,9 +521,10 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
   useEffect(() => {
     setRfNodes((prev) => nodes.map((n) => {
       const p = prev.find((x) => x.id === n.id)
-      return p && p.type === n.type ? { ...p, position: n.position, width: n.width, height: n.height, data: n.data } : n
+      const className = focusSet && !focusSet.has(n.id) ? 'focus-dim' : undefined
+      return p && p.type === n.type ? { ...p, position: n.position, width: n.width, height: n.height, data: n.data, className } : { ...n, className }
     }))
-  }, [nodes, setRfNodes])
+  }, [nodes, focusSet, setRfNodes])
 
   if (starting) {
     return <div className="p-4 text-xs text-muted-foreground" data-testid="tree-empty">Waiting for the coordinator to spawn team leads…</div>
@@ -498,12 +539,15 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
     <ReactFlow
       nodes={rfNodes}
       onNodesChange={onNodesChange}
-      edges={edges}
+      edges={shownEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
+      onNodeMouseEnter={(_e, n) => setHovered((n.data as TreeNodeData).kind === 'agent' ? n.id : null)}
+      onNodeMouseLeave={() => setHovered(null)}
+      onPaneClick={() => { setHovered(null); setDismissed(selected) }}
       onNodeClick={(_e, n) => {
         const d = n.data as TreeNodeData
-        if (d.kind === 'agent') onSelect(d.agent.terminalId)
+        if (d.kind === 'agent') { setDismissed(null); onSelect(d.agent.terminalId) }
         else setExpanded((s) => { const x = new Set(s); if (x.has(d.lead)) x.delete(d.lead); else x.add(d.lead); return x })
       }}
       fitView

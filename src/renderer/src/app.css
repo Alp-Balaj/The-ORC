@@ -235,6 +235,11 @@
 .react-flow__edge.message .react-flow__edge-path { stroke: var(--color-done); stroke-dasharray: 4 4; }
 .react-flow__edge.message.failed .react-flow__edge-path { stroke: var(--color-destructive); }
 .react-flow__handle { opacity: 0; }
+/* Focus mode: everything outside the focused node's neighbourhood fades. */
+.react-flow__node, .react-flow__edge { transition: opacity 180ms ease; }
+.react-flow__node.focus-dim, .react-flow__edge.focus-dim { opacity: 0.35 !important; }
+.react-flow__edge.message.focus-hot .react-flow__edge-path { stroke: var(--color-primary); stroke-width: 2; }
+.react-flow__edge.message.failed.focus-hot .react-flow__edge-path { stroke: var(--color-destructive); }
 
 @keyframes orc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .animate-orc-pulse { animation: orc-pulse 1.6s ease-in-out infinite; }
