@@ -8,8 +8,10 @@ import { cn, formatTokens } from '../lib/utils'
 import { StatusDot, statusLabel } from './AgentCard'
 import { HoverDelay, NodeHoverCard, observeStatus } from './NodeHoverCard'
 
-type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean; parent: string | null; lastLine: string | null; dim: boolean; hit: boolean }
-type ChipNodeData = { kind: 'chip'; lead: string; count: number; expanded: boolean; dim: boolean; hit: boolean }
+type AgentNodeData = { kind: 'agent'; agent: AgentView; selected: boolean; row: boolean; parent: string | null; lastLine: string | null; dim: boolean; hit: boolean; progress: Progress | null; reveal: boolean }
+type ChipNodeData = { kind: 'chip'; lead: string; count: number; crashed: number; expanded: boolean; dim: boolean; hit: boolean }
+/** A lead's workers by outcome: finished OK, crashed, waiting on the owner, still going. */
+type Progress = { total: number; done: number; crashed: number; needs: number; active: number }
 type TreeNodeData = AgentNodeData | ChipNodeData
 
 /** Below this zoom a node shows only a larger dot and its name. */
@@ -90,7 +92,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
         data-status={a.status}
         {...hover}
         style={{ width: '100%', height: '100%' }}
-        className={cn(base, 'relative flex items-center gap-1.5 rounded-md pl-2.5 pr-2')}
+        className={cn(base, 'relative flex items-center gap-1.5 rounded-md pl-2.5 pr-2', data.reveal && 'orc-fold-in')}
       >
         <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-md', a.exitKind === 'crashed' ? 'bg-destructive' : barColor[a.status])} />
         <Handles card={false} />
@@ -112,6 +114,7 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
     >
       <span className={cn('absolute inset-y-0 left-0 w-[3px] rounded-l-lg', a.exitKind === 'crashed' ? 'bg-destructive' : barColor[a.status])} />
       <Handles card />
+      {!far && data.progress && <ProgressBar p={data.progress} />}
       <div className="flex min-w-0 items-center gap-1.5">
         <StatusDot status={a.status} crashed={a.exitKind === 'crashed'} className={cn(far && 'size-3.5')} />
         <span className={cn('truncate font-medium', far ? 'text-[17px]' : 'text-[12px]')}>{a.name}</span>
@@ -120,10 +123,27 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>): React.JSX.Element 
       {!far && (
         <div className="mt-1 flex justify-between gap-2 pl-3.5 text-[10.5px] text-muted-foreground">
           <span className={cn('truncate', a.exitKind === 'crashed' ? 'text-destructive' : labelColor[a.status])}>{a.exitKind === 'crashed' ? 'crashed' : statusLabel[a.status]}</span>
-          {a.tokens > 0 && <span className="ml-auto tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
+          {data.progress && <span className="shrink-0 tabular-nums" title={progressTitle(data.progress)}>{data.progress.done}/{data.progress.total}</span>}
+          {a.tokens > 0 && !data.progress && <span className="ml-auto tabular-nums text-faint">{formatTokens(a.tokens)}</span>}
         </div>
       )}
       {card}
+    </div>
+  )
+}
+
+const progressTitle = (p: Progress): string =>
+  [`${p.done}/${p.total} done`, p.needs && `${p.needs} need you`, p.crashed && `${p.crashed} crashed`].filter(Boolean).join(' · ')
+
+/** Thin segmented bar along the bottom of a lead card; one segment per worker. */
+function ProgressBar({ p }: { p: Progress }): React.JSX.Element {
+  const seg = (n: number, c: string): React.ReactNode => (n > 0 ? <span className={cn('h-full', c)} style={{ flex: n }} /> : null)
+  return (
+    <div role="img" aria-label={progressTitle(p)} className="absolute inset-x-3 bottom-[3px] flex h-[3px] gap-px overflow-hidden rounded-full bg-border">
+      {seg(p.done, 'bg-done')}
+      {seg(p.active, 'bg-working/60')}
+      {seg(p.needs, 'bg-needs')}
+      {seg(p.crashed, 'bg-destructive')}
     </div>
   )
 }
@@ -141,6 +161,7 @@ function ChipNode({ data }: NodeProps<Node<ChipNodeData>>): React.JSX.Element {
       <Handles card={false} />
       <span className="inline-block size-2 shrink-0 rounded-full bg-done/70" />
       {data.expanded ? `hide ${data.count} done` : `+${data.count} done`}
+      {data.crashed > 0 && !data.expanded && <span className="text-destructive">· {data.crashed} crashed</span>}
     </div>
   )
 }
@@ -353,6 +374,20 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
     const folded = new Map<string, string>() // agent -> chip id
     for (const [lead, names] of foldedBy) if (!expanded.has(lead)) for (const n of names) folded.set(n, `chip:${lead}`)
 
+    const progressOf = new Map<string, Progress>()
+    for (const a of agents) {
+      const lead = leadOf.get(a.name)
+      if (!lead) continue
+      const p = progressOf.get(lead) ?? { total: 0, done: 0, crashed: 0, needs: 0, active: 0 }
+      p.total++
+      if (a.exitKind === 'crashed') p.crashed++
+      else if (finished(a.status)) p.done++
+      else if (a.status === 'needs-you') p.needs++
+      else p.active++
+      progressOf.set(lead, p)
+    }
+    const revealed = new Set<string>()
+    for (const [lead, names] of foldedBy) if (expanded.has(lead)) for (const n of names) revealed.add(n)
     const lastLineOf = new Map<string, string>()
     for (const f of feed) if (f.text) lastLineOf.set(f.from, f.text)
     const shown = agents.filter((a) => !folded.has(a.name))
@@ -368,7 +403,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         id: a.name,
         type: 'agent',
         position: { x: p?.x ?? 0, y: p?.y ?? 0 },
-        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2, parent: parentOf(a), lastLine: lastLineOf.get(a.name) ?? null, dim: !!filter && a.status !== filter, hit: !!filter && a.status === filter },
+        data: { kind: 'agent', agent: a, selected: a.terminalId === selected, row: (p?.depth ?? 0) >= 2, parent: parentOf(a), lastLine: lastLineOf.get(a.name) ?? null, dim: !!filter && a.status !== filter, hit: !!filter && a.status === filter, progress: progressOf.get(a.name) ?? null, reveal: revealed.has(a.name) },
         // Fixed size: no node waits on a measurement to be shown.
         width: p?.w ?? stackSizes.cardW,
         height: p?.h ?? stackSizes.cardH,
@@ -383,7 +418,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         id: `chip:${lead}`,
         type: 'chip',
         position: { x: p.x, y: p.y },
-        data: { kind: 'chip', lead, count: names.length, expanded: expanded.has(lead), dim: !!filter && filter !== 'done', hit: filter === 'done' },
+        data: { kind: 'chip', lead, count: names.length, crashed: names.filter((n) => byName.get(n)?.exitKind === 'crashed').length, expanded: expanded.has(lead), dim: !!filter && filter !== 'done', hit: filter === 'done' },
         width: p.w,
         height: p.h,
         draggable: false,
