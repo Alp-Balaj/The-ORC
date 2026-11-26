@@ -84,10 +84,14 @@ const normPath = (p: string): string => {
 function orcWorktreeDirs(repo: string): string[] {
   const root = join(repo, '.orc', 'worktrees')
   const out: string[] = []
-  const subdirs = (d: string): string[] => {
-    try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(d, e.name)) } catch { return [] }
+  const warnUnlessMissing = (what: string, p: string, err: unknown): void => {
+    const code = (err as NodeJS.ErrnoException)?.code
+    if (code !== 'ENOENT') console.warn(`${what} ${p} failed (${code ?? 'unknown'}); skipping`, err)
   }
-  const isWt = (d: string): boolean => { try { return statSync(join(d, '.git')).isFile() } catch { return false } }
+  const subdirs = (d: string): string[] => {
+    try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(d, e.name)) } catch (err) { warnUnlessMissing('listing worktree dir', d, err); return [] }
+  }
+  const isWt = (d: string): boolean => { try { return statSync(join(d, '.git')).isFile() } catch (err) { warnUnlessMissing('checking worktree .git in', d, err); return false } }
   for (const d of subdirs(root)) {
     if (isWt(d)) out.push(d)
     else for (const s of subdirs(d)) if (isWt(s)) out.push(s)
