@@ -273,7 +273,21 @@ function JumpTo({ focus }: { focus: { id: string; n: number } | null }): null {
 const zoomButton = 'flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40'
 
 /** Floating zoom pill: [out] [NN%] [in] | [fit]. Zoom steps and Fit use the same store as the canvas. */
-function ZoomControls(): React.JSX.Element {
+function EdgeLegend(): React.JSX.Element {
+  const line = (color: string, dash?: string): React.JSX.Element => (
+    <svg width="18" height="6" aria-hidden="true"><line x1="0" y1="3" x2="18" y2="3" stroke={color} strokeWidth="1.5" strokeDasharray={dash} /></svg>
+  )
+  const item = 'flex items-center gap-1.5'
+  return (
+    <div data-testid="tree-legend" className="flex items-center gap-3 rounded-md border border-border bg-card px-2 py-1 text-[10.5px] text-muted-foreground shadow-sm">
+      <span className={item}>{line('var(--color-edge)')}spawned</span>
+      <span className={item}>{line('var(--color-done)', '4 4')}message</span>
+      <span className={item}>{line('var(--color-destructive)', '4 4')}not sent</span>
+    </div>
+  )
+}
+
+function ZoomControls({ legend }: { legend: boolean }): React.JSX.Element {
   const { zoomIn, zoomOut } = useReactFlow()
   const fit = useFit()
   const zoom = useStore((s) => s.transform[2])
@@ -282,7 +296,9 @@ function ZoomControls(): React.JSX.Element {
   const atMin = zoom <= minZoom + 1e-3
   const atMax = zoom >= maxZoom - 1e-3
   return (
-    <Panel position="bottom-left" className="nopan nowheel nodrag flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm">
+    <Panel position="bottom-left" className="nopan nowheel nodrag flex flex-col items-start gap-1">
+    {legend && <EdgeLegend />}
+    <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm">
       <button type="button" aria-label="Zoom out" title="Zoom out" disabled={atMin} className={zoomButton} onClick={() => void zoomOut({ duration: 150 })}>
         <ZoomOut className="size-3.5" />
       </button>
@@ -294,6 +310,7 @@ function ZoomControls(): React.JSX.Element {
       <button type="button" aria-label="Fit to view" title="Fit to view" className={zoomButton} onClick={fit}>
         <Maximize className="size-3.5" />
       </button>
+    </div>
     </Panel>
   )
 }
@@ -337,6 +354,18 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       const first = agents.find((a) => a.status === 'needs-you')
       if (first) { onSelect(first.terminalId); setFocus({ id: first.name, n: Date.now() }) }
     }
+  }
+  const [tip, setTip] = useState<{ x: number; y: number; from: string; to: string; at: number; text: string } | null>(null)
+  const paneRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (!showMessages) setTip(null) }, [showMessages])
+  const showTip = (e: React.MouseEvent, edge: Edge): void => {
+    const d = edge.data as { from: string; to: string; at: number; text: string } | undefined
+    const r = paneRef.current?.getBoundingClientRect()
+    if (!d || !r) return
+    const W = 240
+    const x = Math.max(4, Math.min(e.clientX - r.left + 12, r.width - W - 4))
+    const y = Math.max(4, Math.min(e.clientY - r.top + 14, r.height - 70))
+    setTip({ x, y, ...d })
   }
   const starting = agents.length === 1 && agents[0].role === 'coordinator' && agents[0].status === 'starting'
 
@@ -465,6 +494,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
         const failed = f.status === 'failed'
         edges.push({
           id: `msg:${f.id}`, source: from, target: to, sourceHandle, targetHandle, type: 'default', zIndex: 1,
+          interactionWidth: 18, data: { from: f.from, to: f.to, at: f.at, text: f.text },
           className: cn('message', failed && 'failed'), style: { opacity: 0.55 }, animated: true,
           label: failed ? 'not sent' : undefined,
           labelStyle: { fill: 'var(--color-destructive)', fontSize: 10 },
@@ -532,7 +562,16 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
   return (
     <div className="flex h-full flex-col">
     <SummaryBar counts={counts} filter={filter} onPick={pick} />
-    <div className="relative min-h-0 flex-1">
+    <div ref={paneRef} className="relative min-h-0 flex-1">
+    {tip && showMessages && (
+      <div data-testid="edge-tip" style={{ left: tip.x, top: tip.y, width: 240 }} className="pointer-events-none absolute z-20 rounded-md border border-border bg-card px-2 py-1.5 text-[11px] shadow-md">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="truncate font-medium">{tip.from} → {tip.to}</span>
+          <span className="shrink-0 tabular-nums text-faint">{new Date(tip.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+        {tip.text && <div className="mt-0.5 break-words text-muted-foreground">{tip.text.length > 60 ? `${tip.text.slice(0, 60)}…` : tip.text}</div>}
+      </div>
+    )}
     <ReactFlowProvider>
     <AutoFit shape={shape} />
     <JumpTo focus={focus} />
@@ -545,6 +584,10 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       onNodeMouseEnter={(_e, n) => setHovered((n.data as TreeNodeData).kind === 'agent' ? n.id : null)}
       onNodeMouseLeave={() => setHovered(null)}
       onPaneClick={() => { setHovered(null); setDismissed(selected) }}
+      onEdgeMouseEnter={showTip}
+      onEdgeMouseMove={showTip}
+      onEdgeMouseLeave={() => setTip(null)}
+      onMoveStart={() => setTip(null)}
       onNodeClick={(_e, n) => {
         const d = n.data as TreeNodeData
         if (d.kind === 'agent') { setDismissed(null); onSelect(d.agent.terminalId) }
@@ -562,7 +605,7 @@ function MissionTreeView({ agents, feed, selected, onSelect, showMessages }: {
       colorMode="dark"
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--color-border)" />
-      <ZoomControls />
+      <ZoomControls legend={showMessages} />
     </ReactFlow>
     </ReactFlowProvider>
     </div>
