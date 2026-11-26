@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#16181d"/>
   <!-- Orc glyph supplied by the owner (original 1000x1000 artwork, paths untouched); recolored and scaled to fit. See ICON-CREDITS.md -->
   <g id="orc-icon" fill="#6fae3a" transform="translate(6 9) scale(0.5)">
     <path id="crown" d="M 375 312 L 383 280 L 370 270 L 357 165 L 410 232 L 414 210 L 434 152 L 454 210 L 462 198 L 501 128 L 526 200 L 516 204 L 543 244 L 586 178 L 598 208 L 590 218 L 603 236 L 644 180 L 641 250 L 631 265 L 636 286 L 629 294 L 634 315 L 585 320 L 576 304 L 566 321 L 516 325 Z" />
