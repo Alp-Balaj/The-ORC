@@ -26,7 +26,12 @@ export function resolveCommand(command: string, env: Record<string, string | und
       const candidate = join(dir, command + ext)
       try {
         if (ext !== '' || /\.[^\\/.]+$/.test(command)) if (statSync(candidate).isFile()) return candidate
-      } catch {}
+      } catch (err) {
+        // A missing candidate is expected (most PATH/PATHEXT combinations don't exist): skip silently.
+        // Anything else (EACCES, EPERM, ...) is logged; the candidate is still just skipped.
+        const code = (err as NodeJS.ErrnoException)?.code
+        if (code !== 'ENOENT' && code !== 'ENOTDIR') console.error(`terminals: could not stat ${candidate} while resolving ${command}; skipping it:`, err)
+      }
     }
   }
   return command
