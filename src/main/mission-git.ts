@@ -106,7 +106,11 @@ function worktreeStale(repo: string, dir: string): boolean {
     if (!normPath(adminDir).startsWith(`${normPath(join(repo, '.git', 'worktrees'))}/`)) return true
     const link = readFileSync(join(adminDir, 'gitdir'), 'utf8').trim()
     return normPath(link) !== normPath(join(dir, '.git'))
-  } catch {
+  } catch (err) {
+    // A missing .git file is the normal stale case; anything else is worth a trace.
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.error(`mission-git: worktreeStale could not check ${dir} (repo ${repo}); treating it as stale:`, err)
+    }
     return true
   }
 }
