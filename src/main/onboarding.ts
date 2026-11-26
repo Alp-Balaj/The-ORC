@@ -109,7 +109,13 @@ async function detectTestCommand(root: string, pm: string | null): Promise<strin
   let pkg: { scripts?: Record<string, unknown> } | null = null
   try {
     pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  } catch {
+  } catch (err) {
+    // missing file: skip silently; unreadable or invalid JSON: log, then skip
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      console.error(
+        `detectTestCommand: skipping ${join(root, 'package.json')}: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
     return null
   }
   const script = pkg?.scripts?.test
