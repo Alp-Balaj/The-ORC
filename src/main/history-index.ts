@@ -288,15 +288,24 @@ function splitLong(body: string): string[] {
 function safeReaddir(dir: string): string[] {
   try {
     return readdirSync(dir)
-  } catch {
+  } catch (err) {
+    logFsError('readdir', dir, err)
     return []
   }
+}
+
+// A missing path is normal (fresh install); anything else is worth one log line.
+function logFsError(op: string, p: string, err: unknown): void {
+  if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return
+  const msg = err instanceof Error ? err.message : String(err)
+  console.error(`[history-index] ${op} failed for ${p}: ${msg}`)
 }
 
 function safeStat(p: string): Stats | null {
   try {
     return statSync(p)
-  } catch {
+  } catch (err) {
+    logFsError('stat', p, err)
     return null
   }
 }
