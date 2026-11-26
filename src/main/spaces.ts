@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { renameOver } from './rename-over.ts'
 import { basename } from 'node:path'
 import { ModelRoles, type RoleModels, type SpaceView } from '../shared/types.ts'
@@ -206,8 +206,15 @@ export class Spaces {
     let root: string
     try {
       root = await repoRoot(path)
-    } catch {
-      throw new Error(`${path} is not inside a git repository`)
+    } catch (e) {
+      const err = e as { code?: unknown; stderr?: unknown; message?: unknown }
+      const text = `${String(err?.stderr ?? '')}\n${String(err?.message ?? '')}`
+      // git exits 128 with "not a git repository" for a plain wrong folder; a folder that doesn't
+      // exist also surfaces as ENOENT from spawn. Anything else (git missing, permissions) is real.
+      const plain = err?.code === 128 || /not a git repository/i.test(text) || (err?.code === 'ENOENT' && !existsSync(path))
+      if (plain) throw new Error(`${path} is not inside a git repository`)
+      const detail = e instanceof Error ? e.message : String(e)
+      throw new Error(`could not check whether ${path} is a git repository: ${detail}`, { cause: e })
     }
     if (!this.roots.includes(root)) {
       // A new space starts with the suggested gate; existing ones only show it as a hint.
