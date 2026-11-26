@@ -352,6 +352,7 @@ function createWindow(): void {
     width: size ? +size[1] : 1500,
     height: size ? +size[2] : 920,
     title: 'The ORC',
+    icon: join(import.meta.dirname, process.platform === 'win32' ? '../../build/icon.ico' : '../../build/icon.png'),
     show: !smoke,
     backgroundColor: windowBackground(),
     webPreferences: {
