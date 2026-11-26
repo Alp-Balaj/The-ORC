@@ -41,16 +41,17 @@ export interface DiscoveredTask {
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
 /** Parses the scout's reply into tasks: tolerant of fences/extra text, capped and deduped against `known`. */
-export function parseTasks(reply: string, known: string[], max: number): DiscoveredTask[] | null {
+export function parseTasks(reply: string, known: string[], max: number): { tasks: DiscoveredTask[] } | { reason: string } {
   const m = /<tasks>([\s\S]*?)<\/tasks>/.exec(reply)
   const raw = m ? m[1] : reply.slice(reply.indexOf('['), reply.lastIndexOf(']') + 1)
   let data: unknown
   try {
     data = JSON.parse(raw.trim().replace(/^```(?:json)?|```$/g, '').trim())
-  } catch {
-    return null
+  } catch (err) {
+    if (!m) return { reason: 'reply had no <tasks> block' }
+    return { reason: `invalid JSON in <tasks> block: ${err instanceof Error ? err.message : String(err)}` }
   }
-  if (!Array.isArray(data)) return null
+  if (!Array.isArray(data)) return { reason: 'tasks JSON is not an array' }
   const seen = new Set(known.map(norm))
   const out: DiscoveredTask[] = []
   for (const t of data) {
@@ -63,7 +64,7 @@ export function parseTasks(reply: string, known: string[], max: number): Discove
     out.push({ title, details })
     if (out.length >= max) break
   }
-  return out
+  return { tasks: out }
 }
 
 export interface DiscoveryInput {
@@ -297,7 +298,13 @@ export class Autopilots {
       this.changed()
       return
     }
-    const tasks = reply === null ? null : parseTasks(reply, known, s.maxTasks)
+    const parsed = reply === null ? null : parseTasks(reply, known, s.maxTasks)
+    if (parsed && 'reason' in parsed && !failure) {
+      console.error('autopilot discovery reply unusable:', parsed.reason)
+      const msg = parsed.reason.replace(/\s+/g, ' ').trim()
+      failure = (msg.length > 200 ? `${msg.slice(0, 200)}…` : msg) || null
+    }
+    const tasks = parsed && 'tasks' in parsed ? parsed.tasks : null
     if (tasks === null) {
       s.emptyRounds += 1
       if (s.emptyRounds >= s.maxEmptyRounds) {
