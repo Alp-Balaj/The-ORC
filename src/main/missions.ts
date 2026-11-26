@@ -1153,13 +1153,7 @@ export class Missions implements ControlHandlers {
     if (!a.branch || mission.mergedToMain) return
     // A conflict hand-back is only finished when the markers are gone.
     if (a.merge === 'conflict') {
-      const left = a.conflictFiles.filter((f) => {
-        try {
-          return /^<{7}( |$)/m.test(readFileSync(join(a.cwd, f), 'utf8'))
-        } catch {
-          return false
-        }
-      })
+      const left = missionGit.markersLeft(a.cwd, a.conflictFiles)
       if (left.length) {
         this.deliver(a, `[The ORC] Conflict markers are still in ${left.join(', ')}. Resolve them, then call report_done again.`)
         return
