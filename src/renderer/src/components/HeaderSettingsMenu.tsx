@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Download, Keyboard, Loader2, Settings2, SlidersHorizontal, UserRound } from 'lucide-react'
+import { Check, Download, Keyboard, Loader2, MonitorUp, Settings2, SlidersHorizontal, UserRound } from 'lucide-react'
 import { ModelRoles, type MissionView } from '../../../shared/types'
 import { cn, formatTokens } from '../lib/utils'
 import { withHint } from '../lib/shortcuts'
@@ -46,6 +46,17 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
   const [updated, setUpdated] = useState<'updated' | 'restarting' | false>(false)
   const [canRestart, setCanRestart] = useState(false)
   useEffect(() => { if (open) void window.orc.canRestartOnUpdate().then(setCanRestart) }, [open])
+  const [shortcut, setShortcut] = useState<{ state: 'idle' | 'busy' | 'created' | 'exists' | 'unsupported' | 'error'; message?: string }>({ state: 'idle' })
+  const addToDesktop = async (): Promise<void> => {
+    setShortcut({ state: 'busy' })
+    try {
+      const r = await window.orc.createDesktopShortcut()
+      setShortcut({ state: r.status, message: r.message })
+    } catch (e) {
+      setShortcut({ state: 'error', message: e instanceof Error ? e.message : String(e) })
+    }
+  }
+  const shortcutLabel = { idle: 'Add to desktop', busy: 'Adding…', created: 'Added to desktop', exists: 'Already on desktop', unsupported: 'Add to desktop', error: 'Add to desktop' }[shortcut.state]
   // A failure rejects the invoke: App's unhandledrejection handler shows it in the action-error banner.
   const updateApp = async (): Promise<void> => {
     if (canRestart) {
@@ -122,6 +133,12 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
             <p className="text-[11.5px] leading-snug text-muted-foreground" data-testid="update-app-status" role="status">
               {updating ? 'Rebuilding the stable copy of main. This can take a few minutes.' : updated === 'restarting' ? 'Updated. Restarting The ORC into the new version…' : updated ? 'Updated. Quit and reopen The ORC to run the new version.' : canRestart ? 'Rebuilds the stable copy from the latest main, then restarts into it.' : 'Rebuilds the stable copy from the latest main. Restart to use it.'}
             </p>
+            <Button variant="outline" size="sm" className="w-full justify-start text-[12px]" disabled={shortcut.state === 'busy'} title="Puts a launcher for this copy of The ORC on the Desktop" data-testid="desktop-shortcut" onClick={() => void addToDesktop()}>
+              {shortcut.state === 'busy' ? <Loader2 className="animate-spin" /> : shortcut.state === 'created' ? <Check /> : <MonitorUp />} {shortcutLabel}
+            </Button>
+            {(shortcut.state === 'unsupported' || shortcut.state === 'error') && (
+              <p className={cn('text-[11px] leading-snug', shortcut.state === 'error' ? 'text-destructive' : 'text-muted-foreground')} data-testid="desktop-shortcut-status" role="status">{shortcut.message}</p>
+            )}
           </Section>
           <div className="px-1.5 pt-1">
             <Button variant="ghost" size="sm" className="w-full justify-start text-[12px] text-muted-foreground" title={withHint('Keyboard shortcuts', 'shortcuts')} data-testid="open-shortcuts" onClick={() => { setOpen(false); onShortcuts() }}>
