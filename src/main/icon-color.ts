@@ -31,4 +31,23 @@ export function applyAccentIcon(hex: string): void {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.setIcon(img)
 }
 
-export const currentAccentIcon = (): NativeImage | null => (current ? accentIcon(current) : null)
+export const currentAccentHex = (): string | null => current
+
+/** A single-image .ico (PNG-compressed 256px) in the accent color, or null if the hex is invalid. */
+export function accentIcoBuffer(hex: string): Buffer | null {
+  const img = accentIcon(hex)
+  if (!img) return null
+  const png256 = img.resize({ width: 256, height: 256, quality: 'best' }).toPNG()
+  const head = Buffer.alloc(22)
+  head.writeUInt16LE(1, 2) // type: icon
+  head.writeUInt16LE(1, 4) // one image
+  head.writeUInt8(0, 6) // 0 = 256 wide
+  head.writeUInt8(0, 7) // 0 = 256 high
+  head.writeUInt16LE(1, 10) // planes
+  head.writeUInt16LE(32, 12) // bpp
+  head.writeUInt32LE(png256.length, 14)
+  head.writeUInt32LE(22, 18)
+  return Buffer.concat([head, png256])
+}
+
+export const currentAccentIcon= (): NativeImage | null => (current ? accentIcon(current) : null)
