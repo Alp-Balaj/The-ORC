@@ -9,7 +9,7 @@ function tone(p: number, warnAt: number): 'ok' | 'warn' | 'hot' {
 const barColor = { ok: 'bg-working', warn: 'bg-needs', hot: 'bg-destructive' }
 const textColor = { ok: 'text-muted-foreground', warn: 'text-needs', hot: 'text-destructive' }
 
-function untilReset(at: number | null, now: number): string {
+export function untilReset(at: number | null, now: number): string {
   if (!at) return ''
   const m = Math.max(0, Math.round((at - now) / 60_000))
   if (m < 60) return `${m}m`
@@ -29,7 +29,7 @@ function Meter({ label, w, warnAt, now, compact }: { label: string; w: PlanUsage
         <div className={cn('h-full rounded-full transition-[width]', barColor[t])} style={{ width: `${Math.min(100, p)}%` }} />
       </div>
       <span className={cn('min-w-[2.5ch] text-right font-medium', textColor[t])}>{p}%</span>
-      {w.resetsAt && !expired && <span className="hidden text-faint min-[1500px]:inline">↻ {untilReset(w.resetsAt, now)}</span>}
+      {w.resetsAt && !expired && <span className="text-faint">↻ {untilReset(w.resetsAt, now)}</span>}
     </div>
   )
 }
