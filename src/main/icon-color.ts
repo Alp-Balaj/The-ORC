@@ -13,10 +13,12 @@ export function accentIcon(hex: string): NativeImage | null {
   const b = parseInt(m[1].slice(4, 6), 16)
   const { width, height } = base.getSize()
   const buf = base.toBitmap() // BGRA
+  // Bitmap is premultiplied BGRA: transparent pixels must stay (0,0,0,0); edges get color*alpha.
   for (let i = 0; i < buf.length; i += 4) {
-    buf[i] = b
-    buf[i + 1] = g
-    buf[i + 2] = r
+    const a = buf[i + 3]
+    buf[i] = Math.round((b * a) / 255)
+    buf[i + 1] = Math.round((g * a) / 255)
+    buf[i + 2] = Math.round((r * a) / 255)
   }
   return nativeImage.createFromBitmap(buf, { width, height })
 }
