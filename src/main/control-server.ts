@@ -34,7 +34,11 @@ export interface ControlHandlers {
 }
 
 /** The server's full handler set: the mission layer's, plus what index.ts answers itself. */
+export type CallerRole = 'coordinator' | 'worker' | 'main'
+
 export interface ServerHandlers extends ControlHandlers {
+  /** The caller's role, or null when it cannot be resolved (then all tools are offered). */
+  roleOf(caller: string): CallerRole | null
   /** Full-text search over the caller's mission records and its repo's docs/. */
   searchHistory(caller: string, query: string, limit: number | null): string
   /** Coordinator only: appends tasks to the caller's space backlog queue. */
@@ -72,8 +76,22 @@ function text(t: string): { content: { type: 'text'; text: string }[] } {
   return { content: [{ type: 'text', text: t }] }
 }
 
+/** Tools each role sees (fewer definitions = fewer tokens per turn). Runtime checks in the
+ *  handlers stay as a backstop. A null role (unresolvable caller) gets every tool. */
+const RoleTools: Record<CallerRole, ReadonlySet<string>> = {
+  coordinator: new Set(['spawn_agent', 'report_done', 'ask_human', 'stop_agent', 'propose_split', 'integrate_mission', 'search_history', 'add_to_queue']),
+  worker: new Set(['report_done', 'ask_human', 'search_history']),
+  main: new Set(['ask_human', 'search_history', 'list_missions', 'start_mission'])
+}
+
 function buildMcp(caller: string, h: ServerHandlers): McpServer {
   const server = new McpServer({ name: 'orc', version: '0.0.1' })
+  const role = h.roleOf(caller)
+  const allowed = role ? RoleTools[role] : null
+  const registerAll = server.registerTool.bind(server) as (name: string, ...rest: unknown[]) => unknown
+  // Shadow registerTool so tools outside the caller's role are never advertised.
+  ;(server as unknown as { registerTool: unknown }).registerTool = (name: string, ...rest: unknown[]) =>
+    !allowed || allowed.has(name) ? registerAll(name, ...rest) : undefined
   server.registerTool(
     'spawn_agent',
     {
