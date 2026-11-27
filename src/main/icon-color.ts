@@ -20,7 +20,9 @@ export function accentIcon(hex: string): NativeImage | null {
     buf[i + 1] = Math.round((g * a) / 255)
     buf[i + 2] = Math.round((r * a) / 255)
   }
-  return nativeImage.createFromBitmap(buf, { width, height })
+  const img = nativeImage.createFromBitmap(buf, { width, height })
+  // Taskbar/title bar want ~32/16px; hand Windows a 256px image so it scales cleanly.
+  return process.platform === 'win32' && width !== 256 ? img.resize({ width: 256, height: 256, quality: 'best' }) : img
 }
 
 let current: string | null = null
