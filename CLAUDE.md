@@ -9,22 +9,20 @@ unless asked).
 - **The plan is `docs/PLAN.md`.** Read it before designing anything.
 - **Where the build stands, and what's next, is `docs/HANDOFF.md`.** Read it at the start of every
   session (it's short: current state only). History lives in `docs/history/*.md`.
-- **Search before reading in full:** `mcp__orc__search_history` indexes `docs/**/*.md` section by
-  section. Use it before opening `docs/history/` or `docs/PLAN.md` whole.
+- **Search before reading in full:** `mcp__orc__search_history` indexes `docs/**/*.md` by section; use it before opening `docs/history/` or `docs/PLAN.md` whole.
 
 ## Commands
 
     pnpm install        # also rebuilds node-pty for Electron (postinstall)
     scripts/orc-app.sh [update]  # the owner's daily ORC: a stable copy of main (see the script)
     pnpm dev            # opens the app window (tell the user first: it appears on their desktop)
-                        # automated runs use smoke mode instead (hidden, offscreen): see docs/history/tests.md
+                        # automated runs: smoke mode (docs/history/tests.md)
     pnpm typecheck
     pnpm build
     tests/free.sh [out-dir]             # free: typecheck, unit tests, hidden UI replay, crash/quit recovery
     tests/resume.sh <out-dir>           # billed (1 Haiku session): pause mid-turn, SIGKILL, resume
     tests/e2e.sh <out-dir>              # billed (Haiku, 3 sessions): hidden window, full mission in orc-sandbox
     tests/kill-strays.sh                # after any test: kills claude processes whose cwd is in orc-sandbox
-    node --no-warnings tests/claude-session.probe.ts <sandbox-repo>   # billed; superseded by e2e.sh
 
 ## Rules
 

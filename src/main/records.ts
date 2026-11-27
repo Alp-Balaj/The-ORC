@@ -25,8 +25,8 @@ export function recordPath(dir: string, mission: string, createdAt: number): str
   return join(dir, `${date} - ${mission}.md`)
 }
 
-/** Earlier missions' notes in `dir`, newest first, at most `limit`. Never throws. */
-export function pastRecords(dir: string | null, exclude: string | null = null, limit = 20): string[] {
+/** Earlier missions' notes in `dir`, newest first, at most `limit` (default 5: each path is injected into the coordinator prompt; older ones are reachable via search_history). Never throws. */
+export function pastRecords(dir: string | null, exclude: string | null = null, limit = 5): string[] {
   if (!dir || !existsSync(dir)) return []
   try {
     return readdirSync(dir)
