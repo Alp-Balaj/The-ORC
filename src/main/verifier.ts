@@ -62,11 +62,20 @@ export function buildPrompt(i: VerifierInput): string {
   return VerifierTemplate.replace('{{DATA}}', data.replaceAll('</data>', '</ data>'))
 }
 
+/** Runaway guards. `claude -p` has no --max-turns, so we read the stream-json events and kill the
+ *  run ourselves; --max-budget-usd (a real CLI option) and the timeout stay as backstops. */
+const MaxToolUses = 40
+const MaxIdenticalCalls = 3
+const MaxBudgetUsd = '3'
+
 export function runVerifier(i: VerifierInput, timeoutMs = 300_000): Promise<VerifierResult> {
   const prompt = buildPrompt(i)
   const promptHash = createHash('sha256').update(prompt).digest('hex')
   const args = [
     '-p',
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--max-budget-usd', MaxBudgetUsd,
     '--tools', 'Read,Grep,Glob',
     '--allowedTools', 'Read,Grep,Glob',
     '--permission-mode', 'dontAsk',
@@ -81,14 +90,70 @@ export function runVerifier(i: VerifierInput, timeoutMs = 300_000): Promise<Veri
   ]
   return new Promise((resolve) => {
     const child = spawn('claude', args, { cwd: i.cwd, env: sessionEnv(), stdio: ['pipe', 'pipe', 'pipe'] })
-    let out = ''
+    let buf = ''
     let err = ''
-    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
-    child.stdout.on('data', (d) => (out += d))
+    let lastText = ''
+    let final: { ok: boolean; text: string } | null = null
+    let tripped: string | null = null
+    let toolUses = 0
+    const calls = new Map<string, number>()
+    const trip = (reason: string): void => {
+      if (tripped) return
+      tripped = reason
+      console.error(`[verifier] runaway guard tripped: ${reason}; killing the run`)
+      child.kill('SIGKILL')
+    }
+    const timer = setTimeout(() => trip(`timeout after ${timeoutMs / 1000}s`), timeoutMs)
+    const onLine = (line: string): void => {
+      if (!line.trim()) return
+      let ev: any
+      try {
+        ev = JSON.parse(line)
+      } catch (e) {
+        console.error(`[verifier] unparseable stream line: ${(e as Error).message}`)
+        return
+      }
+      if (ev.type === 'assistant' && Array.isArray(ev.message?.content)) {
+        for (const c of ev.message.content) {
+          if (c.type === 'text' && typeof c.text === 'string') lastText = c.text
+          if (c.type === 'tool_use') {
+            toolUses++
+            const key = `${c.name}:${JSON.stringify(c.input)}`
+            const n = (calls.get(key) ?? 0) + 1
+            calls.set(key, n)
+            if (n >= MaxIdenticalCalls) trip(`${n} identical ${c.name} calls`)
+            else if (toolUses > MaxToolUses) trip(`more than ${MaxToolUses} tool calls`)
+          }
+        }
+      } else if (ev.type === 'result') {
+        final = { ok: ev.subtype === 'success' && !ev.is_error, text: typeof ev.result === 'string' ? ev.result : '' }
+        if (!final.ok) console.error(`[verifier] run ended with ${ev.subtype ?? 'error'}`)
+      }
+    }
+    child.stdout.on('data', (d) => {
+      buf += d
+      let nl: number
+      while ((nl = buf.indexOf(String.fromCharCode(10))) >= 0) {
+        onLine(buf.slice(0, nl))
+        buf = buf.slice(nl + 1)
+      }
+    })
     child.stderr.on('data', (d) => (err += d))
+    child.on('error', (e) => {
+      clearTimeout(timer)
+      console.error(`[verifier] failed to start claude: ${e.message}`)
+      resolve({ ok: false, report: `Verifier failed to start: ${e.message}`, promptHash })
+    })
     child.on('close', (code) => {
       clearTimeout(timer)
-      resolve({ ok: code === 0 && out.trim().length > 0, report: (out.trim() || err.trim() || `exit ${code}`).slice(0, 20_000), promptHash })
+      onLine(buf)
+      if (tripped) {
+        resolve({ ok: false, report: `Verifier stopped by runaway guard: ${tripped}.`, promptHash })
+        return
+      }
+      const f = final as { ok: boolean; text: string } | null
+      const text = (f?.text || lastText).trim()
+      resolve({ ok: code === 0 && !!f?.ok && text.length > 0, report: (text || err.trim() || `exit ${code}`).slice(0, 20_000), promptHash })
     })
     child.stdin.end(prompt)
   })
