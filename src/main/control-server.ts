@@ -78,15 +78,13 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'spawn_agent',
     {
       description:
-        'Start a team lead: a new Claude Code session in its own git worktree and branch, ' +
-        'given `task` as its first prompt. It splits the task among its own subagents. ' +
-        'Returns the lead session name to message it by.',
+        'Start a team lead (new Claude Code session, own worktree/branch) with `task` as its first prompt. Returns its session name.',
       inputSchema: {
         name: z
           .string()
           .regex(/^[a-z0-9][a-z0-9-]{0,39}$/)
-          .describe('Short kebab-case name, unique in this mission, e.g. "post-api"'),
-        task: z.string().min(1).describe('Self-contained task, including the files/areas it owns')
+          .describe('Kebab-case, unique in mission'),
+        task: z.string().min(1).describe('Self-contained task incl. files it owns')
       }
     },
     async ({ name, task }) => text(await h.spawnAgent(caller, name, task))
@@ -94,8 +92,8 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
   server.registerTool(
     'report_done',
     {
-      description: 'Tell The ORC your task is finished. The ORC will commit your worktree.',
-      inputSchema: { summary: z.string().min(1).describe('What you changed, in a few lines') }
+      description: 'Task finished; The ORC commits your worktree.',
+      inputSchema: { summary: z.string().min(1).describe('What changed, few lines') }
     },
     async ({ summary }) => {
       h.reportDone(caller, summary)
@@ -105,7 +103,7 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
   server.registerTool(
     'ask_human',
     {
-      description: 'Ask the human a question you cannot resolve yourself. End your turn after.',
+      description: 'Ask the human something you cannot resolve. End your turn after.',
       inputSchema: { question: z.string().min(1) }
     },
     async ({ question }) => {
@@ -117,13 +115,10 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'stop_agent',
     {
       description:
-        'Shut down a worker you started, once its job is finished: it has called report_done and ' +
-        'The ORC has merged its work (or found nothing to merge). Ends its Claude Code session; its ' +
-        'worktree and branch are kept. A stopped worker cannot be messaged again. Refused (with the ' +
-        'reason) while its work is still being committed, reviewed or in conflict.',
+        'End a finished worker\'s session (after report_done and merge). Worktree/branch kept; it cannot be messaged again. Refused while its work is committing, in review or in conflict.',
       inputSchema: {
-        name: z.string().min(1).describe('The worker\'s name, e.g. "post-api" (or its session name "<mission>/post-api")'),
-        reason: z.string().optional().describe('Optional: why, shown in the mission feed')
+        name: z.string().min(1).describe('Worker name'),
+        reason: z.string().optional().describe('Why (shown in feed)')
       }
     },
     async ({ name, reason }) => text(h.stopAgent(caller, name, reason ?? null))
@@ -132,15 +127,14 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'propose_split',
     {
       description:
-        'Coordinator only, plan-check missions: propose how to split the work before spawning. ' +
-        'Returns "pending" at once; the human approves or rejects in The ORC and you get a [The ORC] message. End your turn after calling it.',
+        'Coordinator only, plan-check missions: propose the split before spawning. Returns "pending"; human decision arrives as a [The ORC] message. End your turn.',
       inputSchema: {
-        summary: z.string().min(1).describe('One line: the approach'),
+        summary: z.string().min(1).describe('The approach, one line'),
         workers: z
           .array(z.object({ name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), task: z.string().min(1) }))
           .min(1)
           .max(12)
-          .describe('The workers you intend to spawn, each with the files/areas it owns')
+          .describe('Intended workers + owned files')
       }
     },
     async ({ summary, workers }) => text(h.proposeSplit(caller, summary, workers))
@@ -149,9 +143,7 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'integrate_mission',
     {
       description:
-        'Coordinator only: once this mission is finished (every lead reported and merged), integrate it into the repo\'s ORC branch. ' +
-        'Returns the result at once, or "pending" when it conflicts with other missions\' work: a merge agent then resolves the conflict ' +
-        '(gate-checked) and you get a [The ORC] message with the result. Does not merge to main; the human does that.',
+        'Coordinator only: when every lead has reported and merged, integrate the mission into the repo\'s ORC branch (not main). Returns the result, or "pending" on conflict (a [The ORC] message follows).',
       inputSchema: {}
     },
     async () => text(await h.integrateMission(caller))
@@ -160,15 +152,11 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'search_history',
     {
       description:
-        'Search what has already happened in this repo: past ORC mission records (briefs, team reports, ' +
-        'Verifier reports, merges) and the repo\'s docs/ (PLAN, HANDOFF, ADRs, decisions). Local full-text ' +
-        '(BM25) search; returns short ranked snippets with source file, section heading, mission and date. ' +
-        'Use it BEFORE reading past mission records or docs in full: a search costs a few hundred tokens, ' +
-        'reading the records costs tens of thousands. Read a file only when a snippet is not enough. ' +
-        'Code is not indexed: use CodeGraph/grep for code.',
+        'BM25 search of past ORC mission records and the repo\'s docs/ (PLAN, HANDOFF, ADRs). Returns short ranked snippets. ' +
+        'Use BEFORE reading records/docs in full; read a file only if a snippet is not enough. Code is not indexed.',
       inputSchema: {
-        query: z.string().min(1).describe('Keywords, e.g. "stop_agent merge conflict"'),
-        limit: z.number().int().min(1).max(25).optional().describe('Max snippets (default set by The ORC)')
+        query: z.string().min(1).describe('Keywords'),
+        limit: z.number().int().min(1).max(25).optional().describe('Max snippets')
       }
     },
     async ({ query, limit }) => text(h.searchHistory(caller, query, limit ?? null))
@@ -177,14 +165,13 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'add_to_queue',
     {
       description:
-        "Coordinator only. Append tasks to this space's backlog queue in The ORC; each becomes its own " +
-        'mission, run back to back after this one.',
+        "Coordinator only. Append tasks to the space's backlog queue; each becomes a mission run after this one.",
       inputSchema: {
         tasks: z
           .array(
             z.object({
-              title: z.string().trim().min(1).max(200).describe('One line: the task'),
-              details: z.string().optional().describe('Optional: the brief for its mission')
+              title: z.string().trim().min(1).max(200).describe('The task'),
+              details: z.string().optional().describe('Brief')
             })
           )
           .min(1)
@@ -197,8 +184,7 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'list_missions',
     {
       description:
-        'Main session only. Read-only overview of every mission across all spaces: state, each lead\'s ' +
-        'session name, status and activity, branch, merge and integration state, and the spaces.',
+        'Main session only. Read-only overview of all missions and spaces (state, leads, branches, merge status).',
       inputSchema: {}
     },
     async () => text(h.listMissions(caller))
@@ -207,15 +193,14 @@ function buildMcp(caller: string, h: ServerHandlers): McpServer {
     'start_mission',
     {
       description:
-        'Main session only, and only when the human asked for a new mission: start a mission in a space ' +
-        '(repoPath must be a space root from list_missions). Its coordinator starts with the brief.',
+        'Main session only, only when the human asked: start a mission in a space (repoPath = space root from list_missions).',
       inputSchema: {
-        repoPath: z.string().min(1).describe('The space root, as list_missions shows it'),
+        repoPath: z.string().min(1).describe('Space root'),
         name: z
           .string()
           .regex(/^[a-z0-9][a-z0-9-]{0,39}$/)
-          .describe('Short kebab-case mission name, unique across every space, e.g. "search-api"'),
-        brief: z.string().min(1).describe('What the mission should build, self-contained')
+          .describe('Kebab-case, unique across spaces'),
+        brief: z.string().min(1).describe('Self-contained brief')
       }
     },
     async ({ repoPath, name, brief }) => text(await h.startMission(caller, repoPath, name, brief))
