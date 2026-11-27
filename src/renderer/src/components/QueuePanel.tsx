@@ -1,10 +1,11 @@
 import { openLoopSetup } from './LoopSetupDialog'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, Circle, CircleCheck, CirclePause, GripVertical, ListOrdered, LoaderCircle, Pause, Play, Plus, Trash2 } from 'lucide-react'
 import type { PermissionMode, PlanUsageView, QueueItem, QueueView } from '../../../shared/types'
 import { cn } from '../lib/utils'
 import { Button } from './ui/button'
 import { Input, NativeSelect } from './ui/input'
+import { untilReset } from './PlanUsageHeader'
 
 export const modeOptions: { value: PermissionMode; label: string; short: string }[] = [
   { value: 'acceptEdits', label: 'Accept edits (ask for commands)', short: 'Accept edits' },
@@ -269,6 +270,11 @@ const resetText = (at: number | null): string => (at ? new Date(at).toLocaleStri
 
 /** "5h 42% · wk 17%" with a tiny bar for the higher one. Amber at or over the threshold. */
 export function PlanUsageMeter({ usage, threshold }: { usage: PlanUsageView | null; threshold: number }): React.JSX.Element | null {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [])
   if (!usage || (!usage.fiveHour && !usage.sevenDay)) return null
   const five = usage.fiveHour?.usedPercentage ?? 0
   const week = usage.sevenDay?.usedPercentage ?? 0
@@ -286,6 +292,7 @@ export function PlanUsageMeter({ usage, threshold }: { usage: PlanUsageView | nu
         {usage.fiveHour && <span>5h {pct(five)}%</span>}
         {usage.fiveHour && usage.sevenDay && <span className="text-faint">·</span>}
         {usage.sevenDay && <span>wk {pct(week)}%</span>}
+        {usage.fiveHour?.resetsAt && usage.fiveHour.resetsAt > now && <span className="ml-auto text-faint">resets in {untilReset(usage.fiveHour.resetsAt, now)}</span>}
       </div>
       <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
         <div className={cn('h-full rounded-full transition-[width]', hot ? 'bg-needs' : 'bg-primary')} style={{ width: `${Math.min(100, top)}%` }} />
