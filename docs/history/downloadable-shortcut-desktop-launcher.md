@@ -11,9 +11,10 @@ stable copy of main, see `scripts/orc-app.sh`), so they start, and first-time bu
   resolved from the script's location, so re-run it if the checkout moves.
 - **Windows:** `powershell -ExecutionPolicy Bypass -File scripts\install-shortcut.ps1` creates
   `The ORC.lnk` on the Desktop and in the Start menu (icon `build/icon.ico`). The shortcut runs
-  `wscript.exe scripts\orc-launch.vbs`, which finds Git Bash (`ORC_GIT_BASH`, then
-  `%ProgramFiles%`, `%ProgramFiles(x86)%`, `%LocalAppData%\Programs`) and runs
-  `bash -lc ./scripts/orc-launch.sh` with a hidden window (`CHERE_INVOKING=1` keeps cwd in the repo).
+  `conhost.exe --headless <bash.exe> -l <repo>/scripts/orc-launch.sh` (no window). Git Bash is found
+  when the shortcut is made (`ORC_GIT_BASH`, then `%ProgramFiles%`, `%ProgramFiles(x86)%`,
+  `%LocalAppData%\Programs`). It used to be `wscript.exe scripts\orc-launch.vbs`, but endpoint
+  security (Trellix here) and newer Windows builds block VBScript: "Loading script ... failed (Access is denied.)".
 - **Logs:** `orc-launch.sh` appends everything (build output included; electron's own output is
   discarded by orc-app.sh) to `~/.local/state/the-orc/launch.log`, truncated past 1 MB. `ORC_LAUNCH_LOG` overrides.
 - Only one ORC can run on the app data, so a second launch while it runs exits at once.

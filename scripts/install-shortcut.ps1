@@ -3,7 +3,7 @@
 # Safe to re-run; it rewrites the shortcuts with this checkout's path.
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$launcher = Join-Path $repo 'scripts\orc-launch.vbs'
+$launcher = (Join-Path $repo 'scripts\orc-launch.sh') -replace '\\', '/'
 $icon = Join-Path $repo 'build\icon.ico'
 
 $bash = @($env:ORC_GIT_BASH, "$env:ProgramFiles\Git\bin\bash.exe", "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
@@ -17,8 +17,9 @@ $targets = @(
 $shell = New-Object -ComObject WScript.Shell
 foreach ($t in $targets) {
   $lnk = $shell.CreateShortcut($t)
-  $lnk.TargetPath = Join-Path $env:WINDIR 'System32\wscript.exe'
-  $lnk.Arguments = "`"$launcher`""
+  # conhost --headless: no console window. Not wscript + .vbs, which endpoint security often blocks.
+  $lnk.TargetPath = Join-Path $env:WINDIR 'System32\conhost.exe'
+  $lnk.Arguments = "--headless `"$bash`" -l `"$launcher`""
   $lnk.WorkingDirectory = $repo
   $lnk.IconLocation = "$icon,0"
   $lnk.Description = 'The ORC'

@@ -9,7 +9,20 @@ export type DesktopShortcutResult = { status: 'created' | 'exists' | 'unsupporte
 
 const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false)
 
-/** Windows: a .lnk that runs scripts/orc-launch.vbs (same target as scripts/install-shortcut.ps1). */
+/** Git for Windows' bash.exe: ORC_GIT_BASH, then the usual install folders. */
+async function findGitBash(): Promise<string | null> {
+  const env = process.env
+  const cands = [
+    env.ORC_GIT_BASH,
+    env.ProgramFiles && join(env.ProgramFiles, 'Git', 'bin', 'bash.exe'),
+    env['ProgramFiles(x86)'] && join(env['ProgramFiles(x86)'], 'Git', 'bin', 'bash.exe'),
+    env.LOCALAPPDATA && join(env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe')
+  ]
+  for (const c of cands) if (c && (await exists(c))) return c
+  return null
+}
+
+/** Windows: a .lnk that runs scripts/orc-launch.sh through a headless Git Bash (same target as scripts/install-shortcut.ps1). */
 async function createWindows(repo: string, desktop: string, accent: string | null): Promise<DesktopShortcutResult> {
   const lnk = join(desktop, 'The ORC.lnk')
   const had = await exists(lnk)
@@ -22,10 +35,15 @@ async function createWindows(repo: string, desktop: string, accent: string | nul
     icon = join(dir, `icon-v2-${accent.slice(1).toLowerCase()}.ico`)
     await writeFile(icon, ico)
   }
-  const wscript = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wscript.exe')
+  const bash = await findGitBash()
+  if (!bash) throw new Error('Git Bash was not found. Install Git for Windows, or set ORC_GIT_BASH to its bash.exe.')
+  // conhost --headless runs bash with no console window. Not wscript + .vbs: endpoint security and newer
+  // Windows builds block VBScript outright ("Loading script ... failed (Access is denied.)").
+  const conhost = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'conhost.exe')
+  const launcher = join(repo, 'scripts', 'orc-launch.sh').replace(/\\/g, '/')
   const ok = shell.writeShortcutLink(lnk, 'create', {
-    target: wscript,
-    args: `"${join(repo, 'scripts', 'orc-launch.vbs')}"`,
+    target: conhost,
+    args: `--headless "${bash}" -l "${launcher}"`,
     cwd: repo,
     icon,
     iconIndex: 0,
