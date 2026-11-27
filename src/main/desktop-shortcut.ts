@@ -18,7 +18,7 @@ async function createWindows(repo: string, desktop: string, accent: string | nul
     // Unique file name per accent: Windows caches shortcut icons by path.
     const dir = join(app.getPath('userData'), 'shortcut-icons')
     await mkdir(dir, { recursive: true })
-    icon = join(dir, `icon-${accent.slice(1).toLowerCase()}.ico`)
+    icon = join(dir, `icon-v2-${accent.slice(1).toLowerCase()}.ico`)
     await writeFile(icon, ico)
   }
   const wscript = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wscript.exe')
