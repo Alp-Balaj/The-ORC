@@ -89,6 +89,7 @@ export function runDiscovery(i: DiscoveryInput, timeoutMs = DiscoveryTimeoutMs):
     '--no-session-persistence',
     '--strict-mcp-config',
     '--mcp-config', '{"mcpServers":{}}',
+    '--disable-slash-commands',
     '--model', 'haiku',
     '--effort', 'low'
   ]
