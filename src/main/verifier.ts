@@ -27,6 +27,9 @@ OUTSIDE THE BRIEF: <changes nobody asked for, or "none">
 {{DATA}}
 </data>`
 
+/** Chars of diff inlined (≈10k tokens); the Verifier can Read files for the rest. */
+const PatchCap = 40_000
+
 export const templateHash = createHash('sha256').update(VerifierTemplate).digest('hex')
 
 export interface VerifierInput {
@@ -54,7 +57,7 @@ export function buildPrompt(i: VerifierInput): string {
     `## Instructions the human typed directly to workers (these extend the brief)\n${i.steering?.map((x) => `- to ${x.worker}: ${x.text}`).join('\n') || '(none)'}`,
     `## Worker reports\n${i.reports.map((r) => `- ${r.worker}: ${r.summary}`).join('\n') || '(none)'}`,
     `## Files changed\n${i.diffStat}`,
-    `## Combined diff\n${i.patch.length > 60_000 ? `${i.patch.slice(0, 60_000)}\n… (truncated; read files for the rest)` : i.patch}`
+    `## Combined diff\n${i.patch.length > PatchCap ? `${i.patch.slice(0, PatchCap)}\n… (truncated; read files for the rest)` : i.patch}`
   ].join('\n\n')
   return VerifierTemplate.replace('{{DATA}}', data.replaceAll('</data>', '</ data>'))
 }
@@ -71,6 +74,9 @@ export function runVerifier(i: VerifierInput, timeoutMs = 300_000): Promise<Veri
     // The diff is untrusted: no MCP servers (the user's own included) in the Verifier.
     '--strict-mcp-config',
     '--mcp-config', '{"mcpServers":{}}',
+    // No skill/command listing in the system prompt; medium effort is enough to review a diff.
+    '--disable-slash-commands',
+    '--effort', 'medium',
     ...(i.model ? ['--model', i.model] : [])
   ]
   return new Promise((resolve) => {
