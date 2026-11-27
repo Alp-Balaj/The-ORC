@@ -207,11 +207,17 @@ export const SpeedRules =
   'commands that write. Finish as soon as it works.'
 
 export function coordinatorPrompt(mission: string, sessionName: string, repo: string, gating: Gating = 'none', pastRecords: string[] = []): string {
+  // All records share one folder: print it once, then bare file names (Read dir + name).
+  const cut = pastRecords.length ? Math.max(pastRecords[0].lastIndexOf('/'), pastRecords[0].lastIndexOf('\\')) : -1
+  const sameDir = cut >= 0 && pastRecords.every((p) => p.slice(0, cut) === pastRecords[0].slice(0, cut))
   const past = pastRecords.length
     ? [
         'Earlier missions (newest first) record what was built and why. Before splitting, call',
-        '`mcp__orc__search_history` about the request; Read a record only when snippets are not enough:',
-        pastRecords.map((p) => `"${p}"`).join(', ') + '.'
+        '`mcp__orc__search_history` about the request; Read a record only when snippets are not enough.',
+        sameDir
+          ? `Records folder: "${pastRecords[0].slice(0, cut)}". Files (join folder + name to Read): ` +
+            pastRecords.map((p) => `"${p.slice(cut + 1)}"`).join(', ') + '.'
+          : 'Records: ' + pastRecords.map((p) => `"${p}"`).join(', ') + '.'
       ]
     : []
   const gate =
