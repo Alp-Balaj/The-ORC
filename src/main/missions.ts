@@ -1622,12 +1622,9 @@ export class Missions implements ControlHandlers {
   async restore(saved: SavedState, opts: { isOrphan: (pid: number, sessionId: string) => boolean; kill: (pid: number) => void }): Promise<string[]> {
     const log: string[] = []
     if (saved?.version !== 1) return log
-    // A repo folder moved or renamed while the app was closed leaves every worktree's git links stale.
-    for (const repo of new Set(saved.missions.map((m) => m.repoPath))) {
-      await missionGit.repairWorktreesSerialized(repo).catch((err) => {
-        log.push(`could not repair worktree links for ${repo}: ${String((err as Error).message ?? err)}`)
-      })
-    }
+    // First, synchronously, put every saved mission back in the map: a save from then on (an emit, a
+    // quit from the window) writes them all, never a partly restored list.
+    const loaded: Mission[] = []
     for (const sm of saved.missions) {
       if (this.missions.has(sm.id)) continue
       const { agents: savedAgents, model: legacyModel, models, mainBranch, queueItemId, integrated, integrateError, ...rest } = sm
@@ -1669,6 +1666,17 @@ export class Missions implements ControlHandlers {
           log.push(`${mission.name}/${agent.name}: ended orphaned process ${pid}`)
         }
       }
+      loaded.push(mission)
+    }
+    // The window is open during restore: show every mission now, then each session as it comes back.
+    this.emit()
+    // A repo folder moved or renamed while the app was closed leaves every worktree's git links stale.
+    for (const repo of new Set(loaded.map((m) => m.repoPath))) {
+      await missionGit.repairWorktreesSerialized(repo).catch((err) => {
+        log.push(`could not repair worktree links for ${repo}: ${String((err as Error).message ?? err)}`)
+      })
+    }
+    for (const mission of loaded) {
       if (mission.state !== 'running' || mission.mergedToMain) continue
       // A merge cut off by the crash: abort it in the integration worktree only.
       const integ = missionGit.integrationPath(mission.repoPath, mission.name)
@@ -1677,8 +1685,11 @@ export class Missions implements ControlHandlers {
         log.push(`${mission.name}: aborted a merge left half-done in the integration worktree`)
       }
       for (const agent of mission.agents.values()) {
+        // Stopped from the window while its sessions were still coming back.
+        if (mission.state !== 'running') break
         if (agent.status === 'exited' || agent.shutDown) continue
         await this.relaunch(mission, agent, log)
+        this.emit()
       }
       // Work committed but not yet merged (held by a pause, or cut off by the crash).
       for (const agent of mission.agents.values()) {

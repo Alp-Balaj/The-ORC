@@ -386,6 +386,8 @@ function createWindow(): void {
 
 /** Missions that restore() brought back at launch, for the "Resumed N missions" banner. */
 let resumedAtLaunch: { id: string; name: string }[] = []
+/** Settles once launch recovery (missions, main sessions, the saved app run) is done. */
+let launchRestored: Promise<void> = Promise.resolve()
 ipcMain.handle('missions:list', () => missions.views())
 const knownRepo = (repoPath: string): boolean => spaces.list().some((s) => s.root === repoPath)
 ipcMain.handle('main:get', (_e, repoPath: string) => mainFor(repoPath).view())
@@ -393,7 +395,10 @@ ipcMain.handle('main:start', (_e, repoPath: string) => {
   if (knownRepo(repoPath)) mainFor(repoPath).start()
 })
 ipcMain.handle('main:stop', (_e, repoPath: string) => mainSessions.get(repoPath)?.stop())
-ipcMain.handle('missions:resumed-at-launch', () => resumedAtLaunch)
+ipcMain.handle('missions:resumed-at-launch', async () => {
+  await launchRestored
+  return resumedAtLaunch
+})
 ipcMain.handle('missions:stop-resumed', () => {
   for (const m of resumedAtLaunch) missions.stopMission(m.id)
   resumedAtLaunch = []
@@ -416,7 +421,10 @@ ipcMain.handle('missions:remove', async (_e, id: string) => {
 /** The app saved in app-run.json that passed the checks at launch, waiting for the owner's
  *  Start again (owner, 2026-11-22: a button instead of restarting it on its own). */
 let pendingAppRestore: { missionId: string; missionName: string } | null = null
-ipcMain.handle('app:pending-restore', () => pendingAppRestore)
+ipcMain.handle('app:pending-restore', async () => {
+  await launchRestored
+  return pendingAppRestore
+})
 ipcMain.handle('app:restore-start', async () => {
   if (!pendingAppRestore) return
   await runApp(pendingAppRestore.missionId)
@@ -580,7 +588,13 @@ app.whenReady().then(async () => {
   missions.setControlPort(port)
   controlPort = port
   for (const m of mainSessions.values()) m.setControlPort(port)
-  // Recovery before anything else: reattach the missions that were running.
+  // The window opens first: resuming many sessions takes a minute or more, and the shortcut launch
+  // shows nothing until it does (owner, 2026-11-27). Missions fill in as they come back; the banner
+  // and the pending app restore are asked for at once, so their handlers wait for launchRestored.
+  createWindow()
+  let restored!: () => void
+  launchRestored = new Promise((r) => (restored = r))
+  // Reattach the missions that were running.
   if (existsSync(stateFile())) {
     try {
       const done = await missions.restore(JSON.parse(readFileSync(stateFile(), 'utf8')), {
@@ -606,6 +620,7 @@ app.whenReady().then(async () => {
   for (const sp of spaces.list()) mainFor(sp.root).restore()
   queue.onMissions(missions.views())
   await restoreAppRun()
+  restored()
   startStatusPoller(
     () => [...missions.liveSessionIds(), ...[...mainSessions.values()].flatMap((m) => m.liveSessionIds())],
     (s) => {
@@ -614,7 +629,6 @@ app.whenReady().then(async () => {
     }
   )
   setInterval(() => void missions.refreshTokens(), 5000).unref()
-  createWindow()
   if (smoke) {
     const shutdown = (): void => {
       saveNow()
