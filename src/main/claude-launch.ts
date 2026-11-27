@@ -94,6 +94,17 @@ export interface LaunchSpec {
   allowTools?: string[]
   /** Appended to the git-write denials in permissions.deny. */
   denyTools?: string[]
+  /** `--effort` level; default by role (see defaultEffort). */
+  effort?: 'low' | 'medium' | 'high'
+}
+
+/** Percent of the context window at which Claude Code auto-compacts (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE). */
+const AutoCompactPct = '75'
+
+/** Role is read from the session name: `<mission>/coordinator`, `orc-main-*`, anything else is a
+ *  lead (or merger). The coordinator plans and so gets medium; the rest mostly delegate or relay. */
+export function defaultEffort(sessionName: string): 'low' | 'medium' {
+  return sessionName.endsWith('/coordinator') ? 'medium' : 'low'
 }
 
 /** A Read permission rule for an absolute folder. Claude Code writes absolute paths with a
@@ -172,7 +183,11 @@ export function claudeArgs(spec: LaunchSpec): string[] {
     hooks: Object.fromEntries(
       HookEvents.map((event) => [event, [{ matcher: '*', hooks: [hook] }]])
     ),
-    ...(spec.subagentModel ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: spec.subagentModel } } : {}),
+    // Constant per session (no timestamps/random values): keeps the settings prefix cache-stable.
+    env: {
+      CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: AutoCompactPct,
+      ...(spec.subagentModel ? { CLAUDE_CODE_SUBAGENT_MODEL: spec.subagentModel } : {})
+    },
     ...(spec.advisorModel ? { advisorModel: spec.advisorModel } : {}),
     ...(spec.statusLine !== false
       ? { statusLine: { type: 'command', command: statusLineCommand(spec.controlPort, spec.token, spec.ownStatusLine) } }
@@ -194,6 +209,9 @@ export function claudeArgs(spec: LaunchSpec): string[] {
     ...(spec.resume ? ['--resume', spec.sessionId] : ['--session-id', spec.sessionId]),
     '--permission-mode', spec.permissionMode,
     ...(spec.model ? ['--model', spec.model] : []),
+    '--effort', spec.effort ?? defaultEffort(spec.sessionName),
+    // Skills/slash commands only matter to the coordinator (grill-me); others skip their listing.
+    ...(spec.sessionName.endsWith('/coordinator') ? [] : ['--disable-slash-commands']),
     '--settings', JSON.stringify(settings),
     '--append-system-prompt', spec.systemPrompt,
     '--mcp-config', JSON.stringify(mcp)
