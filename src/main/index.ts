@@ -244,6 +244,7 @@ function missionsText(repoPath: string): string {
 let hooksLogFailed = false
 const control = new ControlServer({
   agentForToken: (t) => missions.agentForToken(t) ?? mainAgentForToken(t),
+  roleOf: (c) => (mainByTerminal(c) ? 'main' : (missions.callerInfo(c)?.role ?? null)),
   spawnAgent: (c, n, t) => missions.spawnAgent(c, n, t),
   reportDone: (c, s) => missions.reportDone(c, s),
   askHuman: (c, q) => missions.askHuman(c, q),
