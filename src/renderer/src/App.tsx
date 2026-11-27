@@ -13,6 +13,7 @@ import { Sidebar } from './components/Sidebar'
 import { RepoDashboard } from './components/RepoDashboard'
 import { PlanUsageHeader } from './components/PlanUsageHeader'
 import { HeaderSettingsMenu } from './components/HeaderSettingsMenu'
+import { OrcMark } from './components/OrcMark'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { ButtonGroup } from './components/ui/button-group'
@@ -499,7 +500,7 @@ export function App(): React.JSX.Element {
       {/* Header */}
       <header className={cn('accent-hairline flex min-w-0 items-center gap-3 border-b bg-background px-3', 'col-span-full')} data-testid="header">
         <div className="flex w-69 shrink-0 items-center gap-2">
-          <div className="grid h-6 w-9 place-items-center rounded-md bg-primary/15 text-[10.5px] font-black tracking-tight text-primary">ORC</div>
+          <OrcMark className="h-6 w-6 shrink-0 text-primary" />
           <span className="font-semibold tracking-tight">The ORC</span>
           <Button size="icon-sm" variant="ghost" className="ml-auto text-muted-foreground" title={withHint('Toggle sidebar', 'toggleSidebar')} aria-label="Toggle sidebar" aria-pressed={sidebarOpen} data-testid="toggle-sidebar" onClick={() => setSidebarOpen((v) => !v)}>
             <PanelLeft />
