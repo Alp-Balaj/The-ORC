@@ -1,8 +1,9 @@
 import { app, shell, type IpcMain } from 'electron'
 import { execFile } from 'node:child_process'
 import { access, chmod, mkdir, writeFile } from 'node:fs/promises'
-import { accentIcoBuffer, currentAccentHex } from './icon-color.ts'
-import { join } from 'node:path'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { accentIcoBuffer, accentIcon, currentAccentHex } from './icon-color.ts'
 
 export type DesktopShortcutResult = { status: 'created' | 'exists' | 'unsupported'; path?: string; message: string }
 
@@ -36,10 +37,23 @@ async function createWindows(repo: string, desktop: string, accent: string | nul
     : { status: 'created', path: lnk, message: 'Added The ORC to the Desktop.' }
 }
 
-/** Linux: a .desktop entry that runs scripts/orc-launch.sh (same contents as scripts/install-shortcut.sh). */
-async function createLinux(repo: string, desktop: string): Promise<DesktopShortcutResult> {
-  const file = join(desktop, 'the-orc.desktop')
-  if (await exists(file)) return { status: 'exists', path: file, message: 'The ORC is already on the Desktop.' }
+const run = (cmd: string, args: string[]): Promise<void> => new Promise((done) => execFile(cmd, args, () => done()))
+
+/**
+ * Linux: a .desktop entry that runs scripts/orc-launch.sh (same contents as scripts/install-shortcut.sh),
+ * written to the app launcher (~/.local/share/applications) and to the Desktop folder when there is one.
+ * Re-running rewrites both, so the icon follows the current accent.
+ */
+async function createLinux(repo: string, desktop: string, accent: string | null): Promise<DesktopShortcutResult> {
+  let icon = join(repo, 'build', 'icon.png')
+  const img = accent ? accentIcon(accent) : null
+  if (accent && img) {
+    // Unique file name per accent: launchers cache icons by path.
+    const dir = join(app.getPath('userData'), 'shortcut-icons')
+    await mkdir(dir, { recursive: true })
+    icon = join(dir, `icon-${accent.slice(1).toLowerCase()}.png`)
+    await writeFile(icon, img.resize({ width: 256, height: 256, quality: 'best' }).toPNG())
+  }
   const launcher = join(repo, 'scripts', 'orc-launch.sh')
   await chmod(launcher, 0o755).catch(() => {})
   const entry = [
@@ -48,27 +62,47 @@ async function createLinux(repo: string, desktop: string): Promise<DesktopShortc
     'Name=The ORC',
     'Comment=Run Claude Code missions',
     `Exec="${launcher}"`,
-    `Icon=${join(repo, 'build', 'icon.png')}`,
+    `Icon=${icon}`,
     'Terminal=false',
     'Categories=Development;',
     'StartupWMClass=The ORC',
     ''
   ].join('\n')
-  await writeFile(file, entry)
-  await chmod(file, 0o755)
-  // GNOME needs the file marked trusted before it launches on double-click. Best effort.
-  await new Promise<void>((done) => execFile('gio', ['set', file, 'metadata::trusted', 'true'], () => done()))
-  return { status: 'created', path: file, message: 'Added The ORC to the Desktop.' }
+
+  const apps = join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'applications')
+  const appFile = join(apps, 'the-orc.desktop')
+  const hadApp = await exists(appFile)
+  await mkdir(apps, { recursive: true })
+  await writeFile(appFile, entry)
+  await chmod(appFile, 0o755)
+  await run('update-desktop-database', [apps])
+
+  // Without a Desktop folder, Electron's 'desktop' path is the home folder: skip it rather than litter ~.
+  const deskFile = join(desktop, 'the-orc.desktop')
+  const hasDesktop = resolve(desktop) !== resolve(homedir()) && (await exists(desktop))
+  const hadDesk = hasDesktop && (await exists(deskFile))
+  if (hasDesktop) {
+    await writeFile(deskFile, entry)
+    await chmod(deskFile, 0o755)
+    // GNOME needs the file marked trusted before it launches on double-click. Best effort.
+    await run('gio', ['set', deskFile, 'metadata::trusted', 'true'])
+  }
+
+  const where = hasDesktop ? 'the app launcher and the Desktop' : 'the app launcher'
+  const had = hadApp && (!hasDesktop || hadDesk)
+  return had
+    ? { status: 'exists', path: appFile, message: `The ORC is already in ${where}; icon updated to the current accent.` }
+    : { status: 'created', path: appFile, message: `Added The ORC to ${where}.` }
 }
 
-/** Puts a launcher for this checkout on the Desktop. Does not overwrite an existing one. */
+/** Puts a launcher for this checkout on the Desktop (and, on Linux, in the app launcher), in the current accent color. */
 export async function createDesktopShortcut(accentHex?: string): Promise<DesktopShortcutResult> {
   const accent = accentHex && /^#[0-9a-f]{6}$/i.test(accentHex) ? accentHex : currentAccentHex()
   if (process.platform === 'darwin') return { status: 'unsupported', message: "Desktop shortcuts aren't supported on macOS yet; drag the app to the Dock instead." }
   const repo = app.getAppPath()
   const desktop = app.getPath('desktop')
   if (process.platform === 'win32') return createWindows(repo, desktop, accent)
-  if (process.platform === 'linux') return createLinux(repo, desktop)
+  if (process.platform === 'linux') return createLinux(repo, desktop, accent)
   return { status: 'unsupported', message: `Desktop shortcuts aren't supported on ${process.platform} yet.` }
 }
 

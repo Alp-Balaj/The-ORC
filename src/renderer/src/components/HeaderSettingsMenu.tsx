@@ -56,7 +56,7 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
       setShortcut({ state: 'error', message: e instanceof Error ? e.message : String(e) })
     }
   }
-  const shortcutLabel = { idle: 'Add to desktop', busy: 'Adding…', created: 'Added to desktop', exists: 'Already on desktop', unsupported: 'Add to desktop', error: 'Add to desktop' }[shortcut.state]
+  const shortcutLabel = { idle: 'Add to desktop', busy: 'Adding…', created: 'Added', exists: 'Icon updated', unsupported: 'Add to desktop', error: 'Add to desktop' }[shortcut.state]
   // A failure rejects the invoke: App's unhandledrejection handler shows it in the action-error banner.
   const updateApp = async (): Promise<void> => {
     if (canRestart) {
@@ -133,10 +133,10 @@ export function HeaderSettingsMenu({ mission, warnAt, onShortcuts, onAccounts }:
             <p className="text-[11.5px] leading-snug text-muted-foreground" data-testid="update-app-status" role="status">
               {updating ? 'Rebuilding the stable copy of main. This can take a few minutes.' : updated === 'restarting' ? 'Updated. Restarting The ORC into the new version…' : updated ? 'Updated. Quit and reopen The ORC to run the new version.' : canRestart ? 'Rebuilds the stable copy from the latest main, then restarts into it.' : 'Rebuilds the stable copy from the latest main. Restart to use it.'}
             </p>
-            <Button variant="outline" size="sm" className="w-full justify-start text-[12px]" disabled={shortcut.state === 'busy'} title="Puts a launcher for this copy of The ORC on the Desktop" data-testid="desktop-shortcut" onClick={() => void addToDesktop()}>
+            <Button variant="outline" size="sm" className="w-full justify-start text-[12px]" disabled={shortcut.state === 'busy'} title="Puts a launcher for this copy of The ORC on the Desktop (and in the app launcher on Linux), in the current accent color. Click again to update its icon." data-testid="desktop-shortcut" onClick={() => void addToDesktop()}>
               {shortcut.state === 'busy' ? <Loader2 className="animate-spin" /> : shortcut.state === 'created' ? <Check /> : <MonitorUp />} {shortcutLabel}
             </Button>
-            {(shortcut.state === 'unsupported' || shortcut.state === 'error') && (
+            {shortcut.message && shortcut.state !== 'busy' && (
               <p className={cn('text-[11px] leading-snug', shortcut.state === 'error' ? 'text-destructive' : 'text-muted-foreground')} data-testid="desktop-shortcut-status" role="status">{shortcut.message}</p>
             )}
           </Section>
