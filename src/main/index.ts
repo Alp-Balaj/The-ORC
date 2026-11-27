@@ -303,6 +303,8 @@ const control = new ControlServer({
 const smoke = process.env.ORC_SMOKE_OUT ?? null
 // One instance owns the missions: a second one would treat the first's live sessions as
 // orphans, kill them and resume them itself, and both would write the state file.
+// Windows groups taskbar buttons and picks their icon by AppUserModelID; without one, dev shows Electron's.
+if (process.platform === 'win32') app.setAppUserModelId('com.theorc.app')
 if (!smoke && !app.requestSingleInstanceLock()) {
   app.exit(0)
 }
