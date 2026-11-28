@@ -163,6 +163,7 @@ function isOrphan(pid: number, sessionId: string): boolean {
     }
     return readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes(sessionId)
   } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return false // process already exited
     console.error(`[orc] process command-line lookup failed for pid ${pid}: ${err instanceof Error ? err.message : String(err)}`)
     return false
   }

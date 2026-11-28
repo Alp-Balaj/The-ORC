@@ -63,7 +63,7 @@ const api = {
   /** Merges main into the ORC branch (the way forward when Merge to main is blocked by main moving). */
   updateFromMain: (repo: string): Promise<{ ok: boolean; message: string; files?: string[] }> => ipcRenderer.invoke('orc:update-from-main', repo),
   /** The branch Push to GitHub would push, and its remote (null: none configured). */
-  pushTarget: (repo: string): Promise<{ branch: string; remote: string | null; ahead: number | null }> => ipcRenderer.invoke('orc:push-target', repo),
+  pushTarget: (repo: string): Promise<{ branch: string; remote: string | null; ahead: number | null } | null> => ipcRenderer.invoke('orc:push-target', repo),
   /** `git push -u <remote> <main>`: never forced; the human's click only. */
   pushToRemote: (repo: string): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('orc:push', repo),
   setGateCommand: (root: string, command: string | null): Promise<void> => ipcRenderer.invoke('spaces:set-gate', root, command),
