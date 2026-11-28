@@ -792,7 +792,17 @@ export class Missions implements ControlHandlers {
   }
 
   /** The branch the human merges to, and the remote it would be pushed to (null: no remote). */
-  async pushTarget(repo: string): Promise<{ branch: string; remote: string | null; ahead: number | null }> {
+  async pushTarget(repo: string): Promise<{ branch: string; remote: string | null; ahead: number | null } | null> {
+    // A deleted repo/worktree makes spawn report ENOENT: answer "unavailable" instead of throwing.
+    if (!existsSync(repo)) return null
+    try {
+      return await this.pushTargetUnchecked(repo)
+    } catch {
+      return null
+    }
+  }
+
+  private async pushTargetUnchecked(repo: string): Promise<{ branch: string; remote: string | null; ahead: number | null }> {
     const branch = this.integratedIn(repo)[0]?.mainBranch ?? (await this.git.currentBranch(repo))
     const remote = await missionGit.pushRemote(repo)
     return { branch, remote, ahead: remote ? await missionGit.aheadOfRemote(repo, branch, remote) : null }
@@ -800,7 +810,7 @@ export class Missions implements ControlHandlers {
 
   /** The human pressed Push to GitHub: pushes the main branch (never forced). */
   async pushMain(repo: string): Promise<missionGit.PushResult> {
-    const { branch } = await this.pushTarget(repo)
+    const branch = (await this.pushTarget(repo))?.branch ?? (await this.git.currentBranch(repo))
     return missionGit.pushBranch(repo, branch)
   }
 

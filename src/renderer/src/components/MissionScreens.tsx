@@ -296,7 +296,7 @@ export function MergedScreen({ repo, branch, message, onDone }: { repo: string; 
   const [target, setTarget] = useState<{ branch: string; remote: string | null; ahead: number | null } | null>(null)
   const [pushing, setPushing] = useState(false)
   const [pushed, setPushed] = useState<{ ok: boolean; message: string } | null>(null)
-  useEffect(() => { void window.orc.pushTarget(repo).then(setTarget) }, [repo, pushed])
+  useEffect(() => { void window.orc.pushTarget(repo).then(setTarget).catch(() => setTarget(null)) }, [repo, pushed])
   const noRemote = !!target && !target.remote
   const upToDate = !!target && target.ahead === 0
   return (
@@ -340,7 +340,7 @@ export function OrcMergeScreen({ repo, missions, onBack, onCleared }: { repo: st
   const [target, setTarget] = useState<{ branch: string; remote: string | null; ahead: number | null } | null>(null)
   const [pushing, setPushing] = useState(false)
   const [pushed, setPushed] = useState<{ ok: boolean; message: string } | null>(null)
-  useEffect(() => { void window.orc.pushTarget(repo).then(setTarget) }, [repo, result])
+  useEffect(() => { void window.orc.pushTarget(repo).then(setTarget).catch(() => setTarget(null)) }, [repo, result])
   const noRemote = !!target && !target.remote
   const nothing = !!diff && diff.files.length === 0 && diff.commits === 0
 
